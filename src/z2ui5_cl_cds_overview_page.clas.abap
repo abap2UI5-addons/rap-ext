@@ -1,11 +1,22 @@
+"! Grid of cards (table or KPI) for multiple CDS views.
+"!
+"! The escape hatch is plain inheritance: the class is deliberately not
+"! FINAL and every rendering and event step is a protected method a
+"! subclass can redefine with ordinary abap2UI5 view code - e.g.
+"! render_table_card / render_kpi_card to change a single card type.
+"! Events the floorplan does not know are routed to on_event.
 CLASS z2ui5_cl_cds_overview_page DEFINITION
   PUBLIC
-  FINAL
   CREATE PUBLIC.
 
   PUBLIC SECTION.
 
     INTERFACES z2ui5_if_app.
+
+    CONSTANTS:
+      BEGIN OF cs_event,
+        back TYPE string VALUE `BACK`,
+      END OF cs_event.
 
     TYPES:
       BEGIN OF ty_s_card,
@@ -38,7 +49,12 @@ CLASS z2ui5_cl_cds_overview_page DEFINITION
     DATA mt_card_data TYPE ty_t_card_data.
 
   PROTECTED SECTION.
-  PRIVATE SECTION.
+
+    "! subclass hook - called for every event the floorplan itself does
+    "! not handle, exactly like the event branch of a hand-written app
+    METHODS on_event
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
 
     METHODS load_all_cards.
 
@@ -57,6 +73,8 @@ CLASS z2ui5_cl_cds_overview_page DEFINITION
         io_container TYPE REF TO z2ui5_cl_xml_view
         is_card      TYPE ty_s_card_data
         client       TYPE REF TO z2ui5_if_client.
+
+  PRIVATE SECTION.
 
 ENDCLASS.
 
@@ -85,11 +103,19 @@ CLASS z2ui5_cl_cds_overview_page IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    IF client->check_on_event( `BACK` ).
+    IF client->check_on_event( cs_event-back ).
       client->nav_app_leave( ).
       RETURN.
     ENDIF.
 
+    "unknown events land in the subclass hook - the escape hatch
+    on_event( client ).
+
+  ENDMETHOD.
+
+
+  METHOD on_event ##NEEDED.
+    "subclass hook - the floorplan itself has nothing to do here
   ENDMETHOD.
 
 
@@ -140,7 +166,7 @@ CLASS z2ui5_cl_cds_overview_page IMPLEMENTATION.
     DATA(lo_page) = lo_view->shell( )->page(
       title          = mv_title
       shownavbutton  = client->check_app_prev_stack( )
-      navbuttonpress = client->_event( `BACK` ) ).
+      navbuttonpress = client->_event( cs_event-back ) ).
 
     "grid layout for cards
     DATA(lo_grid) = lo_page->grid(

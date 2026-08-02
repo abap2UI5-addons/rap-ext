@@ -1,11 +1,28 @@
+"! Popup dialog for an abstract CDS entity, driven by its annotations
+"! (labels, tooltips, default values, value helps, multiline texts,
+"! hidden fields).
+"!
+"! The escape hatch is plain inheritance: the class is deliberately not
+"! FINAL and every rendering and event step is a protected method a
+"! subclass can redefine with ordinary abap2UI5 view code - e.g.
+"! get_control_for_field to swap the control rendered for a single
+"! field. Events the floorplan does not know are routed to on_event.
 CLASS z2ui5_cl_cds_action_dialog DEFINITION
   PUBLIC
-  FINAL
   CREATE PUBLIC.
 
   PUBLIC SECTION.
 
     INTERFACES z2ui5_if_app.
+
+    CONSTANTS:
+      BEGIN OF cs_event,
+        confirm    TYPE string VALUE `CONFIRM`,
+        cancel     TYPE string VALUE `CANCEL`,
+        value_help TYPE string VALUE `VALUE_HELP`,
+        vh_confirm TYPE string VALUE `VH_CONFIRM`,
+        vh_cancel  TYPE string VALUE `VH_CANCEL`,
+      END OF cs_event.
 
     METHODS constructor
       IMPORTING
@@ -30,16 +47,12 @@ CLASS z2ui5_cl_cds_action_dialog DEFINITION
     DATA mv_confirmed TYPE abap_bool.
 
   PROTECTED SECTION.
-  PRIVATE SECTION.
 
-    CONSTANTS:
-      BEGIN OF cs_event,
-        confirm     TYPE string VALUE `CONFIRM`,
-        cancel      TYPE string VALUE `CANCEL`,
-        value_help  TYPE string VALUE `VALUE_HELP`,
-        vh_confirm  TYPE string VALUE `VH_CONFIRM`,
-        vh_cancel   TYPE string VALUE `VH_CANCEL`,
-      END OF cs_event.
+    "! subclass hook - called for every event the floorplan itself does
+    "! not handle, exactly like the event branch of a hand-written app
+    METHODS on_event
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
 
     METHODS apply_default_values.
 
@@ -67,6 +80,8 @@ CLASS z2ui5_cl_cds_action_dialog DEFINITION
         entity_name   TYPE string
       RETURNING
         VALUE(result) TYPE REF TO data.
+
+  PRIVATE SECTION.
 
 ENDCLASS.
 
@@ -126,6 +141,14 @@ CLASS z2ui5_cl_cds_action_dialog IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "unknown events land in the subclass hook - the escape hatch
+    on_event( client ).
+
+  ENDMETHOD.
+
+
+  METHOD on_event ##NEEDED.
+    "subclass hook - the floorplan itself has nothing to do here
   ENDMETHOD.
 
 

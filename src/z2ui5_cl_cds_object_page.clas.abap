@@ -1,11 +1,28 @@
+"! Object page for a single record of a CDS entity - header, status
+"! attributes, sections and edit/save/delete all come from the
+"! annotations (see README).
+"!
+"! The escape hatch is plain inheritance: the class is deliberately not
+"! FINAL and every rendering and event step is a protected method a
+"! subclass can redefine with ordinary abap2UI5 view code. Events the
+"! floorplan does not know are routed to on_event, so a subclass adds its
+"! own actions the same way any abap2UI5 app handles them.
 CLASS z2ui5_cl_cds_object_page DEFINITION
   PUBLIC
-  FINAL
   CREATE PUBLIC.
 
   PUBLIC SECTION.
 
     INTERFACES z2ui5_if_app.
+
+    CONSTANTS:
+      BEGIN OF cs_event,
+        back   TYPE string VALUE `BACK`,
+        edit   TYPE string VALUE `EDIT`,
+        save   TYPE string VALUE `SAVE`,
+        cancel TYPE string VALUE `CANCEL`,
+        delete TYPE string VALUE `DELETE`,
+      END OF cs_event.
 
     METHODS constructor
       IMPORTING
@@ -32,7 +49,6 @@ CLASS z2ui5_cl_cds_object_page DEFINITION
     DATA mv_saved TYPE abap_bool.
 
   PROTECTED SECTION.
-  PRIVATE SECTION.
 
     TYPES:
       BEGIN OF ty_s_section,
@@ -42,20 +58,41 @@ CLASS z2ui5_cl_cds_object_page DEFINITION
 
     TYPES ty_t_section TYPE STANDARD TABLE OF ty_s_section WITH DEFAULT KEY.
 
-    CONSTANTS:
-      BEGIN OF cs_event,
-        back   TYPE string VALUE `BACK`,
-        edit   TYPE string VALUE `EDIT`,
-        save   TYPE string VALUE `SAVE`,
-        cancel TYPE string VALUE `CANCEL`,
-        delete TYPE string VALUE `DELETE`,
-      END OF cs_event.
-
     DATA ms_data_backup TYPE REF TO data.
     DATA mv_entity_name TYPE string.
 
+    "! subclass hook - called for every event the floorplan itself does
+    "! not handle, exactly like the event branch of a hand-written app
+    METHODS on_event
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    "! page skeleton - delegates to render_header_title,
+    "! render_header_content and render_sections
     METHODS render_page
       IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    METHODS render_header_title
+      IMPORTING
+        io_op  TYPE REF TO z2ui5_cl_xml_view
+        client TYPE REF TO z2ui5_if_client.
+
+    "! Edit / Save / Cancel / Delete buttons
+    METHODS render_actions
+      IMPORTING
+        io_actions TYPE REF TO z2ui5_cl_xml_view
+        client     TYPE REF TO z2ui5_if_client.
+
+    "! key attributes + data points
+    METHODS render_header_content
+      IMPORTING
+        io_op  TYPE REF TO z2ui5_cl_xml_view
+        client TYPE REF TO z2ui5_if_client.
+
+    METHODS render_sections
+      IMPORTING
+        io_op  TYPE REF TO z2ui5_cl_xml_view
         client TYPE REF TO z2ui5_if_client.
 
     METHODS get_sections
@@ -112,6 +149,8 @@ CLASS z2ui5_cl_cds_object_page DEFINITION
         client        TYPE REF TO z2ui5_if_client
       RETURNING
         VALUE(result) TYPE abap_bool.
+
+  PRIVATE SECTION.
 
 ENDCLASS.
 
@@ -200,6 +239,14 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "unknown events land in the subclass hook - the escape hatch
+    on_event( client ).
+
+  ENDMETHOD.
+
+
+  METHOD on_event ##NEEDED.
+    "subclass hook - the floorplan itself has nothing to do here
   ENDMETHOD.
 
 
@@ -400,8 +447,23 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
     DATA(lo_op) = lo_page->object_page_layout(
       uppercaseanchorbar = abap_false ).
 
-    "===== HEADER TITLE =====
-    DATA(lo_ht) = lo_op->header_title( )->object_page_dyn_header_title( ).
+    render_header_title( io_op  = lo_op
+                         client = client ).
+
+    render_header_content( io_op  = lo_op
+                           client = client ).
+
+    render_sections( io_op  = lo_op
+                     client = client ).
+
+    client->view_display( lo_view->stringify( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD render_header_title.
+
+    DATA(lo_ht) = io_op->header_title( )->object_page_dyn_header_title( ).
 
     "expanded heading - show title
     DATA(lv_title_text) = mv_title.
@@ -420,30 +482,8 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
     "snapped title on mobile
     lo_ht->snapped_title_on_mobile( )->title( lv_title_text ).
 
-    "actions - Edit / Save / Cancel / Delete buttons
-    DATA(lo_actions) = lo_ht->actions( ns = `uxap` ).
-    IF mv_editable = abap_false.
-      lo_actions->button(
-        text  = `Edit`
-        press = client->_event( cs_event-edit )
-        type  = `Emphasized`
-        icon  = `sap-icon://edit` ).
-      lo_actions->button(
-        text  = `Delete`
-        press = client->_event( cs_event-delete )
-        type  = `Reject`
-        icon  = `sap-icon://delete` ).
-    ELSE.
-      lo_actions->button(
-        text  = `Save`
-        press = client->_event( cs_event-save )
-        type  = `Emphasized`
-        icon  = `sap-icon://save` ).
-      lo_actions->button(
-        text  = `Cancel`
-        press = client->_event( cs_event-cancel )
-        icon  = `sap-icon://decline` ).
-    ENDIF.
+    render_actions( io_actions = lo_ht->actions( ns = `uxap` )
+                    client     = client ).
 
     "expanded content - show subtitle/description
     IF ms_entity-header_info-description_field IS NOT INITIAL.
@@ -455,8 +495,40 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    "===== HEADER CONTENT (key attributes + data points) =====
-    DATA(lo_hc) = lo_op->header_content( ns = `uxap` ).
+  ENDMETHOD.
+
+
+  METHOD render_actions.
+
+    IF mv_editable = abap_false.
+      io_actions->button(
+        text  = `Edit`
+        press = client->_event( cs_event-edit )
+        type  = `Emphasized`
+        icon  = `sap-icon://edit` ).
+      io_actions->button(
+        text  = `Delete`
+        press = client->_event( cs_event-delete )
+        type  = `Reject`
+        icon  = `sap-icon://delete` ).
+    ELSE.
+      io_actions->button(
+        text  = `Save`
+        press = client->_event( cs_event-save )
+        type  = `Emphasized`
+        icon  = `sap-icon://save` ).
+      io_actions->button(
+        text  = `Cancel`
+        press = client->_event( cs_event-cancel )
+        icon  = `sap-icon://decline` ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD render_header_content.
+
+    DATA(lo_hc) = io_op->header_content( ns = `uxap` ).
     DATA(lo_hbox) = lo_hc->flex_box( wrap = `Wrap` fitcontainer = abap_true ).
 
     "identification fields as header attributes
@@ -488,8 +560,12 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
         )->get_parent( ).
     ENDLOOP.
 
-    "===== SECTIONS =====
-    DATA(lo_sections) = lo_op->sections( ).
+  ENDMETHOD.
+
+
+  METHOD render_sections.
+
+    DATA(lo_sections) = io_op->sections( ).
 
     LOOP AT get_sections( ) INTO DATA(ls_section).
       DATA(lo_section) = lo_sections->object_page_section(
@@ -507,8 +583,6 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
         iv_group  = ls_section-field_group
         client    = client ).
     ENDLOOP.
-
-    client->view_display( lo_view->stringify( ) ).
 
   ENDMETHOD.
 
