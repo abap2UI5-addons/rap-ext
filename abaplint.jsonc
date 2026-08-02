@@ -16,7 +16,12 @@
   ],
   "syntax": {
     "version": "v758",
-    "errorNamespace": "."
+    // ^Z (not "."): the wrapper reads CDS annotations via on-prem DDIC APIs
+    // (cl_dd_ddl_annotation_service, DDSTRUCOBJNAME) that the steampunk-2305
+    // dependency does not ship - with "." every one of them is a false
+    // "not found" error. ^Z keeps the own namespace fully checked and treats
+    // unknown SAP-standard objects as void, which matches the on-prem target.
+    "errorNamespace": "^Z"
   },
   "rules": {
     "downport": true,
