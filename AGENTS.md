@@ -10,18 +10,24 @@ views and their UI annotations, rendered with abap2UI5.
 
 ## Build & verify
 
-There is exactly one automated verification, and it runs offline against
-cloned dependencies (no SAP system needed):
+Two automated gates, both running offline against cloned dependencies (no
+SAP system needed):
 
 ```bash
 npx --yes @abaplint/cli@latest abaplint.jsonc     # expect 0 issues
+npx --yes github:abap2UI5/abap2UI5-linter         # views: metadata + headless render
+npx --yes github:abap2UI5/abap2UI5-linter --no-render   # fast loop, no browser
 ```
 
 - abaplint clones the two dependencies from the URLs in `abaplint.jsonc`
   (the steampunk-2305 API set and the abap2UI5 core repo), so the first run
   needs network access.
-- CI (`.github/workflows/abaplint.yml`) runs the same command on every push
-  and PR — a local 0-issue run means CI passes.
+- The **abap2UI5-linter** checks every view the floorplans build: unknown,
+  deprecated or too-new controls and members, binding mistakes, malformed
+  builder trees, and a real headless `XMLView.create`. Its settings (paths,
+  UI5 floor, fail level) live in `abap2ui5lint.jsonc`.
+- CI (`.github/workflows/check.yml`) runs both gates on every push and PR —
+  a local clean run means CI passes.
 - **There is no unit test suite and no transpiled runtime here.** The only
   end-to-end verification is manual: install via abapGit in a system with
   CDS views, run the demo class `z2ui5_cl_cds_test`, and click through the
@@ -39,19 +45,31 @@ npx --yes @abaplint/cli@latest abaplint.jsonc     # expect 0 issues
   not the XCO library. Do not rewrite RTTI to XCO or swap the annotation API
   "for cloud readiness" — that changes the supported platform and is a
   maintainer decision, not a cleanup.
-- Views are built with the framework's fluent builder **`z2ui5_cl_xml_view`**
-  (frozen in core, but the supported builder for downstream code like this
-  addon). Do not migrate the addon to `z2ui5_cl_ai_xml` as a refactoring —
-  same reason.
+- Views are built with the generic builder **`z2ui5_cl_ai_xml`**
+  (`open`/`leaf`/`a`/`shut`/`stringify`). The frozen fluent builder
+  `z2ui5_cl_xml_view` is gone from this repo — do not reintroduce it.
+  Two traps when editing a view:
+  **(a)** `a( )` targets the LAST CHILD once the node has children, so write
+  a control's attributes immediately after its `open`/`leaf`;
+  **(b)** an `abap_bool` fed into an attribute must go through
+  `z2ui5_cl_ai_xml=>as_bool( )` — a raw `abap_false` renders as an empty
+  string, which UI5 reads as true.
 
-## Consequence: the ecosystem's AI tooling does NOT apply here
+## What the view gate can and cannot see here
 
-The [abap2UI5-linter](https://github.com/abap2UI5/abap2UI5-linter) only picks
-up classes built with `z2ui5_cl_ai_xml` (`collectFiles` matches on
-`z2ui5_cl_ai_xml=>factory`), and the [ai-mcp](https://github.com/abap2UI5/ai-mcp)
-deploy/run loop targets `z2ui5_if_app` port classes in ai-demokit. **Neither
-can validate or run this repo's code** — do not spend a loop trying, and do
-not "fix" this code to fit those tools. abaplint (above) is the gate.
+Since the migration to `z2ui5_cl_ai_xml` the
+[abap2UI5-linter](https://github.com/abap2UI5/abap2UI5-linter) reconstructs
+these views statically, including the parts built in the render hooks: a hook
+that takes a builder handle (`io_table`, `io_op`, `io_container`, …) is
+replayed against the handle it is passed. What it cannot follow is a view
+assembled through a mechanism it has no way to resolve statically — a handle
+stored in an instance attribute, or a hook called through a dynamic
+dispatch. When a change makes the linter report *fewer* documents than the
+class actually builds, that is the signal.
+
+The gate judges the view, not the data: which columns the CDS annotations
+produce at runtime is invisible to it, so a wrong annotation reading is still
+only caught in a system.
 
 ## Public contract — the escape hatch is API
 
@@ -63,6 +81,11 @@ classes, so those method names and signatures are a **public contract**:
 
 - Do not rename, remove, or narrow any `PROTECTED` render/event/data-step
   method, and do not make a floorplan class `FINAL`.
+- The builder-handle parameters (`io_page`, `io_table`, `io_columns`,
+  `io_cells`, `io_op`, `io_actions`, `io_parent`, `io_container`) are typed
+  `TYPE REF TO z2ui5_cl_ai_xml`. Changing that type again is a breaking
+  change for every subclass — the migration off `z2ui5_cl_xml_view` already
+  was one, and is recorded in the README.
 - Do not change existing method signatures; additive optional parameters are
   fine.
 - The `cs_event` constants and the constructor signatures
@@ -85,6 +108,6 @@ classes, so those method names and signatures are a **public contract**:
 
 | Repository | Relation |
 | --- | --- |
-| [abap2UI5](https://github.com/abap2UI5/abap2UI5) | Core framework — consumed classes: `z2ui5_if_app`, `z2ui5_if_client`, `z2ui5_cl_xml_view`, popups. Resolved as an abaplint dependency; there is no version pin, so keep to long-stable core API only |
+| [abap2UI5](https://github.com/abap2UI5/abap2UI5) | Core framework — consumed classes: `z2ui5_if_app`, `z2ui5_if_client`, `z2ui5_cl_ai_xml`, popups. Resolved as an abaplint dependency; there is no version pin, so keep to long-stable core API only |
 | [samples](https://github.com/abap2UI5/samples) | Sample applications |
 | `z2ui5_cl_fp_list_report` (core) | The RTTI-based sibling for non-CDS data — cds-wrapper is the annotation-driven counterpart (note: verify the class exists in current core `main` before referencing it; it has been removed and re-added before) |

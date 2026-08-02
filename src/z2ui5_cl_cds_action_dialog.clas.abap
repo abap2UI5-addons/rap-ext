@@ -71,7 +71,7 @@ CLASS z2ui5_cl_cds_action_dialog DEFINITION
 
     METHODS get_control_for_field
       IMPORTING
-        io_container TYPE REF TO z2ui5_cl_xml_view
+        io_container TYPE REF TO z2ui5_cl_ai_xml
         is_field     TYPE z2ui5_cl_cds_util=>ty_s_field_info
         client       TYPE REF TO z2ui5_if_client.
 
@@ -180,26 +180,51 @@ CLASS z2ui5_cl_cds_action_dialog IMPLEMENTATION.
 
   METHOD render_action_dialog.
 
-    DATA(lo_popup) = z2ui5_cl_xml_view=>factory_popup( ).
-    DATA(lo_dialog) = lo_popup->dialog(
-      title        = mv_title
-      contentwidth = `450px`
-      draggable    = abap_true
-      resizable    = abap_true ).
+    DATA(lo_popup) = z2ui5_cl_ai_xml=>factory( ).
 
-    DATA(lo_content) = lo_dialog->content( ).
-    DATA(lo_form) = lo_content->simple_form(
-      editable = abap_true
-      layout   = `ResponsiveGridLayout` )->content( `form` ).
+    DATA(lo_dialog) = lo_popup->open( n  = `FragmentDefinition`
+                                      ns = `core`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+        )->a( n = `xmlns:form`
+              v = `sap.ui.layout.form`
+
+        )->open( `Dialog`
+            )->a( n = `title`
+                  v = mv_title
+            )->a( n = `contentWidth`
+                  v = `450px`
+            )->a( n = `draggable`
+                  v = `true`
+            )->a( n = `resizable`
+                  v = `true` ).
+
+    DATA(lo_content) = lo_dialog->open( `content` ).
+    DATA(lo_form) = lo_content->open( n  = `SimpleForm`
+                                      ns = `form`
+        )->a( n = `editable`
+              v = `true`
+        )->a( n = `layout`
+              v = `ResponsiveGridLayout`
+        )->open( n  = `content`
+                 ns = `form` ).
 
     LOOP AT ms_entity-fields INTO DATA(ls_field).
       IF ls_field-is_hidden = abap_true.
         CONTINUE.
       ENDIF.
       IF ls_field-is_mandatory = abap_true.
-        lo_form->label( text = ls_field-label required = abap_true ).
+        lo_form->leaf( `Label`
+            )->a( n = `text`
+                  v = ls_field-label
+            )->a( n = `required`
+                  v = `true` ).
       ELSE.
-        lo_form->label( ls_field-label ).
+        lo_form->leaf( `Label`
+            )->a( n = `text`
+                  v = ls_field-label ).
       ENDIF.
       get_control_for_field(
         io_container = lo_form
@@ -207,14 +232,21 @@ CLASS z2ui5_cl_cds_action_dialog IMPLEMENTATION.
         client       = client ).
     ENDLOOP.
 
-    lo_dialog->begin_button( )->button(
-      text  = `OK`
-      press = client->_event( cs_event-confirm )
-      type  = `Emphasized` ).
+    lo_dialog->open( `beginButton`
+        )->leaf( `Button`
+            )->a( n = `text`
+                  v = `OK`
+            )->a( n = `press`
+                  v = client->_event( cs_event-confirm )
+            )->a( n = `type`
+                  v = `Emphasized` ).
 
-    lo_dialog->end_button( )->button(
-      text  = `Cancel`
-      press = client->_event( cs_event-cancel ) ).
+    lo_dialog->open( `endButton`
+        )->leaf( `Button`
+            )->a( n = `text`
+                  v = `Cancel`
+            )->a( n = `press`
+                  v = client->_event( cs_event-cancel ) ).
 
     client->popup_display( lo_popup->stringify( ) ).
 
@@ -227,29 +259,38 @@ CLASS z2ui5_cl_cds_action_dialog IMPLEMENTATION.
     ASSIGN COMPONENT is_field-name OF STRUCTURE ms_cds->* TO <field>.
 
     IF is_field-is_boolean = abap_true.
-      io_container->checkbox(
-        selected = client->_bind_edit( val = <field> view = z2ui5_if_client=>cs_view-popup )
-        text     = `` ).
+      io_container->leaf( `CheckBox`
+          )->a( n = `selected`
+                v = client->_bind( val  = <field>
+                                   view = z2ui5_if_client=>cs_view-popup ) ).
       RETURN.
     ENDIF.
 
     IF is_field-type_kind = `DATS`.
-      io_container->date_picker(
-        value = client->_bind_edit( val = <field> view = z2ui5_if_client=>cs_view-popup ) ).
+      io_container->leaf( `DatePicker`
+          )->a( n = `value`
+                v = client->_bind( val  = <field>
+                                   view = z2ui5_if_client=>cs_view-popup ) ).
       RETURN.
     ENDIF.
 
     IF is_field-type_kind = `TIMS`.
-      io_container->time_picker(
-        value = client->_bind_edit( val = <field> view = z2ui5_if_client=>cs_view-popup ) ).
+      io_container->leaf( `TimePicker`
+          )->a( n = `value`
+                v = client->_bind( val  = <field>
+                                   view = z2ui5_if_client=>cs_view-popup ) ).
       RETURN.
     ENDIF.
 
     IF is_field-is_multiline = abap_true OR is_field-type_kind = `STRING`.
-      io_container->text_area(
-        value = client->_bind_edit( val = <field> view = z2ui5_if_client=>cs_view-popup )
-        rows  = `3`
-        width = `100%` ).
+      io_container->leaf( `TextArea`
+          )->a( n = `value`
+                v = client->_bind( val  = <field>
+                                   view = z2ui5_if_client=>cs_view-popup )
+          )->a( n = `rows`
+                v = `3`
+          )->a( n = `width`
+                v = `100%` ).
       RETURN.
     ENDIF.
 
@@ -260,29 +301,44 @@ CLASS z2ui5_cl_cds_action_dialog IMPLEMENTATION.
         ASSIGN lr_dd_data->* TO <lt_dd>.
         DATA(lv_elem_path) = is_field-value_help-element.
         DATA(lv_key_path) = `{` && lv_elem_path && `}`.
-        io_container->combobox(
-          selectedkey = client->_bind_edit( val = <field> view = z2ui5_if_client=>cs_view-popup )
-          items       = client->_bind( <lt_dd> )
-        )->item(
-          key  = lv_key_path
-          text = lv_key_path ).
+        io_container->open( `ComboBox`
+            )->a( n = `selectedKey`
+                  v = client->_bind( val  = <field>
+                                     view = z2ui5_if_client=>cs_view-popup )
+            )->a( n = `items`
+                  v = client->_bind( <lt_dd> )
+            )->leaf( n  = `Item`
+                     ns = `core`
+            )->a( n = `key`
+                  v = lv_key_path
+            )->a( n = `text`
+                  v = lv_key_path ).
       ELSE.
-        io_container->input( value = client->_bind_edit( val = <field> view = z2ui5_if_client=>cs_view-popup ) ).
+        io_container->leaf( `Input`
+            )->a( n = `value`
+                  v = client->_bind( val  = <field>
+                                     view = z2ui5_if_client=>cs_view-popup ) ).
       ENDIF.
       RETURN.
     ENDIF.
 
     IF is_field-value_help-entity_name IS NOT INITIAL.
-      io_container->input(
-        value            = client->_bind_edit( val = <field> view = z2ui5_if_client=>cs_view-popup )
-        showvaluehelp    = abap_true
-        valuehelprequest = client->_event(
-          val   = cs_event-value_help
-          t_arg = VALUE #( ( is_field-name ) ) ) ).
+      io_container->leaf( `Input`
+          )->a( n = `value`
+                v = client->_bind( val  = <field>
+                                   view = z2ui5_if_client=>cs_view-popup )
+          )->a( n = `showValueHelp`
+                v = `true`
+          )->a( n = `valueHelpRequest`
+                v = client->_event( val   = cs_event-value_help
+                                    t_arg = VALUE #( ( is_field-name ) ) ) ).
       RETURN.
     ENDIF.
 
-    io_container->input( value = client->_bind_edit( val = <field> view = z2ui5_if_client=>cs_view-popup ) ).
+    io_container->leaf( `Input`
+        )->a( n = `value`
+              v = client->_bind( val  = <field>
+                                 view = z2ui5_if_client=>cs_view-popup ) ).
 
   ENDMETHOD.
 
@@ -318,24 +374,42 @@ CLASS z2ui5_cl_cds_action_dialog IMPLEMENTATION.
     "read VH entity metadata for column labels
     DATA(ls_vh_meta) = z2ui5_cl_cds_util=>read_entity( lv_entity ).
 
-    DATA(lo_popup) = z2ui5_cl_xml_view=>factory_popup( ).
-    DATA(lo_dialog) = lo_popup->table_select_dialog(
-      title   = ls_field-label
-      confirm = client->_event( cs_event-vh_confirm )
-      cancel  = client->_event( cs_event-vh_cancel )
-      items   = `{path:'` && client->_bind_edit( val = <lt_data> path = abap_true ) && `'}` ).
+    DATA(lo_popup) = z2ui5_cl_ai_xml=>factory( ).
+
+    DATA(lo_dialog) = lo_popup->open( n  = `FragmentDefinition`
+                                      ns = `core`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+
+        )->open( `TableSelectDialog`
+            )->a( n = `title`
+                  v = ls_field-label
+            )->a( n = `confirm`
+                  v = client->_event( cs_event-vh_confirm )
+            )->a( n = `cancel`
+                  v = client->_event( cs_event-vh_cancel )
+            )->a( n = `items`
+                  v = `{path:'` && client->_bind( val  = <lt_data>
+                                                  path = abap_true ) && `'}` ).
 
     "use visible fields from VH metadata
-    DATA(lo_columns) = lo_dialog->columns( ).
-    DATA(lo_items) = lo_dialog->items( ).
-    DATA(lo_row) = lo_items->column_list_item( ).
-    DATA(lo_cells) = lo_row->cells( ).
+    DATA(lo_columns) = lo_dialog->open( `columns` ).
+    DATA(lo_items) = lo_dialog->open( `items` ).
+    DATA(lo_row) = lo_items->open( `ColumnListItem` ).
+    DATA(lo_cells) = lo_row->open( `cells` ).
 
     LOOP AT ls_vh_meta-fields INTO DATA(ls_vh_field)
       WHERE is_visible = abap_true AND is_hidden = abap_false.
-      lo_columns->column( )->text( ls_vh_field-label ).
+      lo_columns->open( `Column`
+          )->leaf( `Text`
+              )->a( n = `text`
+                    v = ls_vh_field-label ).
       DATA(lv_path) = `{` && ls_vh_field-name && `}`.
-      lo_cells->text( lv_path ).
+      lo_cells->leaf( `Text`
+          )->a( n = `text`
+                v = lv_path ).
     ENDLOOP.
 
     client->popup_display( lo_popup->stringify( ) ).

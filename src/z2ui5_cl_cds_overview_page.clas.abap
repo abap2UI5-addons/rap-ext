@@ -64,13 +64,13 @@ CLASS z2ui5_cl_cds_overview_page DEFINITION
 
     METHODS render_table_card
       IMPORTING
-        io_container TYPE REF TO z2ui5_cl_xml_view
+        io_container TYPE REF TO z2ui5_cl_ai_xml
         is_card      TYPE ty_s_card_data
         client       TYPE REF TO z2ui5_if_client.
 
     METHODS render_kpi_card
       IMPORTING
-        io_container TYPE REF TO z2ui5_cl_xml_view
+        io_container TYPE REF TO z2ui5_cl_ai_xml
         is_card      TYPE ty_s_card_data
         client       TYPE REF TO z2ui5_if_client.
 
@@ -162,15 +162,35 @@ CLASS z2ui5_cl_cds_overview_page IMPLEMENTATION.
 
   METHOD render_page.
 
-    DATA(lo_view) = z2ui5_cl_xml_view=>factory( ).
-    DATA(lo_page) = lo_view->shell( )->page(
-      title          = mv_title
-      shownavbutton  = client->check_app_prev_stack( )
-      navbuttonpress = client->_event( cs_event-back ) ).
+    DATA(lo_view) = z2ui5_cl_ai_xml=>factory( ).
+
+    DATA(lo_page) = lo_view->open( n  = `View`
+                                   ns = `mvc`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:mvc`
+              v = `sap.ui.core.mvc`
+        )->a( n = `xmlns:layout`
+              v = `sap.ui.layout`
+        )->a( n = `displayBlock`
+              v = `true`
+        )->a( n = `height`
+              v = `100%`
+
+        )->open( `Shell`
+            )->open( `Page`
+                )->a( n = `title`
+                      v = mv_title
+                )->a( n = `showNavButton`
+                      v = z2ui5_cl_ai_xml=>as_bool( client->check_app_prev_stack( ) )
+                )->a( n = `navButtonPress`
+                      v = client->_event( cs_event-back ) ).
 
     "grid layout for cards
-    DATA(lo_grid) = lo_page->grid(
-      default_span = `L6 M12 S12` ).
+    DATA(lo_grid) = lo_page->open( n  = `Grid`
+                                   ns = `layout`
+        )->a( n = `defaultSpan`
+              v = `L6 M12 S12` ).
 
     LOOP AT mt_card_data INTO DATA(ls_cd).
       DATA(lv_card_idx) = sy-tabix.
@@ -227,29 +247,38 @@ CLASS z2ui5_cl_cds_overview_page IMPLEMENTATION.
     ENDIF.
 
     "panel as card container
-    DATA(lo_panel) = io_container->panel(
-      headertext = |{ is_card-title } ({ is_card-count })| ).
+    DATA(lo_panel) = io_container->open( `Panel`
+        )->a( n = `headerText`
+              v = |{ is_card-title } ({ is_card-count })| ).
 
     "table inside panel
-    DATA(lo_table) = lo_panel->table(
-      items = `{path:'` && client->_bind_edit( val = <lt_data> path = abap_true ) && `'}`
-      mode  = `None` ).
+    DATA(lo_table) = lo_panel->open( `Table`
+        )->a( n = `items`
+              v = `{path:'` && client->_bind( val  = <lt_data>
+                                              path = abap_true ) && `'}`
+        )->a( n = `mode`
+              v = `None` ).
 
-    DATA(lo_columns) = lo_table->columns( ).
+    DATA(lo_columns) = lo_table->open( `columns` ).
     LOOP AT lt_columns INTO ls_field.
       DATA(lv_label) = ls_field-line_item_label.
       IF lv_label IS INITIAL.
         lv_label = ls_field-label.
       ENDIF.
-      lo_columns->column( )->text( lv_label ).
+      lo_columns->open( `Column`
+          )->leaf( `Text`
+              )->a( n = `text`
+                    v = lv_label ).
     ENDLOOP.
 
-    DATA(lo_items) = lo_table->items( ).
-    DATA(lo_row) = lo_items->column_list_item( ).
-    DATA(lo_cells) = lo_row->cells( ).
+    DATA(lo_items) = lo_table->open( `items` ).
+    DATA(lo_row) = lo_items->open( `ColumnListItem` ).
+    DATA(lo_cells) = lo_row->open( `cells` ).
     LOOP AT lt_columns INTO ls_field.
       DATA(lv_path) = `{` && ls_field-name && `}`.
-      lo_cells->text( lv_path ).
+      lo_cells->leaf( `Text`
+          )->a( n = `text`
+                v = lv_path ).
     ENDLOOP.
 
   ENDMETHOD.
@@ -284,12 +313,17 @@ CLASS z2ui5_cl_cds_overview_page IMPLEMENTATION.
     ENDIF.
 
     "render as GenericTile with NumericContent
-    io_container->generic_tile(
-      header    = is_card-title
-      subheader = |{ is_card-count } items|
-      frametype = `OneByOne`
-    )->tile_content(
-      )->numeric_content( value = lv_kpi_value ).
+    io_container->open( `GenericTile`
+        )->a( n = `header`
+              v = is_card-title
+        )->a( n = `subheader`
+              v = |{ is_card-count } items|
+        )->a( n = `frameType`
+              v = `OneByOne`
+        )->open( `TileContent`
+            )->leaf( `NumericContent`
+                )->a( n = `value`
+                      v = lv_kpi_value ).
 
   ENDMETHOD.
 

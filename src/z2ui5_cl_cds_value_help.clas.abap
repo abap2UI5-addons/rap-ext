@@ -175,30 +175,53 @@ CLASS z2ui5_cl_cds_value_help IMPLEMENTATION.
     FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
     ASSIGN mr_data->* TO <lt_data>.
 
-    DATA(lo_popup) = z2ui5_cl_xml_view=>factory_popup( ).
-    DATA(lo_dialog) = lo_popup->table_select_dialog(
-      title   = mv_title
-      confirm = client->_event( cs_event-confirm )
-      cancel  = client->_event( cs_event-cancel )
-      items   = `{path:'` && client->_bind_edit( val = <lt_data> path = abap_true ) && `'}` ).
+    DATA(lo_popup) = z2ui5_cl_ai_xml=>factory( ).
 
-    DATA(lo_columns) = lo_dialog->columns( ).
-    DATA(lo_items) = lo_dialog->items( ).
-    DATA(lo_row) = lo_items->column_list_item( ).
-    DATA(lo_cells) = lo_row->cells( ).
+    DATA(lo_dialog) = lo_popup->open( n  = `FragmentDefinition`
+                                      ns = `core`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+
+        )->open( `TableSelectDialog`
+            )->a( n = `title`
+                  v = mv_title
+            )->a( n = `confirm`
+                  v = client->_event( cs_event-confirm )
+            )->a( n = `cancel`
+                  v = client->_event( cs_event-cancel )
+            )->a( n = `items`
+                  v = `{path:'` && client->_bind( val  = <lt_data>
+                                                  path = abap_true ) && `'}` ).
+
+    DATA(lo_columns) = lo_dialog->open( `columns` ).
+    DATA(lo_cells) = lo_dialog->open( `items`
+        )->open( `ColumnListItem`
+            )->open( `cells` ).
 
     "render only visible, non-hidden fields
     LOOP AT ms_entity-fields INTO DATA(ls_field)
       WHERE is_visible = abap_true AND is_hidden = abap_false.
-      lo_columns->column( )->text( ls_field-label ).
+      lo_columns->open( `Column`
+          )->leaf( `Text`
+              )->a( n = `text`
+                    v = ls_field-label ).
       DATA(lv_path) = `{` && ls_field-name && `}`.
-      lo_cells->text( lv_path ).
+      lo_cells->leaf( `Text`
+          )->a( n = `text`
+                v = lv_path ).
 
       "if text element exists, add description column
       IF ls_field-text_element IS NOT INITIAL.
-        lo_columns->column( )->text( ls_field-text_element ).
+        lo_columns->open( `Column`
+            )->leaf( `Text`
+                )->a( n = `text`
+                      v = ls_field-text_element ).
         DATA(lv_text_path) = `{` && ls_field-text_element && `}`.
-        lo_cells->text( lv_text_path ).
+        lo_cells->leaf( `Text`
+            )->a( n = `text`
+                  v = lv_text_path ).
       ENDIF.
     ENDLOOP.
 

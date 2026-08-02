@@ -145,45 +145,77 @@ CLASS z2ui5_cl_cds_worklist IMPLEMENTATION.
     DATA(lt_columns) = get_line_item_fields( ).
     DATA(lv_count) = CONV string( lines( <lt_data> ) ).
 
-    DATA(lo_view) = z2ui5_cl_xml_view=>factory( ).
-    DATA(lo_page) = lo_view->shell( )->page(
-      title          = mv_title
-      shownavbutton  = client->check_app_prev_stack( )
-      navbuttonpress = client->_event( cs_event-back ) ).
+    DATA(lo_view) = z2ui5_cl_ai_xml=>factory( ).
+
+    DATA(lo_page) = lo_view->open( n  = `View`
+                                   ns = `mvc`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:mvc`
+              v = `sap.ui.core.mvc`
+        )->a( n = `displayBlock`
+              v = `true`
+        )->a( n = `height`
+              v = `100%`
+
+        )->open( `Shell`
+            )->open( `Page`
+                )->a( n = `title`
+                      v = mv_title
+                )->a( n = `showNavButton`
+                      v = z2ui5_cl_ai_xml=>as_bool( client->check_app_prev_stack( ) )
+                )->a( n = `navButtonPress`
+                      v = client->_event( cs_event-back ) ).
 
     "table
-    DATA(lo_table) = lo_page->table(
-      items              = `{path:'` && client->_bind_edit( val = <lt_data> path = abap_true ) && `'}`
-      growing            = abap_true
-      growingthreshold   = `50`
-      sticky             = `ColumnHeaders,HeaderToolbar`
-      mode               = `None` ).
+    DATA(lo_table) = lo_page->open( `Table`
+        )->a( n = `items`
+              v = `{path:'` && client->_bind( val  = <lt_data>
+                                              path = abap_true ) && `'}`
+        )->a( n = `growing`
+              v = `true`
+        )->a( n = `growingThreshold`
+              v = `50`
+        )->a( n = `sticky`
+              v = `ColumnHeaders,HeaderToolbar`
+        )->a( n = `mode`
+              v = `None` ).
 
     "toolbar
-    lo_table->header_toolbar(
-      )->overflow_toolbar(
-        )->title( text = |{ mv_title } ({ lv_count })|
-        )->toolbar_spacer(
-        )->button( icon = `sap-icon://refresh` press = client->_event( cs_event-refresh ) ).
+    lo_table->open( `headerToolbar`
+        )->open( `OverflowToolbar`
+            )->leaf( `Title`
+                )->a( n = `text`
+                      v = |{ mv_title } ({ lv_count })|
+            )->leaf( `ToolbarSpacer`
+            )->leaf( `Button`
+                )->a( n = `icon`
+                      v = `sap-icon://refresh`
+                )->a( n = `press`
+                      v = client->_event( cs_event-refresh ) ).
 
     "columns
-    DATA(lo_columns) = lo_table->columns( ).
+    DATA(lo_columns) = lo_table->open( `columns` ).
     LOOP AT lt_columns INTO DATA(ls_col).
       DATA(lv_col_label) = ls_col-line_item_label.
       IF lv_col_label IS INITIAL.
         lv_col_label = ls_col-label.
       ENDIF.
-      lo_columns->column( )->text( lv_col_label ).
+      lo_columns->open( `Column`
+          )->leaf( `Text`
+              )->a( n = `text`
+                    v = lv_col_label ).
     ENDLOOP.
 
     "items
-    DATA(lo_items) = lo_table->items( ).
-    DATA(lo_row) = lo_items->column_list_item( ).
-    DATA(lo_cells) = lo_row->cells( ).
+    DATA(lo_cells) = lo_table->open( `items`
+        )->open( `ColumnListItem`
+            )->open( `cells` ).
 
     LOOP AT lt_columns INTO ls_col.
-      DATA(lv_path) = `{` && ls_col-name && `}`.
-      lo_cells->text( lv_path ).
+      lo_cells->leaf( `Text`
+          )->a( n = `text`
+                v = `{` && ls_col-name && `}` ).
     ENDLOOP.
 
     client->view_display( lo_view->stringify( ) ).

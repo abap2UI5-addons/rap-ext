@@ -1,0 +1,10 @@
+{
+  // abap2UI5-linter settings for this repo (CLI flag > this file > defaults)
+  // docs: https://github.com/abap2UI5/abap2UI5-linter#configuration-file--abap2ui5lintjsonc
+  "paths": ["src"],
+  // the floorplans render generically from CDS annotations and are meant to
+  // run on the oldest release the framework supports
+  "ui5": "1.71",
+  "distribution": "sapui5",
+  "failOn": "warning"
+}
