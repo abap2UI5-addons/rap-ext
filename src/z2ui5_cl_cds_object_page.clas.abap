@@ -75,24 +75,24 @@ CLASS z2ui5_cl_cds_object_page DEFINITION
 
     METHODS render_header_title
       IMPORTING
-        io_op  TYPE REF TO z2ui5_cl_xml_view
+        io_op  TYPE REF TO z2ui5_cl_ai_xml
         client TYPE REF TO z2ui5_if_client.
 
     "! Edit / Save / Cancel / Delete buttons
     METHODS render_actions
       IMPORTING
-        io_actions TYPE REF TO z2ui5_cl_xml_view
+        io_actions TYPE REF TO z2ui5_cl_ai_xml
         client     TYPE REF TO z2ui5_if_client.
 
     "! key attributes + data points
     METHODS render_header_content
       IMPORTING
-        io_op  TYPE REF TO z2ui5_cl_xml_view
+        io_op  TYPE REF TO z2ui5_cl_ai_xml
         client TYPE REF TO z2ui5_if_client.
 
     METHODS render_sections
       IMPORTING
-        io_op  TYPE REF TO z2ui5_cl_xml_view
+        io_op  TYPE REF TO z2ui5_cl_ai_xml
         client TYPE REF TO z2ui5_if_client.
 
     METHODS get_sections
@@ -101,7 +101,7 @@ CLASS z2ui5_cl_cds_object_page DEFINITION
 
     METHODS render_section_form
       IMPORTING
-        io_parent TYPE REF TO z2ui5_cl_xml_view
+        io_parent TYPE REF TO z2ui5_cl_ai_xml
         iv_group  TYPE string
         client    TYPE REF TO z2ui5_if_client.
 
@@ -436,16 +436,36 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
 
   METHOD render_page.
 
-    DATA(lo_view) = z2ui5_cl_xml_view=>factory(
-      t_ns = VALUE #( ( n = `uxap` v = `sap.uxap` ) ) ).
+    DATA(lo_view) = z2ui5_cl_ai_xml=>factory( ).
 
-    DATA(lo_shell) = lo_view->shell( ).
-    DATA(lo_page) = lo_shell->page(
-      title          = mv_title
-      shownavbutton  = client->check_app_prev_stack( )
-      navbuttonpress = client->_event( cs_event-back ) ).
-    DATA(lo_op) = lo_page->object_page_layout(
-      uppercaseanchorbar = abap_false ).
+    DATA(lo_op) = lo_view->open( n  = `View`
+                                 ns = `mvc`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:mvc`
+              v = `sap.ui.core.mvc`
+        )->a( n = `xmlns:uxap`
+              v = `sap.uxap`
+        )->a( n = `xmlns:form`
+              v = `sap.ui.layout.form`
+        )->a( n = `displayBlock`
+              v = `true`
+        )->a( n = `height`
+              v = `100%`
+
+        )->open( `Shell`
+            )->open( `Page`
+                )->a( n = `title`
+                      v = mv_title
+                )->a( n = `showNavButton`
+                      v = z2ui5_cl_ai_xml=>as_bool( client->check_app_prev_stack( ) )
+                )->a( n = `navButtonPress`
+                      v = client->_event( cs_event-back )
+
+                )->open( n  = `ObjectPageLayout`
+                         ns = `uxap`
+                    )->a( n = `upperCaseAnchorBar`
+                          v = `false` ).
 
     render_header_title( io_op  = lo_op
                          client = client ).
@@ -463,7 +483,10 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
 
   METHOD render_header_title.
 
-    DATA(lo_ht) = io_op->header_title( )->object_page_dyn_header_title( ).
+    DATA(lo_ht) = io_op->open( n  = `headerTitle`
+                               ns = `uxap`
+        )->open( n  = `ObjectPageDynamicHeaderTitle`
+                 ns = `uxap` ).
 
     "expanded heading - show title
     DATA(lv_title_text) = mv_title.
@@ -474,15 +497,29 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
         lv_title_text = <lv_t>.
       ENDIF.
     ENDIF.
-    lo_ht->expanded_heading( )->title( lv_title_text ).
+    lo_ht->open( n  = `expandedHeading`
+                 ns = `uxap`
+        )->leaf( `Title`
+            )->a( n = `text`
+                  v = lv_title_text ).
 
     "snapped heading
-    lo_ht->snapped_heading( )->title( lv_title_text ).
+    lo_ht->open( n  = `snappedHeading`
+                 ns = `uxap`
+        )->leaf( `Title`
+            )->a( n = `text`
+                  v = lv_title_text ).
 
     "snapped title on mobile
-    lo_ht->snapped_title_on_mobile( )->title( lv_title_text ).
+    lo_ht->open( n  = `snappedTitleOnMobile`
+                 ns = `uxap`
+        )->leaf( `Title`
+            )->a( n = `text`
+                  v = lv_title_text ).
 
-    render_actions( io_actions = lo_ht->actions( ns = `uxap` )
+    DATA(lo_actions) = lo_ht->open( n  = `actions`
+                                    ns = `uxap` ).
+    render_actions( io_actions = lo_actions
                     client     = client ).
 
     "expanded content - show subtitle/description
@@ -490,8 +527,16 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
       FIELD-SYMBOLS <lv_d> TYPE any.
       ASSIGN COMPONENT ms_entity-header_info-description_field OF STRUCTURE ms_data->* TO <lv_d>.
       IF sy-subrc = 0 AND <lv_d> IS NOT INITIAL.
-        lo_ht->expanded_content( ns = `uxap` )->label( CONV #( <lv_d> ) ).
-        lo_ht->snapped_content( ns = `uxap` )->label( CONV #( <lv_d> ) ).
+        lo_ht->open( n  = `expandedContent`
+                     ns = `uxap`
+            )->leaf( `Label`
+                )->a( n = `text`
+                      v = CONV #( <lv_d> ) ).
+        lo_ht->open( n  = `snappedContent`
+                     ns = `uxap`
+            )->leaf( `Label`
+                )->a( n = `text`
+                      v = CONV #( <lv_d> ) ).
       ENDIF.
     ENDIF.
 
@@ -501,26 +546,41 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
   METHOD render_actions.
 
     IF mv_editable = abap_false.
-      io_actions->button(
-        text  = `Edit`
-        press = client->_event( cs_event-edit )
-        type  = `Emphasized`
-        icon  = `sap-icon://edit` ).
-      io_actions->button(
-        text  = `Delete`
-        press = client->_event( cs_event-delete )
-        type  = `Reject`
-        icon  = `sap-icon://delete` ).
+      io_actions->leaf( `Button`
+          )->a( n = `text`
+                v = `Edit`
+          )->a( n = `press`
+                v = client->_event( cs_event-edit )
+          )->a( n = `type`
+                v = `Emphasized`
+          )->a( n = `icon`
+                v = `sap-icon://edit` ).
+      io_actions->leaf( `Button`
+          )->a( n = `text`
+                v = `Delete`
+          )->a( n = `press`
+                v = client->_event( cs_event-delete )
+          )->a( n = `type`
+                v = `Reject`
+          )->a( n = `icon`
+                v = `sap-icon://delete` ).
     ELSE.
-      io_actions->button(
-        text  = `Save`
-        press = client->_event( cs_event-save )
-        type  = `Emphasized`
-        icon  = `sap-icon://save` ).
-      io_actions->button(
-        text  = `Cancel`
-        press = client->_event( cs_event-cancel )
-        icon  = `sap-icon://decline` ).
+      io_actions->leaf( `Button`
+          )->a( n = `text`
+                v = `Save`
+          )->a( n = `press`
+                v = client->_event( cs_event-save )
+          )->a( n = `type`
+                v = `Emphasized`
+          )->a( n = `icon`
+                v = `sap-icon://save` ).
+      io_actions->leaf( `Button`
+          )->a( n = `text`
+                v = `Cancel`
+          )->a( n = `press`
+                v = client->_event( cs_event-cancel )
+          )->a( n = `icon`
+                v = `sap-icon://decline` ).
     ENDIF.
 
   ENDMETHOD.
@@ -528,17 +588,27 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
 
   METHOD render_header_content.
 
-    DATA(lo_hc) = io_op->header_content( ns = `uxap` ).
-    DATA(lo_hbox) = lo_hc->flex_box( wrap = `Wrap` fitcontainer = abap_true ).
+    DATA(lo_hc) = io_op->open( n  = `headerContent`
+                               ns = `uxap` ).
+    DATA(lo_hbox) = lo_hc->open( `FlexBox`
+        )->a( n = `wrap`
+              v = `Wrap`
+        )->a( n = `fitContainer`
+              v = `true` ).
 
     "identification fields as header attributes
     LOOP AT get_identification_fields( ) INTO DATA(ls_id).
       DATA(lv_val_str) = get_field_value( ls_id ).
       IF lv_val_str IS NOT INITIAL.
-        lo_hbox->vbox( `sapUiSmallMarginEnd sapUiSmallMarginBottom`
-          )->label( text = ls_id-label
-          )->text( lv_val_str
-          )->get_parent( ).
+        lo_hbox->open( `VBox`
+            )->a( n = `class`
+                  v = `sapUiSmallMarginEnd sapUiSmallMarginBottom`
+            )->leaf( `Label`
+                )->a( n = `text`
+                      v = ls_id-label
+            )->leaf( `Text`
+                )->a( n = `text`
+                      v = lv_val_str ).
       ENDIF.
     ENDLOOP.
 
@@ -552,12 +622,17 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
       IF ls_dp-datapoint_crit_field IS NOT INITIAL.
         lv_state = get_criticality_state( get_crit_value( ls_dp-datapoint_crit_field ) ).
       ENDIF.
-      lo_hbox->vbox( `sapUiSmallMarginEnd sapUiSmallMarginBottom`
-        )->label( text = ls_dp-label
-        )->object_status(
-            text  = lv_val_str
-            state = lv_state
-        )->get_parent( ).
+      lo_hbox->open( `VBox`
+          )->a( n = `class`
+                v = `sapUiSmallMarginEnd sapUiSmallMarginBottom`
+          )->leaf( `Label`
+              )->a( n = `text`
+                    v = ls_dp-label
+          )->leaf( `ObjectStatus`
+              )->a( n = `text`
+                    v = lv_val_str
+              )->a( n = `state`
+                    v = lv_state ).
     ENDLOOP.
 
   ENDMETHOD.
@@ -565,18 +640,29 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
 
   METHOD render_sections.
 
-    DATA(lo_sections) = io_op->sections( ).
+    DATA(lo_sections) = io_op->open( n  = `sections`
+                                     ns = `uxap` ).
 
     LOOP AT get_sections( ) INTO DATA(ls_section).
-      DATA(lo_section) = lo_sections->object_page_section(
-        titleuppercase = abap_false
-        title          = ls_section-title ).
+      DATA(lo_section) = lo_sections->open( n  = `ObjectPageSection`
+                                            ns = `uxap`
+          )->a( n = `titleUppercase`
+                v = `false`
+          )->a( n = `title`
+                v = ls_section-title ).
 
-      DATA(lo_sub_sections) = lo_section->sub_sections( ).
-      DATA(lo_sub) = lo_sub_sections->object_page_sub_section(
-        title     = ls_section-title
-        showtitle = abap_false ).
-      DATA(lo_blocks) = lo_sub->blocks( ).
+      DATA(lo_sub_sections) = lo_section->open( n  = `subSections`
+                                                ns = `uxap` ).
+      "showTitle is @since 1.77 - the repo's UI5 floor (abap2ui5lint.jsonc)
+      "is set accordingly
+      DATA(lo_blocks) = lo_sub_sections->open( n  = `ObjectPageSubSection`
+                                               ns = `uxap`
+          )->a( n = `title`
+                v = ls_section-title
+          )->a( n = `showTitle`
+                v = `false`
+          )->open( n  = `blocks`
+                   ns = `uxap` ).
 
       render_section_form(
         io_parent = lo_blocks
@@ -589,13 +675,20 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
 
   METHOD render_section_form.
 
-    DATA(lo_form) = io_parent->simple_form(
-      class     = `sapUxAPObjectPageSubSectionAlignContent`
-      editable  = mv_editable
-      layout    = `ColumnLayout`
-      columnsm  = `2`
-      columnsl  = `3`
-      columnsxl = `4` ).
+    DATA(lo_form) = io_parent->open( n  = `SimpleForm`
+                                     ns = `form`
+        )->a( n = `class`
+              v = `sapUxAPObjectPageSubSectionAlignContent`
+        )->a( n = `editable`
+              v = z2ui5_cl_ai_xml=>as_bool( mv_editable )
+        )->a( n = `layout`
+              v = `ColumnLayout`
+        )->a( n = `columnsM`
+              v = `2`
+        )->a( n = `columnsL`
+              v = `3`
+        )->a( n = `columnsXL`
+              v = `4` ).
 
     "collect and sort fields for this group
     "(empty group = fields without any fieldGroup annotation)
@@ -612,26 +705,33 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
       ASSIGN COMPONENT ls_field-name OF STRUCTURE ms_data->* TO <field>.
       CHECK sy-subrc = 0.
 
-      lo_form->label( ls_field-label ).
+      lo_form->leaf( `Label`
+          )->a( n = `text`
+                v = ls_field-label ).
 
       "=== EDIT MODE: render input controls ===
       IF mv_editable = abap_true.
 
         IF ls_field-is_boolean = abap_true.
-          lo_form->checkbox(
-            selected = client->_bind_edit( <field> )
-            text     = `` ).
+          lo_form->leaf( `CheckBox`
+              )->a( n = `selected`
+                    v = client->_bind( <field> ) ).
         ELSEIF ls_field-type_kind = `DATS`.
-          lo_form->date_picker(
-            value = client->_bind_edit( <field> ) ).
+          lo_form->leaf( `DatePicker`
+              )->a( n = `value`
+                    v = client->_bind( <field> ) ).
         ELSEIF ls_field-is_multiline = abap_true.
-          lo_form->text_area(
-            value = client->_bind_edit( <field> )
-            rows  = `4`
-            width = `100%` ).
+          lo_form->leaf( `TextArea`
+              )->a( n = `value`
+                    v = client->_bind( <field> )
+              )->a( n = `rows`
+                    v = `4`
+              )->a( n = `width`
+                    v = `100%` ).
         ELSE.
-          lo_form->input(
-            value = client->_bind_edit( <field> ) ).
+          lo_form->leaf( `Input`
+              )->a( n = `value`
+                    v = client->_bind( <field> ) ).
         ENDIF.
 
       "=== DISPLAY MODE: render read-only controls ===
@@ -642,32 +742,42 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
 
         "criticality -> ObjectStatus
         IF ls_field-datapoint_crit_field IS NOT INITIAL.
-          lo_form->object_status(
-            text  = lv_display_val
-            state = get_criticality_state( get_crit_value( ls_field-datapoint_crit_field ) ) ).
+          lo_form->leaf( `ObjectStatus`
+              )->a( n = `text`
+                    v = lv_display_val
+              )->a( n = `state`
+                    v = get_criticality_state( get_crit_value( ls_field-datapoint_crit_field ) ) ).
 
         "amount + currency -> ObjectNumber
         ELSEIF ls_field-is_amount_field = abap_true
           AND ls_field-semantics_currency_code IS NOT INITIAL.
           DATA(ls_currency) = VALUE z2ui5_cl_cds_util=>ty_s_field_info(
             name = ls_field-semantics_currency_code ).
-          lo_form->object_number(
-            number     = lv_display_val
-            unit       = get_field_value( ls_currency )
-            emphasized = abap_false ).
+          lo_form->leaf( `ObjectNumber`
+              )->a( n = `number`
+                    v = lv_display_val
+              )->a( n = `unit`
+                    v = get_field_value( ls_currency )
+              )->a( n = `emphasized`
+                    v = `false` ).
 
         "quantity + unit -> ObjectNumber
         ELSEIF ls_field-is_quantity_field = abap_true
           AND ls_field-semantics_unit_of_measure IS NOT INITIAL.
           DATA(ls_unit) = VALUE z2ui5_cl_cds_util=>ty_s_field_info(
             name = ls_field-semantics_unit_of_measure ).
-          lo_form->object_number(
-            number     = lv_display_val
-            unit       = get_field_value( ls_unit )
-            emphasized = abap_false ).
+          lo_form->leaf( `ObjectNumber`
+              )->a( n = `number`
+                    v = lv_display_val
+              )->a( n = `unit`
+                    v = get_field_value( ls_unit )
+              )->a( n = `emphasized`
+                    v = `false` ).
 
         ELSE.
-          lo_form->text( lv_display_val ).
+          lo_form->leaf( `Text`
+              )->a( n = `text`
+                    v = lv_display_val ).
         ENDIF.
 
       ENDIF.

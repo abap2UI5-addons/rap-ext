@@ -10,6 +10,16 @@ ordinary abap2UI5 view code, and events the floorplan does not know are
 routed to the `on_event` hook. Breaking out of a floorplan is not a
 breakout — it is just another view method.
 
+> **Builder change (breaking for subclasses).** The floorplans now build
+> their views with the generic builder **`z2ui5_cl_ai_xml`** instead of the
+> frozen `z2ui5_cl_xml_view`. Every render hook that takes a builder handle
+> (`io_page`, `io_table`, `io_columns`, `io_cells`, `io_op`, `io_actions`,
+> `io_parent`, `io_container`) now types it `TYPE REF TO z2ui5_cl_ai_xml`,
+> and a redefining subclass has to be updated to the four verbs
+> `open` / `leaf` / `a` / `shut` shown below. Parameter names and the set of
+> hooks are unchanged. In return the views are now checkable without an SAP
+> system — see "Validate".
+
 ```abap
 CLASS zcl_my_report DEFINITION PUBLIC
   INHERITING FROM z2ui5_cl_cds_list_report CREATE PUBLIC.
@@ -28,14 +38,23 @@ CLASS zcl_my_report IMPLEMENTATION.
 
   METHOD render_toolbar.
     "replace the generated toolbar with your own - plain abap2UI5 view code
-    DATA(lo_toolbar) = io_table->header_toolbar( )->overflow_toolbar( ).
-    lo_toolbar->title( text = mv_title && ` (` && client->_bind( mv_count ) && `)` ).
-    lo_toolbar->toolbar_spacer( ).
-    lo_toolbar->button( text  = `Approve`
-                        type  = `Emphasized`
-                        press = client->_event( `APPROVE` ) ).
-    lo_toolbar->button( icon  = `sap-icon://refresh`
-                        press = client->_event( cs_event-refresh ) ).
+    DATA(lo_toolbar) = io_table->open( `headerToolbar`
+        )->open( `OverflowToolbar` ).
+
+    lo_toolbar->leaf( `Title`
+        )->a( n = `text`
+              v = mv_title && ` (` && client->_bind( mv_count ) && `)` ).
+
+    lo_toolbar->leaf( `ToolbarSpacer` ).
+
+    lo_toolbar->leaf( `Button`
+        )->a( n = `text`  v = `Approve`
+        )->a( n = `type`  v = `Emphasized`
+        )->a( n = `press` v = client->_event( `APPROVE` ) ).
+
+    lo_toolbar->leaf( `Button`
+        )->a( n = `icon`  v = `sap-icon://refresh`
+        )->a( n = `press` v = client->_event( cs_event-refresh ) ).
   ENDMETHOD.
 
   METHOD on_event.
@@ -55,9 +74,26 @@ Overridable steps per floorplan:
 - **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_form`, `save_data`, `delete_data`, `format_value`, `on_event`
 - **Worklist / Value Help / Overview Page / Action Dialog**: their render and data-loading steps plus `on_event`
 
-Related: `z2ui5_cl_fp_list_report` in the abap2UI5 core generates the same
-list report UX from any flat internal table via RTTI — use it when the
-data source is not a CDS view with UI annotations.
+Scope: this addon renders from **CDS annotations**. For a list report over a
+plain internal table there is no counterpart in the abap2UI5 core today — an
+RTTI-based `z2ui5_cl_fp_list_report` existed there briefly and was removed
+again, so do not rely on it; build such a view with `z2ui5_cl_ai_xml`
+directly.
+
+### Validate
+
+Both gates run offline, no SAP system needed (settings live in
+`abap2ui5lint.jsonc`; CI runs the same two on every push and PR):
+
+```bash
+npx --yes @abaplint/cli@latest abaplint.jsonc          # syntax/style, 0 issues expected
+npx --yes github:abap2UI5/abap2UI5-linter              # every generated view: UI5
+                                                       # metadata + headless render
+npx --yes github:abap2UI5/abap2UI5-linter --no-render  # fast loop, no browser
+```
+
+End-to-end still needs a system: install via abapGit and run
+`z2ui5_cl_cds_test`.
 
 ### CDS Action Dialog (Popup)
 

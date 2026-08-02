@@ -75,27 +75,27 @@ CLASS z2ui5_cl_cds_list_report DEFINITION
 
     METHODS render_filter_bar
       IMPORTING
-        io_page TYPE REF TO z2ui5_cl_xml_view
+        io_page TYPE REF TO z2ui5_cl_ai_xml
         client  TYPE REF TO z2ui5_if_client.
 
     METHODS render_table
       IMPORTING
-        io_page TYPE REF TO z2ui5_cl_xml_view
+        io_page TYPE REF TO z2ui5_cl_ai_xml
         client  TYPE REF TO z2ui5_if_client.
 
     METHODS render_toolbar
       IMPORTING
-        io_table TYPE REF TO z2ui5_cl_xml_view
+        io_table TYPE REF TO z2ui5_cl_ai_xml
         client   TYPE REF TO z2ui5_if_client.
 
     METHODS render_column
       IMPORTING
-        io_columns TYPE REF TO z2ui5_cl_xml_view
+        io_columns TYPE REF TO z2ui5_cl_ai_xml
         is_col     TYPE z2ui5_cl_cds_util=>ty_s_field_info.
 
     METHODS render_cell
       IMPORTING
-        io_cells TYPE REF TO z2ui5_cl_xml_view
+        io_cells TYPE REF TO z2ui5_cl_ai_xml
         is_col   TYPE z2ui5_cl_cds_util=>ty_s_field_info.
 
     METHODS on_row_press
@@ -392,11 +392,27 @@ CLASS z2ui5_cl_cds_list_report IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(lo_view) = z2ui5_cl_xml_view=>factory( ).
-    DATA(lo_page) = lo_view->shell( )->page(
-      title          = mv_title
-      shownavbutton  = client->check_app_prev_stack( )
-      navbuttonpress = client->_event( cs_event-back ) ).
+    DATA(lo_view) = z2ui5_cl_ai_xml=>factory( ).
+
+    DATA(lo_page) = lo_view->open( n  = `View`
+                                   ns = `mvc`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:mvc`
+              v = `sap.ui.core.mvc`
+        )->a( n = `displayBlock`
+              v = `true`
+        )->a( n = `height`
+              v = `100%`
+
+        )->open( `Shell`
+            )->open( `Page`
+                )->a( n = `title`
+                      v = mv_title
+                )->a( n = `showNavButton`
+                      v = z2ui5_cl_ai_xml=>as_bool( client->check_app_prev_stack( ) )
+                )->a( n = `navButtonPress`
+                      v = client->_event( cs_event-back ) ).
 
     render_filter_bar( io_page = lo_page
                        client  = client ).
@@ -415,25 +431,40 @@ CLASS z2ui5_cl_cds_list_report IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(lo_subheader) = io_page->sub_header( ).
-    DATA(lo_bar) = lo_subheader->overflow_toolbar( ).
-    DATA(lo_fbox) = lo_bar->_generic(
-      name   = `HBox`
-      t_prop = VALUE #( ( n = `items`      v = client->_bind_edit( mt_filter ) )
-                        ( n = `alignItems` v = `Center` )
-                        ( n = `wrap`       v = `Wrap` ) ) ).
-    lo_fbox->input(
-      value       = `{VALUE}`
-      placeholder = `{LABEL}`
-      submit      = client->_event( cs_event-go )
-      width       = `12rem`
-      class       = `sapUiTinyMarginEnd` ).
-    lo_bar->toolbar_spacer( ).
-    lo_bar->button(
-      text  = `Go`
-      type  = `Emphasized`
-      press = client->_event( cs_event-go )
-      icon  = `sap-icon://search` ).
+    DATA(lo_bar) = io_page->open( `subHeader`
+        )->open( `OverflowToolbar` ).
+
+    DATA(lo_fbox) = lo_bar->open( `HBox`
+        )->a( n = `items`
+              v = client->_bind( mt_filter )
+        )->a( n = `alignItems`
+              v = `Center`
+        )->a( n = `wrap`
+              v = `Wrap` ).
+
+    lo_fbox->leaf( `Input`
+        )->a( n = `value`
+              v = `{VALUE}`
+        )->a( n = `placeholder`
+              v = `{LABEL}`
+        )->a( n = `submit`
+              v = client->_event( cs_event-go )
+        )->a( n = `width`
+              v = `12rem`
+        )->a( n = `class`
+              v = `sapUiTinyMarginEnd` ).
+
+    lo_bar->leaf( `ToolbarSpacer` ).
+
+    lo_bar->leaf( `Button`
+        )->a( n = `text`
+              v = `Go`
+        )->a( n = `type`
+              v = `Emphasized`
+        )->a( n = `press`
+              v = client->_event( cs_event-go )
+        )->a( n = `icon`
+              v = `sap-icon://search` ).
 
   ENDMETHOD.
 
@@ -445,38 +476,46 @@ CLASS z2ui5_cl_cds_list_report IMPLEMENTATION.
 
     DATA(lt_columns) = get_line_item_fields( ).
 
-    DATA(lo_table) = io_page->table(
-      items            = `{path:'` && client->_bind_edit( val = <lt_data> path = abap_true ) && `'}`
-      growing          = abap_true
-      growingthreshold = `50`
-      sticky           = `ColumnHeaders,HeaderToolbar`
-      mode             = `None` ).
+    DATA(lo_table) = io_page->open( `Table`
+        )->a( n = `items`
+              v = `{path:'` && client->_bind( val  = <lt_data>
+                                              path = abap_true ) && `'}`
+        )->a( n = `growing`
+              v = `true`
+        )->a( n = `growingThreshold`
+              v = `50`
+        )->a( n = `sticky`
+              v = `ColumnHeaders,HeaderToolbar`
+        )->a( n = `mode`
+              v = `None` ).
 
     render_toolbar( io_table = lo_table
                     client   = client ).
 
-    DATA(lo_columns) = lo_table->columns( ).
+    DATA(lo_columns) = lo_table->open( `columns` ).
     LOOP AT lt_columns INTO DATA(ls_col).
       render_column( io_columns = lo_columns
                      is_col     = ls_col ).
     ENDLOOP.
 
     "items - row press navigates to a generated object page
-    DATA(lo_items) = lo_table->items( ).
-    DATA lo_row TYPE REF TO z2ui5_cl_xml_view.
+    DATA(lo_items) = lo_table->open( `items` ).
+    DATA lo_row TYPE REF TO z2ui5_cl_ai_xml.
     IF mt_row_key IS NOT INITIAL.
       DATA lt_arg TYPE string_table.
       LOOP AT mt_row_key INTO DATA(lv_key).
         APPEND `${` && lv_key && `}` TO lt_arg.
       ENDLOOP.
-      lo_row = lo_items->column_list_item(
-        type  = `Navigation`
-        press = client->_event( val   = cs_event-row_press
-                                t_arg = lt_arg ) ).
+      lo_row = lo_items->open( `ColumnListItem`
+          )->a( n = `type`
+                v = `Navigation`
+          )->a( n = `press`
+                v = client->_event( val   = cs_event-row_press
+                                    t_arg = lt_arg ) ).
     ELSE.
-      lo_row = lo_items->column_list_item( ).
+      lo_row = lo_items->open( `ColumnListItem` ).
     ENDIF.
-    DATA(lo_cells) = lo_row->cells( ).
+    DATA(lo_cells) = lo_row->open( `cells` ).
 
     LOOP AT lt_columns INTO ls_col.
       render_cell( io_cells = lo_cells
@@ -488,16 +527,30 @@ CLASS z2ui5_cl_cds_list_report IMPLEMENTATION.
 
   METHOD render_toolbar.
 
-    DATA(lo_toolbar) = io_table->header_toolbar( )->overflow_toolbar( ).
-    lo_toolbar->title( text = mv_title && ` (` && client->_bind( mv_count ) && `)` ).
-    lo_toolbar->toolbar_spacer( ).
-    lo_toolbar->button(
-      text  = `Create`
-      press = client->_event( cs_event-create )
-      type  = `Emphasized`
-      icon  = `sap-icon://add` ).
-    lo_toolbar->button( icon  = `sap-icon://refresh`
-                        press = client->_event( cs_event-refresh ) ).
+    DATA(lo_toolbar) = io_table->open( `headerToolbar`
+        )->open( `OverflowToolbar` ).
+
+    lo_toolbar->leaf( `Title`
+        )->a( n = `text`
+              v = mv_title && ` (` && client->_bind( mv_count ) && `)` ).
+
+    lo_toolbar->leaf( `ToolbarSpacer` ).
+
+    lo_toolbar->leaf( `Button`
+        )->a( n = `text`
+              v = `Create`
+        )->a( n = `press`
+              v = client->_event( cs_event-create )
+        )->a( n = `type`
+              v = `Emphasized`
+        )->a( n = `icon`
+              v = `sap-icon://add` ).
+
+    lo_toolbar->leaf( `Button`
+        )->a( n = `icon`
+              v = `sap-icon://refresh`
+        )->a( n = `press`
+              v = client->_event( cs_event-refresh ) ).
 
   ENDMETHOD.
 
@@ -511,13 +564,28 @@ CLASS z2ui5_cl_cds_list_report IMPLEMENTATION.
 
     "@UI.lineItem importance drives responsive popin behavior
     IF is_col-line_item_importance CS `MEDIUM`.
-      io_columns->column( minscreenwidth = `Tablet`
-                          demandpopin    = abap_true )->text( lv_col_label ).
+      io_columns->open( `Column`
+          )->a( n = `minScreenWidth`
+                v = `Tablet`
+          )->a( n = `demandPopin`
+                v = `true`
+          )->leaf( `Text`
+              )->a( n = `text`
+                    v = lv_col_label ).
     ELSEIF is_col-line_item_importance CS `LOW`.
-      io_columns->column( minscreenwidth = `Desktop`
-                          demandpopin    = abap_true )->text( lv_col_label ).
+      io_columns->open( `Column`
+          )->a( n = `minScreenWidth`
+                v = `Desktop`
+          )->a( n = `demandPopin`
+                v = `true`
+          )->leaf( `Text`
+              )->a( n = `text`
+                    v = lv_col_label ).
     ELSE.
-      io_columns->column( )->text( lv_col_label ).
+      io_columns->open( `Column`
+          )->leaf( `Text`
+              )->a( n = `text`
+                    v = lv_col_label ).
     ENDIF.
 
   ENDMETHOD.
@@ -534,29 +602,37 @@ CLASS z2ui5_cl_cds_list_report IMPLEMENTATION.
       IF lv_crit_field IS INITIAL.
         lv_crit_field = is_col-datapoint_crit_field.
       ENDIF.
-      io_cells->object_status(
-        text  = lv_path
-        state = `{= ${` && lv_crit_field &&
-                `} === 3 ? 'Success' : (${` && lv_crit_field &&
-                `} === 1 ? 'Error' : (${` && lv_crit_field &&
-                `} === 2 ? 'Warning' : 'None')) }` ).
+      io_cells->leaf( `ObjectStatus`
+          )->a( n = `text`
+                v = lv_path
+          )->a( n = `state`
+                v = `{= ${` && lv_crit_field &&
+                    `} === 3 ? 'Success' : (${` && lv_crit_field &&
+                    `} === 1 ? 'Error' : (${` && lv_crit_field &&
+                    `} === 2 ? 'Warning' : 'None')) }` ).
 
     "amount + currency -> ObjectNumber
     ELSEIF is_col-is_amount_field = abap_true
       AND is_col-semantics_currency_code IS NOT INITIAL.
-      io_cells->object_number(
-        number = lv_path
-        unit   = `{` && to_upper( is_col-semantics_currency_code ) && `}` ).
+      io_cells->leaf( `ObjectNumber`
+          )->a( n = `number`
+                v = lv_path
+          )->a( n = `unit`
+                v = `{` && to_upper( is_col-semantics_currency_code ) && `}` ).
 
     "quantity + unit -> ObjectNumber
     ELSEIF is_col-is_quantity_field = abap_true
       AND is_col-semantics_unit_of_measure IS NOT INITIAL.
-      io_cells->object_number(
-        number = lv_path
-        unit   = `{` && to_upper( is_col-semantics_unit_of_measure ) && `}` ).
+      io_cells->leaf( `ObjectNumber`
+          )->a( n = `number`
+                v = lv_path
+          )->a( n = `unit`
+                v = `{` && to_upper( is_col-semantics_unit_of_measure ) && `}` ).
 
     ELSE.
-      io_cells->text( lv_path ).
+      io_cells->leaf( `Text`
+          )->a( n = `text`
+                v = lv_path ).
     ENDIF.
 
   ENDMETHOD.

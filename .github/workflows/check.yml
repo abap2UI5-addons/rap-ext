@@ -1,0 +1,42 @@
+# The two gates of this repo:
+#   abaplint - syntax/style with dependency resolution against the
+#              steampunk-2305 API set and the abap2UI5 core repo (both cloned
+#              by abaplint from the URLs in abaplint.jsonc)
+#   linter   - abap2UI5-linter: every view the floorplans build is checked
+#              against the UI5 metadata (control/property/version) and
+#              rendered headless. Settings live in abap2ui5lint.jsonc
+# Zero issues is the gate - see AGENTS.md "Build & verify".
+name: check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  abaplint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: abaplint (expect 0 issues)
+        run: npx --yes @abaplint/cli@latest abaplint.jsonc
+
+  view_lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # settings come from abap2ui5lint.jsonc - set inputs here only to override
+      - name: abap2UI5-linter (property gate + headless render)
+        uses: abap2UI5/abap2UI5-linter@main

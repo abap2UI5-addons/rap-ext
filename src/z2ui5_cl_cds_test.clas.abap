@@ -33,70 +33,150 @@ CLASS z2ui5_cl_cds_test IMPLEMENTATION.
 
       ms_cds-searchcountry = `US`.
 
-      DATA(lo_view) = z2ui5_cl_xml_view=>factory( ).
-      DATA(lo_page) = lo_view->shell( )->page( title = `abap2UI5 - CDS Framework Demo` ).
+      DATA(lo_view) = z2ui5_cl_ai_xml=>factory( ).
+
+      DATA(lo_page) = lo_view->open( n  = `View`
+                                     ns = `mvc`
+          )->a( n = `xmlns`
+                v = `sap.m`
+          )->a( n = `xmlns:mvc`
+                v = `sap.ui.core.mvc`
+          )->a( n = `xmlns:form`
+                v = `sap.ui.layout.form`
+          )->a( n = `displayBlock`
+                v = `true`
+          )->a( n = `height`
+                v = `100%`
+
+          )->open( `Shell`
+              )->open( `Page`
+                  )->a( n = `title`
+                        v = `abap2UI5 - CDS Framework Demo` ).
 
       "=== Popup Section ===
-      DATA(lo_panel1) = lo_page->panel( headertext = `Popups (sub-app navigation)` ).
-      DATA(lo_hbox1) = lo_panel1->hbox( class = `sapUiSmallMarginBottom` ).
-      lo_hbox1->button(
-        text  = `Action Dialog`
-        press = client->_event( cs_event-open_action_dialog )
-        type  = `Emphasized`
-        icon  = `sap-icon://popup-window` ).
-      lo_hbox1->button(
-        text  = `Value Help`
-        press = client->_event( cs_event-open_value_help )
-        icon  = `sap-icon://value-help` ).
+      DATA(lo_panel1) = lo_page->open( `Panel`
+          )->a( n = `headerText`
+                v = `Popups (sub-app navigation)` ).
+      DATA(lo_hbox1) = lo_panel1->open( `HBox`
+          )->a( n = `class`
+                v = `sapUiSmallMarginBottom` ).
+      lo_hbox1->leaf( `Button`
+          )->a( n = `text`
+                v = `Action Dialog`
+          )->a( n = `press`
+                v = client->_event( cs_event-open_action_dialog )
+          )->a( n = `type`
+                v = `Emphasized`
+          )->a( n = `icon`
+                v = `sap-icon://popup-window` ).
+      lo_hbox1->leaf( `Button`
+          )->a( n = `text`
+                v = `Value Help`
+          )->a( n = `press`
+                v = client->_event( cs_event-open_value_help )
+          )->a( n = `icon`
+                v = `sap-icon://value-help` ).
 
       "=== Page Section ===
-      DATA(lo_panel2) = lo_page->panel( headertext = `Full Page Apps (sub-app navigation)` ).
-      DATA(lo_hbox2) = lo_panel2->hbox( class = `sapUiSmallMarginBottom` ).
-      lo_hbox2->button(
-        text  = `Object Page`
-        press = client->_event( cs_event-open_object_page )
-        icon  = `sap-icon://detail-view` ).
-      lo_hbox2->button(
-        text  = `List Report (I_Country)`
-        press = client->_event( cs_event-open_list_report )
-        icon  = `sap-icon://list` ).
-      lo_hbox2->button(
-        text  = `List Report (I_CompanyCode)`
-        press = client->_event( cs_event-open_list_report2 )
-        icon  = `sap-icon://list` ).
-      lo_hbox2->button(
-        text  = `List Report (I_Material)`
-        press = client->_event( cs_event-open_list_material )
-        icon  = `sap-icon://product` ).
-      lo_hbox2->button(
-        text  = `List Report (/DMO/ Travel)`
-        press = client->_event( cs_event-open_list_travel )
-        icon  = `sap-icon://flight` ).
-      lo_hbox2->button(
-        text  = `Worklist`
-        press = client->_event( cs_event-open_worklist )
-        icon  = `sap-icon://task` ).
-      lo_hbox2->button(
-        text  = `Overview Page`
-        press = client->_event( cs_event-open_overview_page )
-        icon  = `sap-icon://overview-chart` ).
+      DATA(lo_panel2) = lo_page->open( `Panel`
+          )->a( n = `headerText`
+                v = `Full Page Apps (sub-app navigation)` ).
+      DATA(lo_hbox2) = lo_panel2->open( `HBox`
+          )->a( n = `class`
+                v = `sapUiSmallMarginBottom` ).
+      lo_hbox2->leaf( `Button`
+          )->a( n = `text`
+                v = `Object Page`
+          )->a( n = `press`
+                v = client->_event( cs_event-open_object_page )
+          )->a( n = `icon`
+                v = `sap-icon://detail-view` ).
+      lo_hbox2->leaf( `Button`
+          )->a( n = `text`
+                v = `List Report (I_Country)`
+          )->a( n = `press`
+                v = client->_event( cs_event-open_list_report )
+          )->a( n = `icon`
+                v = `sap-icon://list` ).
+      lo_hbox2->leaf( `Button`
+          )->a( n = `text`
+                v = `List Report (I_CompanyCode)`
+          )->a( n = `press`
+                v = client->_event( cs_event-open_list_report2 )
+          )->a( n = `icon`
+                v = `sap-icon://list` ).
+      lo_hbox2->leaf( `Button`
+          )->a( n = `text`
+                v = `List Report (I_Material)`
+          )->a( n = `press`
+                v = client->_event( cs_event-open_list_material )
+          )->a( n = `icon`
+                v = `sap-icon://product` ).
+      lo_hbox2->leaf( `Button`
+          )->a( n = `text`
+                v = `List Report (/DMO/ Travel)`
+          )->a( n = `press`
+                v = client->_event( cs_event-open_list_travel )
+          )->a( n = `icon`
+                v = `sap-icon://flight` ).
+      lo_hbox2->leaf( `Button`
+          )->a( n = `text`
+                v = `Worklist`
+          )->a( n = `press`
+                v = client->_event( cs_event-open_worklist )
+          )->a( n = `icon`
+                v = `sap-icon://task` ).
+      lo_hbox2->leaf( `Button`
+          )->a( n = `text`
+                v = `Overview Page`
+          )->a( n = `press`
+                v = client->_event( cs_event-open_overview_page )
+          )->a( n = `icon`
+                v = `sap-icon://overview-chart` ).
 
       "=== Current Values ===
-      DATA(lo_panel3) = lo_page->panel( headertext = `Current Action Dialog Values` ).
-      DATA(lo_form) = lo_panel3->simple_form(
-        editable = abap_false
-        layout   = `ResponsiveGridLayout` )->content( `form` ).
+      DATA(lo_panel3) = lo_page->open( `Panel`
+          )->a( n = `headerText`
+                v = `Current Action Dialog Values` ).
+      DATA(lo_form) = lo_panel3->open( n  = `SimpleForm`
+                                       ns = `form`
+          )->a( n = `editable`
+                v = `false`
+          )->a( n = `layout`
+                v = `ResponsiveGridLayout`
+          )->open( n  = `content`
+                   ns = `form` ).
 
-      lo_form->label( `Country` ).
-      lo_form->text( client->_bind( ms_cds-searchcountry ) ).
-      lo_form->label( `Date` ).
-      lo_form->text( client->_bind( ms_cds-newdate ) ).
-      lo_form->label( `Message Type` ).
-      lo_form->text( client->_bind( ms_cds-messagetype ) ).
-      lo_form->label( `Description` ).
-      lo_form->text( client->_bind( ms_cds-description ) ).
-      lo_form->label( `Value Help Result` ).
-      lo_form->text( client->_bind( mv_vh_result ) ).
+      lo_form->leaf( `Label`
+          )->a( n = `text`
+                v = `Country` ).
+      lo_form->leaf( `Text`
+          )->a( n = `text`
+                v = client->_bind( ms_cds-searchcountry ) ).
+      lo_form->leaf( `Label`
+          )->a( n = `text`
+                v = `Date` ).
+      lo_form->leaf( `Text`
+          )->a( n = `text`
+                v = client->_bind( ms_cds-newdate ) ).
+      lo_form->leaf( `Label`
+          )->a( n = `text`
+                v = `Message Type` ).
+      lo_form->leaf( `Text`
+          )->a( n = `text`
+                v = client->_bind( ms_cds-messagetype ) ).
+      lo_form->leaf( `Label`
+          )->a( n = `text`
+                v = `Description` ).
+      lo_form->leaf( `Text`
+          )->a( n = `text`
+                v = client->_bind( ms_cds-description ) ).
+      lo_form->leaf( `Label`
+          )->a( n = `text`
+                v = `Value Help Result` ).
+      lo_form->leaf( `Text`
+          )->a( n = `text`
+                v = client->_bind( mv_vh_result ) ).
 
       client->view_display( lo_view->stringify( ) ).
       RETURN.
