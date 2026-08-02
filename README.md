@@ -74,9 +74,26 @@ Overridable steps per floorplan:
 - **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_form`, `save_data`, `delete_data`, `format_value`, `on_event`
 - **Worklist / Value Help / Overview Page / Action Dialog**: their render and data-loading steps plus `on_event`
 
-Related: `z2ui5_cl_fp_list_report` in the abap2UI5 core generates the same
-list report UX from any flat internal table via RTTI — use it when the
-data source is not a CDS view with UI annotations.
+Scope: this addon renders from **CDS annotations**. For a list report over a
+plain internal table there is no counterpart in the abap2UI5 core today — an
+RTTI-based `z2ui5_cl_fp_list_report` existed there briefly and was removed
+again, so do not rely on it; build such a view with `z2ui5_cl_ai_xml`
+directly.
+
+### Validate
+
+Both gates run offline, no SAP system needed (settings live in
+`abap2ui5lint.jsonc`; CI runs the same two on every push and PR):
+
+```bash
+npx --yes @abaplint/cli@latest abaplint.jsonc          # syntax/style, 0 issues expected
+npx --yes github:abap2UI5/abap2UI5-linter              # every generated view: UI5
+                                                       # metadata + headless render
+npx --yes github:abap2UI5/abap2UI5-linter --no-render  # fast loop, no browser
+```
+
+End-to-end still needs a system: install via abapGit and run
+`z2ui5_cl_cds_test`.
 
 ### CDS Action Dialog (Popup)
 

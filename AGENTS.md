@@ -110,4 +110,4 @@ classes, so those method names and signatures are a **public contract**:
 | --- | --- |
 | [abap2UI5](https://github.com/abap2UI5/abap2UI5) | Core framework — consumed classes: `z2ui5_if_app`, `z2ui5_if_client`, `z2ui5_cl_ai_xml`, popups. Resolved as an abaplint dependency; there is no version pin, so keep to long-stable core API only |
 | [samples](https://github.com/abap2UI5/samples) | Sample applications |
-| `z2ui5_cl_fp_list_report` (core) | The RTTI-based sibling for non-CDS data — cds-wrapper is the annotation-driven counterpart (note: verify the class exists in current core `main` before referencing it; it has been removed and re-added before) |
+| `z2ui5_cl_fp_list_report` (core) | **Does not exist in core `main`** — added in core #2505 and removed again days later by an abapGit sync. Do not reference it as available; re-check before ever citing it again |
