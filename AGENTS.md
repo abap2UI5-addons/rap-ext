@@ -35,6 +35,11 @@ npx --yes github:abap2UI5/abap2UI5-linter --no-render   # fast loop, no browser
 
 ## Target platform — do not "modernize"
 
+- **UI5 floor is 1.77** (`abap2ui5lint.jsonc`), not the framework's 1.71: the
+  object page uses `sap.uxap.ObjectPageSubSection.showTitle` (@since 1.77) to
+  render one subsection per section without a duplicate title. Keep the floor
+  at the oldest release the code actually needs — raising it further silently
+  stops the gate from reporting members missing on real systems.
 - Syntax level is **v758**; the abaplint dependency is the steampunk-2305 API
   set, but the wrapper deliberately uses **on-prem DDIC APIs**
   (`cl_dd_ddl_annotation_service`, `DDSTRUCOBJNAME`) to read CDS annotations —

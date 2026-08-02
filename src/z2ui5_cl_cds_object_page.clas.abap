@@ -653,13 +653,14 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
 
       DATA(lo_sub_sections) = lo_section->open( n  = `subSections`
                                                 ns = `uxap` ).
-      "showTitle is @since 1.77 and not available on the 1.71 floor - with a
-      "single subsection per section the section title is shown anyway, so the
-      "subsection title stays hidden without it
+      "showTitle is @since 1.77 - the repo's UI5 floor (abap2ui5lint.jsonc)
+      "is set accordingly
       DATA(lo_blocks) = lo_sub_sections->open( n  = `ObjectPageSubSection`
                                                ns = `uxap`
           )->a( n = `title`
                 v = ls_section-title
+          )->a( n = `showTitle`
+                v = `false`
           )->open( n  = `blocks`
                    ns = `uxap` ).
 
