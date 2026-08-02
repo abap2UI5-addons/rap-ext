@@ -1,11 +1,22 @@
+"! Read-only worklist table of a CDS view with @UI.lineItem columns.
+"!
+"! The escape hatch is plain inheritance: the class is deliberately not
+"! FINAL and every rendering and event step is a protected method a
+"! subclass can redefine with ordinary abap2UI5 view code. Events the
+"! floorplan does not know are routed to on_event.
 CLASS z2ui5_cl_cds_worklist DEFINITION
   PUBLIC
-  FINAL
   CREATE PUBLIC.
 
   PUBLIC SECTION.
 
     INTERFACES z2ui5_if_app.
+
+    CONSTANTS:
+      BEGIN OF cs_event,
+        refresh TYPE string VALUE `REFRESH`,
+        back    TYPE string VALUE `BACK`,
+      END OF cs_event.
 
     METHODS constructor
       IMPORTING
@@ -21,12 +32,12 @@ CLASS z2ui5_cl_cds_worklist DEFINITION
     DATA mv_search    TYPE string.
 
   PROTECTED SECTION.
-  PRIVATE SECTION.
 
-    CONSTANTS:
-      BEGIN OF cs_event,
-        refresh TYPE string VALUE `REFRESH`,
-      END OF cs_event.
+    "! subclass hook - called for every event the floorplan itself does
+    "! not handle, exactly like the event branch of a hand-written app
+    METHODS on_event
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
 
     METHODS load_data.
 
@@ -37,6 +48,8 @@ CLASS z2ui5_cl_cds_worklist DEFINITION
     METHODS get_line_item_fields
       RETURNING
         VALUE(result) TYPE z2ui5_cl_cds_util=>ty_t_field_info.
+
+  PRIVATE SECTION.
 
 ENDCLASS.
 
@@ -73,11 +86,19 @@ CLASS z2ui5_cl_cds_worklist IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    IF client->check_on_event( `BACK` ).
+    IF client->check_on_event( cs_event-back ).
       client->nav_app_leave( ).
       RETURN.
     ENDIF.
 
+    "unknown events land in the subclass hook - the escape hatch
+    on_event( client ).
+
+  ENDMETHOD.
+
+
+  METHOD on_event ##NEEDED.
+    "subclass hook - the floorplan itself has nothing to do here
   ENDMETHOD.
 
 
@@ -128,7 +149,7 @@ CLASS z2ui5_cl_cds_worklist IMPLEMENTATION.
     DATA(lo_page) = lo_view->shell( )->page(
       title          = mv_title
       shownavbutton  = client->check_app_prev_stack( )
-      navbuttonpress = client->_event( `BACK` ) ).
+      navbuttonpress = client->_event( cs_event-back ) ).
 
     "table
     DATA(lo_table) = lo_page->table(

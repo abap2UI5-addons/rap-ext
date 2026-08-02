@@ -1,11 +1,23 @@
+"! Table select dialog for any CDS view - columns come from the entity
+"! metadata, @ObjectModel.text.element adds description columns.
+"!
+"! The escape hatch is plain inheritance: the class is deliberately not
+"! FINAL and every rendering and event step is a protected method a
+"! subclass can redefine with ordinary abap2UI5 view code. Events the
+"! floorplan does not know are routed to on_event.
 CLASS z2ui5_cl_cds_value_help DEFINITION
   PUBLIC
-  FINAL
   CREATE PUBLIC.
 
   PUBLIC SECTION.
 
     INTERFACES z2ui5_if_app.
+
+    CONSTANTS:
+      BEGIN OF cs_event,
+        confirm TYPE string VALUE `VH_CONFIRM`,
+        cancel  TYPE string VALUE `VH_CANCEL`,
+      END OF cs_event.
 
     METHODS constructor
       IMPORTING
@@ -41,19 +53,20 @@ CLASS z2ui5_cl_cds_value_help DEFINITION
     DATA mr_data       TYPE REF TO data.
 
   PROTECTED SECTION.
-  PRIVATE SECTION.
 
-    CONSTANTS:
-      BEGIN OF cs_event,
-        confirm TYPE string VALUE `VH_CONFIRM`,
-        cancel  TYPE string VALUE `VH_CANCEL`,
-      END OF cs_event.
+    "! subclass hook - called for every event the floorplan itself does
+    "! not handle, exactly like the event branch of a hand-written app
+    METHODS on_event
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
 
     METHODS load_data.
 
     METHODS render_dialog
       IMPORTING
         client TYPE REF TO z2ui5_if_client.
+
+  PRIVATE SECTION.
 
 ENDCLASS.
 
@@ -122,6 +135,14 @@ CLASS z2ui5_cl_cds_value_help IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "unknown events land in the subclass hook - the escape hatch
+    on_event( client ).
+
+  ENDMETHOD.
+
+
+  METHOD on_event ##NEEDED.
+    "subclass hook - the floorplan itself has nothing to do here
   ENDMETHOD.
 
 

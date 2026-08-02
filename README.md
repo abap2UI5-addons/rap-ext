@@ -2,6 +2,63 @@
 
 Display CDS artifacts with abap2UI5
 
+### The Escape Hatch
+
+Every floorplan in this addon is deliberately **not FINAL**: all rendering
+and event steps are `PROTECTED` methods a subclass can redefine with
+ordinary abap2UI5 view code, and events the floorplan does not know are
+routed to the `on_event` hook. Breaking out of a floorplan is not a
+breakout — it is just another view method.
+
+```abap
+CLASS zcl_my_report DEFINITION PUBLIC
+  INHERITING FROM z2ui5_cl_cds_list_report CREATE PUBLIC.
+  PUBLIC SECTION.
+    METHODS constructor.
+  PROTECTED SECTION.
+    METHODS render_toolbar REDEFINITION.
+    METHODS on_event REDEFINITION.
+ENDCLASS.
+
+CLASS zcl_my_report IMPLEMENTATION.
+
+  METHOD constructor.
+    super->constructor( cds_view_name = `I_COUNTRY` ).
+  ENDMETHOD.
+
+  METHOD render_toolbar.
+    "replace the generated toolbar with your own - plain abap2UI5 view code
+    DATA(lo_toolbar) = io_table->header_toolbar( )->overflow_toolbar( ).
+    lo_toolbar->title( text = mv_title && ` (` && client->_bind( mv_count ) && `)` ).
+    lo_toolbar->toolbar_spacer( ).
+    lo_toolbar->button( text  = `Approve`
+                        type  = `Emphasized`
+                        press = client->_event( `APPROVE` ) ).
+    lo_toolbar->button( icon  = `sap-icon://refresh`
+                        press = client->_event( cs_event-refresh ) ).
+  ENDMETHOD.
+
+  METHOD on_event.
+    "custom events land here - exactly like a hand-written app
+    IF client->check_on_event( `APPROVE` ).
+      client->message_toast_display( `Approved` ).
+      RETURN.
+    ENDIF.
+    super->on_event( client ).
+  ENDMETHOD.
+
+ENDCLASS.
+```
+
+Overridable steps per floorplan:
+- **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `load_data`, `get_where_clause`, `on_event`
+- **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_form`, `save_data`, `delete_data`, `format_value`, `on_event`
+- **Worklist / Value Help / Overview Page / Action Dialog**: their render and data-loading steps plus `on_event`
+
+Related: `z2ui5_cl_fp_list_report` in the abap2UI5 core generates the same
+list report UX from any flat internal table via RTTI — use it when the
+data source is not a CDS view with UI annotations.
+
 ### CDS Action Dialog (Popup)
 
 Renders a popup dialog for an abstract CDS entity, driven by its annotations (labels, tooltips, default values, value helps, multiline texts, hidden fields).
