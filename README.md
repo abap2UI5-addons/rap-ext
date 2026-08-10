@@ -1,6 +1,6 @@
-# cds-wrapper
+# rap-extension
 
-Display CDS artifacts with abap2UI5
+Display RAP and CDS artifacts with abap2UI5
 
 ### The Escape Hatch
 
