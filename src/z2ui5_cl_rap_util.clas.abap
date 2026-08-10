@@ -1,4 +1,4 @@
-CLASS z2ui5_cl_cds_util DEFINITION
+CLASS z2ui5_cl_rap_util DEFINITION
   PUBLIC
   FINAL
   CREATE PUBLIC.
@@ -209,7 +209,7 @@ ENDCLASS.
 
 
 
-CLASS z2ui5_cl_cds_util IMPLEMENTATION.
+CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
   METHOD read_entity.
 

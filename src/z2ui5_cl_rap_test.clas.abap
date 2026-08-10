@@ -1,11 +1,11 @@
-CLASS z2ui5_cl_cds_test DEFINITION
+CLASS z2ui5_cl_rap_test DEFINITION
   PUBLIC
   FINAL
   CREATE PUBLIC.
 
   PUBLIC SECTION.
     INTERFACES z2ui5_if_app.
-    DATA ms_cds TYPE z2ui5_cds_test_popup.
+    DATA ms_cds TYPE z2ui5_dd_rap_test_popup.
     DATA mv_vh_result TYPE string.
   PROTECTED SECTION.
   PRIVATE SECTION.
@@ -25,7 +25,7 @@ ENDCLASS.
 
 
 
-CLASS z2ui5_cl_cds_test IMPLEMENTATION.
+CLASS z2ui5_cl_rap_test IMPLEMENTATION.
 
   METHOD z2ui5_if_app~main.
 
@@ -185,7 +185,7 @@ CLASS z2ui5_cl_cds_test IMPLEMENTATION.
 
     "=== Action Dialog ===
     IF client->check_on_event( cs_event-open_action_dialog ).
-      DATA(lo_dialog) = NEW z2ui5_cl_cds_action_dialog(
+      DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog(
         val   = ms_cds
         title = `Enter Parameters` ).
       client->nav_app_call( CAST #( lo_dialog ) ).
@@ -194,7 +194,7 @@ CLASS z2ui5_cl_cds_test IMPLEMENTATION.
 
     "=== Object Page ===
     IF client->check_on_event( cs_event-open_object_page ).
-      DATA ls_op TYPE z2ui5_cds_test_op.
+      DATA ls_op TYPE z2ui5_dd_rap_test_op.
       ls_op-orderid = `PO-48865`.
       ls_op-customername = `Robotech Industries`.
       ls_op-priority = `High`.
@@ -212,7 +212,7 @@ CLASS z2ui5_cl_cds_test IMPLEMENTATION.
       ls_op-createdon = sy-datum - 30.
       ls_op-changedby = sy-uname.
       ls_op-notes = `Delivery expected next week. Customer confirmed receiving dock availability.`.
-      DATA(lo_op) = NEW z2ui5_cl_cds_object_page(
+      DATA(lo_op) = NEW z2ui5_cl_rap_object_page(
         val   = ls_op
         title = `Purchase Order` ).
       client->nav_app_call( CAST #( lo_op ) ).
@@ -221,7 +221,7 @@ CLASS z2ui5_cl_cds_test IMPLEMENTATION.
 
     "=== List Report ===
     IF client->check_on_event( cs_event-open_list_report ).
-      DATA(lo_lr) = NEW z2ui5_cl_cds_list_report(
+      DATA(lo_lr) = NEW z2ui5_cl_rap_list_report(
         cds_view_name = `I_COUNTRY`
         title         = `Countries` ).
       client->nav_app_call( CAST #( lo_lr ) ).
@@ -229,7 +229,7 @@ CLASS z2ui5_cl_cds_test IMPLEMENTATION.
     ENDIF.
 
     IF client->check_on_event( cs_event-open_list_report2 ).
-      DATA(lo_lr2) = NEW z2ui5_cl_cds_list_report(
+      DATA(lo_lr2) = NEW z2ui5_cl_rap_list_report(
         cds_view_name = `I_COMPANYCODE`
         title         = `Company Codes` ).
       client->nav_app_call( CAST #( lo_lr2 ) ).
@@ -237,7 +237,7 @@ CLASS z2ui5_cl_cds_test IMPLEMENTATION.
     ENDIF.
 
     IF client->check_on_event( cs_event-open_list_material ).
-      DATA(lo_lr3) = NEW z2ui5_cl_cds_list_report(
+      DATA(lo_lr3) = NEW z2ui5_cl_rap_list_report(
         cds_view_name = `I_MATERIAL`
         title         = `Materials`
         max_rows      = 200 ).
@@ -246,7 +246,7 @@ CLASS z2ui5_cl_cds_test IMPLEMENTATION.
     ENDIF.
 
     IF client->check_on_event( cs_event-open_list_travel ).
-      DATA(lo_lr4) = NEW z2ui5_cl_cds_list_report(
+      DATA(lo_lr4) = NEW z2ui5_cl_rap_list_report(
         cds_view_name = `/DMO/I_TRAVEL_U`
         title         = `Travels (DMO Flight Scenario)` ).
       client->nav_app_call( CAST #( lo_lr4 ) ).
@@ -255,7 +255,7 @@ CLASS z2ui5_cl_cds_test IMPLEMENTATION.
 
     "=== Worklist ===
     IF client->check_on_event( cs_event-open_worklist ).
-      DATA(lo_wl) = NEW z2ui5_cl_cds_worklist(
+      DATA(lo_wl) = NEW z2ui5_cl_rap_worklist(
         cds_view_name = `I_CURRENCY`
         title         = `Currencies` ).
       client->nav_app_call( CAST #( lo_wl ) ).
@@ -264,7 +264,7 @@ CLASS z2ui5_cl_cds_test IMPLEMENTATION.
 
     "=== Overview Page ===
     IF client->check_on_event( cs_event-open_overview_page ).
-      DATA(lo_ov) = NEW z2ui5_cl_cds_overview_page(
+      DATA(lo_ov) = NEW z2ui5_cl_rap_overview_page(
         title = `Business Overview`
         cards = VALUE #(
           ( cds_view_name = `I_COUNTRY`  title = `Countries`  card_type = `TABLE` max_rows = 5 )
@@ -276,7 +276,7 @@ CLASS z2ui5_cl_cds_test IMPLEMENTATION.
 
     "=== Value Help ===
     IF client->check_on_event( cs_event-open_value_help ).
-      DATA(lo_vh) = NEW z2ui5_cl_cds_value_help(
+      DATA(lo_vh) = NEW z2ui5_cl_rap_value_help(
         cds_view_name = `I_COUNTRY`
         element       = `Country`
         title         = `Select Country` ).
@@ -290,7 +290,7 @@ CLASS z2ui5_cl_cds_test IMPLEMENTATION.
         DATA(lo_prev) = client->get_app_prev( ).
 
         TRY.
-            DATA(lo_action) = CAST z2ui5_cl_cds_action_dialog( lo_prev ).
+            DATA(lo_action) = CAST z2ui5_cl_rap_action_dialog( lo_prev ).
             IF lo_action->was_confirmed( ).
               DATA(lr_result) = lo_action->result( ).
               ms_cds = lr_result->*.
@@ -300,7 +300,7 @@ CLASS z2ui5_cl_cds_test IMPLEMENTATION.
             ENDIF.
           CATCH cx_sy_move_cast_error.
             TRY.
-                DATA(lo_vh_prev) = CAST z2ui5_cl_cds_value_help( lo_prev ).
+                DATA(lo_vh_prev) = CAST z2ui5_cl_rap_value_help( lo_prev ).
                 IF lo_vh_prev->was_confirmed( ).
                   mv_vh_result = lo_vh_prev->result_value( ).
                   ms_cds-searchcountry = mv_vh_result.

@@ -7,7 +7,7 @@
 "! subclass can redefine with ordinary abap2UI5 view code. Events the
 "! floorplan does not know are routed to on_event, so a subclass adds its
 "! own actions the same way any abap2UI5 app handles them.
-CLASS z2ui5_cl_cds_object_page DEFINITION
+CLASS z2ui5_cl_rap_object_page DEFINITION
   PUBLIC
   CREATE PUBLIC.
 
@@ -43,7 +43,7 @@ CLASS z2ui5_cl_cds_object_page DEFINITION
 
     DATA ms_data TYPE REF TO data.
     DATA mv_title TYPE string.
-    DATA ms_entity TYPE z2ui5_cl_cds_util=>ty_s_entity_info.
+    DATA ms_entity TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
     DATA mv_editable TYPE abap_bool.
     DATA mv_is_create TYPE abap_bool.
     DATA mv_saved TYPE abap_bool.
@@ -107,11 +107,11 @@ CLASS z2ui5_cl_cds_object_page DEFINITION
 
     METHODS get_identification_fields
       RETURNING
-        VALUE(result) TYPE z2ui5_cl_cds_util=>ty_t_field_info.
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_field_info.
 
     METHODS get_datapoint_fields
       RETURNING
-        VALUE(result) TYPE z2ui5_cl_cds_util=>ty_t_field_info.
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_field_info.
 
     METHODS get_criticality_state
       IMPORTING
@@ -127,13 +127,13 @@ CLASS z2ui5_cl_cds_object_page DEFINITION
 
     METHODS get_field_value
       IMPORTING
-        is_field      TYPE z2ui5_cl_cds_util=>ty_s_field_info
+        is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
       RETURNING
         VALUE(result) TYPE string.
 
     METHODS format_value
       IMPORTING
-        is_field      TYPE z2ui5_cl_cds_util=>ty_s_field_info
+        is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
         val           TYPE any
       RETURNING
         VALUE(result) TYPE string.
@@ -156,7 +156,7 @@ ENDCLASS.
 
 
 
-CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
+CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD constructor.
     CREATE DATA ms_data LIKE val.
@@ -182,7 +182,7 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
     IF client->check_on_init( ).
       DATA(lo_datadescr) = cl_abap_datadescr=>describe_by_data( ms_data->* ).
       mv_entity_name = lo_datadescr->get_relative_name( ).
-      ms_entity = z2ui5_cl_cds_util=>read_entity( mv_entity_name ).
+      ms_entity = z2ui5_cl_rap_util=>read_entity( mv_entity_name ).
 
       "backup original data for cancel
       CREATE DATA ms_data_backup LIKE ms_data->*.
@@ -299,7 +299,7 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
   METHOD get_sections.
 
     "facet-driven: @UI.facet fieldGroup references define order and labels
-    DATA lt_facets TYPE z2ui5_cl_cds_util=>ty_t_facet.
+    DATA lt_facets TYPE z2ui5_cl_rap_util=>ty_t_facet.
     LOOP AT ms_entity-facets INTO DATA(ls_facet)
       WHERE target_qualifier IS NOT INITIAL.
       IF ls_facet-type IS INITIAL OR ls_facet-type CS `FIELDGROUP`.
@@ -692,7 +692,7 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
 
     "collect and sort fields for this group
     "(empty group = fields without any fieldGroup annotation)
-    DATA lt_sorted TYPE z2ui5_cl_cds_util=>ty_t_field_info.
+    DATA lt_sorted TYPE z2ui5_cl_rap_util=>ty_t_field_info.
     LOOP AT ms_entity-fields INTO DATA(ls_field)
       WHERE is_hidden = abap_false AND field_group = iv_group.
       APPEND ls_field TO lt_sorted.
@@ -751,7 +751,7 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
         "amount + currency -> ObjectNumber
         ELSEIF ls_field-is_amount_field = abap_true
           AND ls_field-semantics_currency_code IS NOT INITIAL.
-          DATA(ls_currency) = VALUE z2ui5_cl_cds_util=>ty_s_field_info(
+          DATA(ls_currency) = VALUE z2ui5_cl_rap_util=>ty_s_field_info(
             name = ls_field-semantics_currency_code ).
           lo_form->leaf( `ObjectNumber`
               )->a( n = `number`
@@ -764,7 +764,7 @@ CLASS z2ui5_cl_cds_object_page IMPLEMENTATION.
         "quantity + unit -> ObjectNumber
         ELSEIF ls_field-is_quantity_field = abap_true
           AND ls_field-semantics_unit_of_measure IS NOT INITIAL.
-          DATA(ls_unit) = VALUE z2ui5_cl_cds_util=>ty_s_field_info(
+          DATA(ls_unit) = VALUE z2ui5_cl_rap_util=>ty_s_field_info(
             name = ls_field-semantics_unit_of_measure ).
           lo_form->leaf( `ObjectNumber`
               )->a( n = `number`

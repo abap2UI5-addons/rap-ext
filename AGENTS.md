@@ -30,7 +30,7 @@ npx --yes github:abap2UI5/abap2UI5-linter --no-render   # fast loop, no browser
   a local clean run means CI passes.
 - **There is no unit test suite and no transpiled runtime here.** The only
   end-to-end verification is manual: install via abapGit in a system with
-  CDS views, run the demo class `z2ui5_cl_cds_test`, and click through the
+  CDS views, run the demo class `z2ui5_cl_rap_test`, and click through the
   floorplans. State in the PR what was and was not verified that way.
 
 ## Target platform — do not "modernize"
@@ -46,7 +46,7 @@ npx --yes github:abap2UI5/abap2UI5-linter --no-render   # fast loop, no browser
   these are not released for ABAP Cloud, which is why
   `abaplint.jsonc` sets `errorNamespace: "^Z"` (unknown SAP-standard objects
   are void; the own namespace stays fully checked).
-- `z2ui5_cl_cds_util` reads types via **classic RTTI** (`cl_abap_typedescr`),
+- `z2ui5_cl_rap_util` reads types via **classic RTTI** (`cl_abap_typedescr`),
   not the XCO library. Do not rewrite RTTI to XCO or swap the annotation API
   "for cloud readiness" — that changes the supported platform and is a
   maintainer decision, not a cleanup.
@@ -107,7 +107,14 @@ classes, so those method names and signatures are a **public contract**:
   from a system.
 - Line endings are **LF only** (a CRLF import once broke the `.asddls`
   round-trip — enforced by `.gitattributes`), UTF-8, final newline.
-- Class names stay in the `Z2UI5_CDS_` / `Z2UI5_CL_CDS_` namespace.
+- Every artifact carries the `Z2UI5_<type>_RAP_` prefix — the same scheme the
+  [samples](https://github.com/abap2UI5/samples) repo uses with its `SMP` token
+  (`Z2UI5_CL_SMP_…`, `Z2UI5_T_SMP_…`). Here: `Z2UI5_CL_RAP_…` for classes,
+  `Z2UI5_DD_RAP_…` for DDLS. New objects follow it; nothing stays on the old
+  `Z2UI5_CDS_` / `Z2UI5_CL_CDS_` names.
+  Note that this is the *object* namespace only — the `cds_view_name`
+  constructor parameter and the `CDS` wording in descriptions are part of the
+  public contract / prose and are deliberately untouched.
 
 ## Related repositories
 
