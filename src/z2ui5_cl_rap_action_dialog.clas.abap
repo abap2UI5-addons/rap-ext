@@ -7,7 +7,7 @@
 "! subclass can redefine with ordinary abap2UI5 view code - e.g.
 "! get_control_for_field to swap the control rendered for a single
 "! field. Events the floorplan does not know are routed to on_event.
-CLASS z2ui5_cl_cds_action_dialog DEFINITION
+CLASS z2ui5_cl_rap_action_dialog DEFINITION
   PUBLIC
   CREATE PUBLIC.
 
@@ -31,7 +31,7 @@ CLASS z2ui5_cl_cds_action_dialog DEFINITION
 
     DATA ms_cds TYPE REF TO data.
     DATA mv_title TYPE string.
-    DATA ms_entity TYPE z2ui5_cl_cds_util=>ty_s_entity_info.
+    DATA ms_entity TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
 
     DATA mv_vh_field TYPE string.
     DATA mt_vh_data TYPE REF TO data.
@@ -72,7 +72,7 @@ CLASS z2ui5_cl_cds_action_dialog DEFINITION
     METHODS get_control_for_field
       IMPORTING
         io_container TYPE REF TO z2ui5_cl_ai_xml
-        is_field     TYPE z2ui5_cl_cds_util=>ty_s_field_info
+        is_field     TYPE z2ui5_cl_rap_util=>ty_s_field_info
         client       TYPE REF TO z2ui5_if_client.
 
     METHODS load_dropdown_data
@@ -87,7 +87,7 @@ ENDCLASS.
 
 
 
-CLASS z2ui5_cl_cds_action_dialog IMPLEMENTATION.
+CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
 
   METHOD constructor.
     CREATE DATA ms_cds LIKE val.
@@ -101,7 +101,7 @@ CLASS z2ui5_cl_cds_action_dialog IMPLEMENTATION.
     IF client->check_on_init( ).
       DATA(lo_datadescr) = cl_abap_datadescr=>describe_by_data( ms_cds->* ).
       DATA(lv_entity_name) = lo_datadescr->get_relative_name( ).
-      ms_entity = z2ui5_cl_cds_util=>read_entity( lv_entity_name ).
+      ms_entity = z2ui5_cl_rap_util=>read_entity( lv_entity_name ).
       IF mv_title IS INITIAL.
         mv_title = ms_entity-name.
       ENDIF.
@@ -372,7 +372,7 @@ CLASS z2ui5_cl_cds_action_dialog IMPLEMENTATION.
     mt_vh_data = lt_result.
 
     "read VH entity metadata for column labels
-    DATA(ls_vh_meta) = z2ui5_cl_cds_util=>read_entity( lv_entity ).
+    DATA(ls_vh_meta) = z2ui5_cl_rap_util=>read_entity( lv_entity ).
 
     DATA(lo_popup) = z2ui5_cl_ai_xml=>factory( ).
 

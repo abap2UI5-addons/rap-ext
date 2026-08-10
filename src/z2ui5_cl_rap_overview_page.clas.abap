@@ -5,7 +5,7 @@
 "! subclass can redefine with ordinary abap2UI5 view code - e.g.
 "! render_table_card / render_kpi_card to change a single card type.
 "! Events the floorplan does not know are routed to on_event.
-CLASS z2ui5_cl_cds_overview_page DEFINITION
+CLASS z2ui5_cl_rap_overview_page DEFINITION
   PUBLIC
   CREATE PUBLIC.
 
@@ -38,7 +38,7 @@ CLASS z2ui5_cl_cds_overview_page DEFINITION
 
     TYPES:
       BEGIN OF ty_s_card_data,
-        entity   TYPE z2ui5_cl_cds_util=>ty_s_entity_info,
+        entity   TYPE z2ui5_cl_rap_util=>ty_s_entity_info,
         data_ref TYPE REF TO data,
         title    TYPE string,
         count    TYPE i,
@@ -80,7 +80,7 @@ ENDCLASS.
 
 
 
-CLASS z2ui5_cl_cds_overview_page IMPLEMENTATION.
+CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
 
   METHOD constructor.
     mv_title = title.
@@ -125,7 +125,7 @@ CLASS z2ui5_cl_cds_overview_page IMPLEMENTATION.
       DATA(ls_cd) = VALUE ty_s_card_data( ).
       DATA(lv_view) = to_upper( ls_card-cds_view_name ).
 
-      ls_cd-entity = z2ui5_cl_cds_util=>read_entity( lv_view ).
+      ls_cd-entity = z2ui5_cl_rap_util=>read_entity( lv_view ).
       ls_cd-title = ls_card-title.
       IF ls_cd-title IS INITIAL.
         IF ls_cd-entity-header_info-type_name_plural IS NOT INITIAL.
@@ -230,7 +230,7 @@ CLASS z2ui5_cl_cds_overview_page IMPLEMENTATION.
     ASSIGN is_card-data_ref->* TO <lt_data>.
 
     "get lineItem fields or all visible
-    DATA lt_columns TYPE z2ui5_cl_cds_util=>ty_t_field_info.
+    DATA lt_columns TYPE z2ui5_cl_rap_util=>ty_t_field_info.
     LOOP AT is_card-entity-fields INTO DATA(ls_field)
       WHERE line_item_pos > 0 AND is_hidden = abap_false.
       APPEND ls_field TO lt_columns.

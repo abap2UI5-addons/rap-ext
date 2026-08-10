@@ -5,7 +5,7 @@
 "! FINAL and every rendering and event step is a protected method a
 "! subclass can redefine with ordinary abap2UI5 view code. Events the
 "! floorplan does not know are routed to on_event.
-CLASS z2ui5_cl_cds_value_help DEFINITION
+CLASS z2ui5_cl_rap_value_help DEFINITION
   PUBLIC
   CREATE PUBLIC.
 
@@ -47,7 +47,7 @@ CLASS z2ui5_cl_cds_value_help DEFINITION
     DATA mv_title      TYPE string.
     DATA mv_max_rows   TYPE i.
     DATA mv_confirmed  TYPE abap_bool.
-    DATA ms_entity     TYPE z2ui5_cl_cds_util=>ty_s_entity_info.
+    DATA ms_entity     TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
     DATA mr_selected   TYPE REF TO data.
     DATA mv_result_val TYPE string.
     DATA mr_data       TYPE REF TO data.
@@ -72,7 +72,7 @@ ENDCLASS.
 
 
 
-CLASS z2ui5_cl_cds_value_help IMPLEMENTATION.
+CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
 
   METHOD constructor.
     mv_cds_view = to_upper( cds_view_name ).
@@ -85,7 +85,7 @@ CLASS z2ui5_cl_cds_value_help IMPLEMENTATION.
   METHOD z2ui5_if_app~main.
 
     IF client->check_on_init( ).
-      ms_entity = z2ui5_cl_cds_util=>read_entity( mv_cds_view ).
+      ms_entity = z2ui5_cl_rap_util=>read_entity( mv_cds_view ).
       IF mv_title IS INITIAL.
         mv_title = ms_entity-name.
       ENDIF.

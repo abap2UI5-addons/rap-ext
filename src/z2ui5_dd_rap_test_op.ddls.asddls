@@ -3,7 +3,7 @@
                   typeNamePlural: 'Purchase Orders',
                   title: { value: 'OrderId' },
                   description: { value: 'CustomerName' } }
-define abstract entity z2ui5_cds_test_op
+define abstract entity z2ui5_dd_rap_test_op
 {
   @UI.fieldGroup:[{ qualifier: 'General', position: 10 }]
   @UI.identification: [{ position: 10 }]

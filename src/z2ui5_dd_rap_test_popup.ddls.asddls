@@ -1,5 +1,5 @@
 @EndUserText.label: 'Entity for popup'
-define abstract entity z2ui5_cds_test_popup
+define abstract entity z2ui5_dd_rap_test_popup
 {
   @Consumption.valueHelpDefinition: [{ entity: { name: 'I_Country', element: 'Country' } }]
   @EndUserText.label: 'Country'

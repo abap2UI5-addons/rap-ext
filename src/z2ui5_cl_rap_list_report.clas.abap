@@ -11,7 +11,7 @@
 "! Related: z2ui5_cl_fp_list_report in the abap2UI5 core generates the
 "! same UX from any flat internal table via RTTI - use it when the data
 "! source is not a CDS view with UI annotations.
-CLASS z2ui5_cl_cds_list_report DEFINITION
+CLASS z2ui5_cl_rap_list_report DEFINITION
   PUBLIC
   CREATE PUBLIC.
 
@@ -47,7 +47,7 @@ CLASS z2ui5_cl_cds_list_report DEFINITION
     DATA mv_title    TYPE string.
     DATA mv_max_rows TYPE i.
     DATA mv_count    TYPE string.
-    DATA ms_entity   TYPE z2ui5_cl_cds_util=>ty_s_entity_info.
+    DATA ms_entity   TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
     DATA mr_data     TYPE REF TO data.
     DATA mt_filter   TYPE ty_t_filter.
 
@@ -91,12 +91,12 @@ CLASS z2ui5_cl_cds_list_report DEFINITION
     METHODS render_column
       IMPORTING
         io_columns TYPE REF TO z2ui5_cl_ai_xml
-        is_col     TYPE z2ui5_cl_cds_util=>ty_s_field_info.
+        is_col     TYPE z2ui5_cl_rap_util=>ty_s_field_info.
 
     METHODS render_cell
       IMPORTING
         io_cells TYPE REF TO z2ui5_cl_ai_xml
-        is_col   TYPE z2ui5_cl_cds_util=>ty_s_field_info.
+        is_col   TYPE z2ui5_cl_rap_util=>ty_s_field_info.
 
     METHODS on_row_press
       IMPORTING
@@ -108,11 +108,11 @@ CLASS z2ui5_cl_cds_list_report DEFINITION
 
     METHODS get_line_item_fields
       RETURNING
-        VALUE(result) TYPE z2ui5_cl_cds_util=>ty_t_field_info.
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_field_info.
 
     METHODS get_selection_fields
       RETURNING
-        VALUE(result) TYPE z2ui5_cl_cds_util=>ty_t_field_info.
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_field_info.
 
     METHODS get_row_key_fields
       RETURNING
@@ -130,7 +130,7 @@ ENDCLASS.
 
 
 
-CLASS z2ui5_cl_cds_list_report IMPLEMENTATION.
+CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD constructor.
     mv_cds_view = to_upper( cds_view_name ).
@@ -142,7 +142,7 @@ CLASS z2ui5_cl_cds_list_report IMPLEMENTATION.
   METHOD z2ui5_if_app~main.
 
     IF client->check_on_init( ).
-      ms_entity = z2ui5_cl_cds_util=>read_entity( mv_cds_view ).
+      ms_entity = z2ui5_cl_rap_util=>read_entity( mv_cds_view ).
       IF mv_title IS INITIAL.
         IF ms_entity-header_info-type_name_plural IS NOT INITIAL.
           mv_title = ms_entity-header_info-type_name_plural.
@@ -191,7 +191,7 @@ CLASS z2ui5_cl_cds_list_report IMPLEMENTATION.
     IF client->check_on_navigated( ).
       IF client->check_app_prev_stack( ).
         TRY.
-            DATA(lo_prev_op) = CAST z2ui5_cl_cds_object_page(
+            DATA(lo_prev_op) = CAST z2ui5_cl_rap_object_page(
               client->get_app_prev( ) ).
             IF lo_prev_op->was_saved( ).
               load_data( ).
@@ -354,7 +354,7 @@ CLASS z2ui5_cl_cds_list_report IMPLEMENTATION.
       ENDLOOP.
 
       IF lv_match = abap_true.
-        client->nav_app_call( NEW z2ui5_cl_cds_object_page( val = <ls_row> ) ).
+        client->nav_app_call( NEW z2ui5_cl_rap_object_page( val = <ls_row> ) ).
         RETURN.
       ENDIF.
     ENDLOOP.
@@ -372,7 +372,7 @@ CLASS z2ui5_cl_cds_list_report IMPLEMENTATION.
         FIELD-SYMBOLS <ls_empty> TYPE any.
         ASSIGN lr_empty->* TO <ls_empty>.
         client->nav_app_call(
-          NEW z2ui5_cl_cds_object_page(
+          NEW z2ui5_cl_rap_object_page(
             val       = <ls_empty>
             title     = `Create ` && mv_title
             editable  = abap_true

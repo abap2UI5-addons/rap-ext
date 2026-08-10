@@ -4,7 +4,7 @@
 "! FINAL and every rendering and event step is a protected method a
 "! subclass can redefine with ordinary abap2UI5 view code. Events the
 "! floorplan does not know are routed to on_event.
-CLASS z2ui5_cl_cds_worklist DEFINITION
+CLASS z2ui5_cl_rap_worklist DEFINITION
   PUBLIC
   CREATE PUBLIC.
 
@@ -27,7 +27,7 @@ CLASS z2ui5_cl_cds_worklist DEFINITION
     DATA mv_cds_view  TYPE string.
     DATA mv_title     TYPE string.
     DATA mv_max_rows  TYPE i.
-    DATA ms_entity    TYPE z2ui5_cl_cds_util=>ty_s_entity_info.
+    DATA ms_entity    TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
     DATA mr_data      TYPE REF TO data.
     DATA mv_search    TYPE string.
 
@@ -47,7 +47,7 @@ CLASS z2ui5_cl_cds_worklist DEFINITION
 
     METHODS get_line_item_fields
       RETURNING
-        VALUE(result) TYPE z2ui5_cl_cds_util=>ty_t_field_info.
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_field_info.
 
   PRIVATE SECTION.
 
@@ -55,7 +55,7 @@ ENDCLASS.
 
 
 
-CLASS z2ui5_cl_cds_worklist IMPLEMENTATION.
+CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
 
   METHOD constructor.
     mv_cds_view = to_upper( cds_view_name ).
@@ -67,7 +67,7 @@ CLASS z2ui5_cl_cds_worklist IMPLEMENTATION.
   METHOD z2ui5_if_app~main.
 
     IF client->check_on_init( ).
-      ms_entity = z2ui5_cl_cds_util=>read_entity( mv_cds_view ).
+      ms_entity = z2ui5_cl_rap_util=>read_entity( mv_cds_view ).
       IF mv_title IS INITIAL.
         IF ms_entity-header_info-type_name_plural IS NOT INITIAL.
           mv_title = ms_entity-header_info-type_name_plural.

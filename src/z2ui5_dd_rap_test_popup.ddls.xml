@@ -3,7 +3,7 @@
  <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
   <asx:values>
    <DDLS>
-    <DDLNAME>Z2UI5_CDS_TEST_POPUP</DDLNAME>
+    <DDLNAME>Z2UI5_DD_RAP_TEST_POPUP</DDLNAME>
     <DDLANGUAGE>E</DDLANGUAGE>
     <DDTEXT>Entity for popup</DDTEXT>
     <SOURCE_TYPE>A</SOURCE_TYPE>
