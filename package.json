@@ -1,0 +1,29 @@
+{
+  "name": "abap2ui5-rap-ext",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Display RAP and CDS artifacts with abap2UI5.",
+  "scripts": {
+    "lint": "abaplint abaplint.jsonc",
+    "check:abap2ui5": "abap2ui5lint",
+    "check": "npm run lint && npm run check:abap2ui5",
+    "test": "npm run check"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abap2UI5-addons/rap-ext.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/abap2UI5-addons/rap-ext/issues"
+  },
+  "homepage": "https://github.com/abap2UI5-addons/rap-ext#readme",
+  "devDependencies": {
+    "@abap2ui5/linter": "^0.2.1",
+    "@abap2ui5/render-runtime": "^0.1.1",
+    "@abaplint/cli": "^2.119.66"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
