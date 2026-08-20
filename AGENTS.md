@@ -50,19 +50,23 @@ npx --yes github:abap2UI5/abap2UI5-linter --no-render   # fast loop, no browser
   not the XCO library. Do not rewrite RTTI to XCO or swap the annotation API
   "for cloud readiness" — that changes the supported platform and is a
   maintainer decision, not a cleanup.
-- Views are built with the generic builder **`z2ui5_cl_ai_xml`**
-  (`open`/`leaf`/`a`/`shut`/`stringify`). The frozen fluent builder
-  `z2ui5_cl_xml_view` is gone from this repo — do not reintroduce it.
+- Views are built with the core's generic builder
+  **`z2ui5_cl_ui5_view_builder`** (`ele`/`tag`/`a`/`end`/`stringify`), which
+  lives in `src/02` and is part of the released API. The frozen fluent
+  builder `z2ui5_cl_xml_view` is gone from this repo — do not reintroduce it,
+  and do not invent a local builder name: a previous pass wrote
+  `z2ui5_cl_ai_xml`, which exists in no repository, and the whole addon
+  stopped compiling.
   Two traps when editing a view:
   **(a)** `a( )` targets the LAST CHILD once the node has children, so write
-  a control's attributes immediately after its `open`/`leaf`;
-  **(b)** an `abap_bool` fed into an attribute must go through
-  `z2ui5_cl_ai_xml=>as_bool( )` — a raw `abap_false` renders as an empty
-  string, which UI5 reads as true.
+  a control's attributes immediately after its `ele`/`tag`;
+  **(b)** an `abap_bool` goes into the attribute's **`b =`** parameter, not
+  `v =` — a raw `abap_false` through `v =` renders as an empty string, which
+  UI5 reads as true.
 
 ## What the view gate can and cannot see here
 
-Since the migration to `z2ui5_cl_ai_xml` the
+Since the migration to `z2ui5_cl_ui5_view_builder` the
 [abap2UI5-linter](https://github.com/abap2UI5/abap2UI5-linter) reconstructs
 these views statically, including the parts built in the render hooks: a hook
 that takes a builder handle (`io_table`, `io_op`, `io_container`, …) is
@@ -88,7 +92,7 @@ classes, so those method names and signatures are a **public contract**:
   method, and do not make a floorplan class `FINAL`.
 - The builder-handle parameters (`io_page`, `io_table`, `io_columns`,
   `io_cells`, `io_op`, `io_actions`, `io_parent`, `io_container`) are typed
-  `TYPE REF TO z2ui5_cl_ai_xml`. Changing that type again is a breaking
+  `TYPE REF TO z2ui5_cl_ui5_view_builder`. Changing that type again is a breaking
   change for every subclass — the migration off `z2ui5_cl_xml_view` already
   was one, and is recorded in the README.
 - Do not change existing method signatures; additive optional parameters are
@@ -120,6 +124,6 @@ classes, so those method names and signatures are a **public contract**:
 
 | Repository | Relation |
 | --- | --- |
-| [abap2UI5](https://github.com/abap2UI5/abap2UI5) | Core framework — consumed classes: `z2ui5_if_app`, `z2ui5_if_client`, `z2ui5_cl_ai_xml`, popups. Resolved as an abaplint dependency; there is no version pin, so keep to long-stable core API only |
+| [abap2UI5](https://github.com/abap2UI5/abap2UI5) | Core framework — consumed classes: `z2ui5_if_app`, `z2ui5_if_client`, `z2ui5_cl_ui5_view_builder`, popups. Resolved as an abaplint dependency; there is no version pin, so keep to long-stable core API only |
 | [samples](https://github.com/abap2UI5/samples) | Sample applications |
 | `z2ui5_cl_fp_list_report` (core) | **Does not exist in core `main`** — added in core #2505 and removed again days later by an abapGit sync. Do not reference it as available; re-check before ever citing it again |

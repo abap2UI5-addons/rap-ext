@@ -12,6 +12,14 @@ on:
   push:
     branches: [ main ]
   pull_request:
+  # The core is resolved from its main branch with no version pin, so a rename
+  # there breaks this repository silently. That is not hypothetical: every
+  # floorplan named a class the core does not ship, abaplint reported 55
+  # errors, and the badge stayed green for ten days because no pull request
+  # was opened in between.
+  schedule:
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
 
 concurrency:
   group: check-${{ github.ref }}
@@ -25,18 +33,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
+      # pinned through package-lock.json, so CI and `npm run lint` are the
+      # same version - @latest made every run a different check
+      - run: npm ci
       - name: abaplint (expect 0 issues)
-        run: npx --yes @abaplint/cli@latest abaplint.jsonc
+        run: npm run lint
 
   view_lint:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      # settings come from abap2ui5lint.jsonc - set inputs here only to override
-      - name: abap2UI5-linter (property gate + headless render)
-        uses: abap2UI5/abap2UI5-linter@main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      # the render gate drives a headless browser
+      - run: npx playwright install chromium --with-deps
+      # settings come from abap2ui5lint.jsonc
+      - run: npx abap2ui5lint

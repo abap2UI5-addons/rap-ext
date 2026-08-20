@@ -58,19 +58,26 @@ CLASS z2ui5_cl_rap_overview_page DEFINITION
 
     METHODS load_all_cards.
 
+    "! load, render, then drop the generic references again - render_page( )
+    "! needs every data_ref BOUND, and they cannot survive serialization, so
+    "! the three steps only ever make sense together
+    METHODS display
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
     METHODS render_page
       IMPORTING
         client TYPE REF TO z2ui5_if_client.
 
     METHODS render_table_card
       IMPORTING
-        io_container TYPE REF TO z2ui5_cl_ai_xml
+        io_container TYPE REF TO z2ui5_cl_ui5_view_builder
         is_card      TYPE ty_s_card_data
         client       TYPE REF TO z2ui5_if_client.
 
     METHODS render_kpi_card
       IMPORTING
-        io_container TYPE REF TO z2ui5_cl_ai_xml
+        io_container TYPE REF TO z2ui5_cl_ui5_view_builder
         is_card      TYPE ty_s_card_data
         client       TYPE REF TO z2ui5_if_client.
 
@@ -94,17 +101,20 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
   METHOD z2ui5_if_app~main.
 
     IF client->check_on_init( ).
-      load_all_cards( ).
-      render_page( client ).
-      "clear generic refs to allow serialization
-      LOOP AT mt_card_data ASSIGNING FIELD-SYMBOL(<ls_cd>).
-        CLEAR <ls_cd>-data_ref.
-      ENDLOOP.
+      display( client ).
       RETURN.
     ENDIF.
 
     IF client->check_on_event( cs_event-back ).
       client->nav_app_leave( ).
+      RETURN.
+    ENDIF.
+
+    "returning from a called app or a restored bookmark: check_on_init( ) is
+    "false here and the browser still shows the OTHER app's view, so the view
+    "has to be built again - a model push would reach nothing
+    IF client->check_on_navigated( ).
+      display( client ).
       RETURN.
     ENDIF.
 
@@ -160,11 +170,24 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD display.
+
+    load_all_cards( ).
+    render_page( client ).
+
+    "the refs point into loaded tables and cannot survive serialization
+    LOOP AT mt_card_data ASSIGNING FIELD-SYMBOL(<ls_cd>).
+      CLEAR <ls_cd>-data_ref.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
   METHOD render_page.
 
-    DATA(lo_view) = z2ui5_cl_ai_xml=>factory( ).
+    DATA(lo_view) = z2ui5_cl_ui5_view_builder=>factory( ).
 
-    DATA(lo_page) = lo_view->open( n  = `View`
+    DATA(lo_page) = lo_view->ele( n  = `View`
                                    ns = `mvc`
         )->a( n = `xmlns`
               v = `sap.m`
@@ -177,17 +200,17 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
         )->a( n = `height`
               v = `100%`
 
-        )->open( `Shell`
-            )->open( `Page`
+        )->ele( `Shell`
+            )->ele( `Page`
                 )->a( n = `title`
                       v = mv_title
                 )->a( n = `showNavButton`
-                      v = z2ui5_cl_ai_xml=>as_bool( client->check_app_prev_stack( ) )
+                      b = client->check_app_prev_stack( )
                 )->a( n = `navButtonPress`
                       v = client->_event( cs_event-back ) ).
 
     "grid layout for cards
-    DATA(lo_grid) = lo_page->open( n  = `Grid`
+    DATA(lo_grid) = lo_page->ele( n  = `Grid`
                                    ns = `layout`
         )->a( n = `defaultSpan`
               v = `L6 M12 S12` ).
@@ -247,36 +270,36 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
     ENDIF.
 
     "panel as card container
-    DATA(lo_panel) = io_container->open( `Panel`
+    DATA(lo_panel) = io_container->ele( `Panel`
         )->a( n = `headerText`
               v = |{ is_card-title } ({ is_card-count })| ).
 
     "table inside panel
-    DATA(lo_table) = lo_panel->open( `Table`
+    DATA(lo_table) = lo_panel->ele( `Table`
         )->a( n = `items`
               v = `{path:'` && client->_bind( val  = <lt_data>
                                               path = abap_true ) && `'}`
         )->a( n = `mode`
               v = `None` ).
 
-    DATA(lo_columns) = lo_table->open( `columns` ).
+    DATA(lo_columns) = lo_table->ele( `columns` ).
     LOOP AT lt_columns INTO ls_field.
       DATA(lv_label) = ls_field-line_item_label.
       IF lv_label IS INITIAL.
         lv_label = ls_field-label.
       ENDIF.
-      lo_columns->open( `Column`
-          )->leaf( `Text`
+      lo_columns->ele( `Column`
+          )->tag( `Text`
               )->a( n = `text`
                     v = lv_label ).
     ENDLOOP.
 
-    DATA(lo_items) = lo_table->open( `items` ).
-    DATA(lo_row) = lo_items->open( `ColumnListItem` ).
-    DATA(lo_cells) = lo_row->open( `cells` ).
+    DATA(lo_items) = lo_table->ele( `items` ).
+    DATA(lo_row) = lo_items->ele( `ColumnListItem` ).
+    DATA(lo_cells) = lo_row->ele( `cells` ).
     LOOP AT lt_columns INTO ls_field.
       DATA(lv_path) = `{` && ls_field-name && `}`.
-      lo_cells->leaf( `Text`
+      lo_cells->tag( `Text`
           )->a( n = `text`
                 v = lv_path ).
     ENDLOOP.
@@ -313,15 +336,15 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
     ENDIF.
 
     "render as GenericTile with NumericContent
-    io_container->open( `GenericTile`
+    io_container->ele( `GenericTile`
         )->a( n = `header`
               v = is_card-title
         )->a( n = `subheader`
               v = |{ is_card-count } items|
         )->a( n = `frameType`
               v = `OneByOne`
-        )->open( `TileContent`
-            )->leaf( `NumericContent`
+        )->ele( `TileContent`
+            )->tag( `NumericContent`
                 )->a( n = `value`
                       v = lv_kpi_value ).
 

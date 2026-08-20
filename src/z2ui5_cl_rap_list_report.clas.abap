@@ -75,27 +75,27 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
 
     METHODS render_filter_bar
       IMPORTING
-        io_page TYPE REF TO z2ui5_cl_ai_xml
+        io_page TYPE REF TO z2ui5_cl_ui5_view_builder
         client  TYPE REF TO z2ui5_if_client.
 
     METHODS render_table
       IMPORTING
-        io_page TYPE REF TO z2ui5_cl_ai_xml
+        io_page TYPE REF TO z2ui5_cl_ui5_view_builder
         client  TYPE REF TO z2ui5_if_client.
 
     METHODS render_toolbar
       IMPORTING
-        io_table TYPE REF TO z2ui5_cl_ai_xml
+        io_table TYPE REF TO z2ui5_cl_ui5_view_builder
         client   TYPE REF TO z2ui5_if_client.
 
     METHODS render_column
       IMPORTING
-        io_columns TYPE REF TO z2ui5_cl_ai_xml
+        io_columns TYPE REF TO z2ui5_cl_ui5_view_builder
         is_col     TYPE z2ui5_cl_rap_util=>ty_s_field_info.
 
     METHODS render_cell
       IMPORTING
-        io_cells TYPE REF TO z2ui5_cl_ai_xml
+        io_cells TYPE REF TO z2ui5_cl_ui5_view_builder
         is_col   TYPE z2ui5_cl_rap_util=>ty_s_field_info.
 
     METHODS on_row_press
@@ -168,7 +168,6 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     IF client->check_on_event( cs_event-refresh )
       OR client->check_on_event( cs_event-go ).
       load_data( ).
-      client->view_model_update( ).
       RETURN.
     ENDIF.
 
@@ -200,7 +199,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           CATCH cx_sy_move_cast_error ##NO_HANDLER.
         ENDTRY.
       ENDIF.
-      client->view_model_update( ).
+      render_page( client ).
       RETURN.
     ENDIF.
 
@@ -211,8 +210,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
 
   METHOD on_event.
-    "subclass hook - the default only acknowledges the roundtrip
-    client->view_model_update( ).
+    "subclass hook - the default does nothing: the framework pushes the model
+    "by itself whenever a roundtrip changed it
+    RETURN.
   ENDMETHOD.
 
 
@@ -392,9 +392,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(lo_view) = z2ui5_cl_ai_xml=>factory( ).
+    DATA(lo_view) = z2ui5_cl_ui5_view_builder=>factory( ).
 
-    DATA(lo_page) = lo_view->open( n  = `View`
+    DATA(lo_page) = lo_view->ele( n  = `View`
                                    ns = `mvc`
         )->a( n = `xmlns`
               v = `sap.m`
@@ -405,12 +405,12 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         )->a( n = `height`
               v = `100%`
 
-        )->open( `Shell`
-            )->open( `Page`
+        )->ele( `Shell`
+            )->ele( `Page`
                 )->a( n = `title`
                       v = mv_title
                 )->a( n = `showNavButton`
-                      v = z2ui5_cl_ai_xml=>as_bool( client->check_app_prev_stack( ) )
+                      b = client->check_app_prev_stack( )
                 )->a( n = `navButtonPress`
                       v = client->_event( cs_event-back ) ).
 
@@ -431,10 +431,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(lo_bar) = io_page->open( `subHeader`
-        )->open( `OverflowToolbar` ).
+    DATA(lo_bar) = io_page->ele( `subHeader`
+        )->ele( `OverflowToolbar` ).
 
-    DATA(lo_fbox) = lo_bar->open( `HBox`
+    DATA(lo_fbox) = lo_bar->ele( `HBox`
         )->a( n = `items`
               v = client->_bind( mt_filter )
         )->a( n = `alignItems`
@@ -442,7 +442,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         )->a( n = `wrap`
               v = `Wrap` ).
 
-    lo_fbox->leaf( `Input`
+    lo_fbox->tag( `Input`
         )->a( n = `value`
               v = `{VALUE}`
         )->a( n = `placeholder`
@@ -454,9 +454,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         )->a( n = `class`
               v = `sapUiTinyMarginEnd` ).
 
-    lo_bar->leaf( `ToolbarSpacer` ).
+    lo_bar->tag( `ToolbarSpacer` ).
 
-    lo_bar->leaf( `Button`
+    lo_bar->tag( `Button`
         )->a( n = `text`
               v = `Go`
         )->a( n = `type`
@@ -476,7 +476,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     DATA(lt_columns) = get_line_item_fields( ).
 
-    DATA(lo_table) = io_page->open( `Table`
+    DATA(lo_table) = io_page->ele( `Table`
         )->a( n = `items`
               v = `{path:'` && client->_bind( val  = <lt_data>
                                               path = abap_true ) && `'}`
@@ -492,30 +492,30 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     render_toolbar( io_table = lo_table
                     client   = client ).
 
-    DATA(lo_columns) = lo_table->open( `columns` ).
+    DATA(lo_columns) = lo_table->ele( `columns` ).
     LOOP AT lt_columns INTO DATA(ls_col).
       render_column( io_columns = lo_columns
                      is_col     = ls_col ).
     ENDLOOP.
 
     "items - row press navigates to a generated object page
-    DATA(lo_items) = lo_table->open( `items` ).
-    DATA lo_row TYPE REF TO z2ui5_cl_ai_xml.
+    DATA(lo_items) = lo_table->ele( `items` ).
+    DATA lo_row TYPE REF TO z2ui5_cl_ui5_view_builder.
     IF mt_row_key IS NOT INITIAL.
       DATA lt_arg TYPE string_table.
       LOOP AT mt_row_key INTO DATA(lv_key).
         APPEND `${` && lv_key && `}` TO lt_arg.
       ENDLOOP.
-      lo_row = lo_items->open( `ColumnListItem`
+      lo_row = lo_items->ele( `ColumnListItem`
           )->a( n = `type`
                 v = `Navigation`
           )->a( n = `press`
                 v = client->_event( val   = cs_event-row_press
                                     t_arg = lt_arg ) ).
     ELSE.
-      lo_row = lo_items->open( `ColumnListItem` ).
+      lo_row = lo_items->ele( `ColumnListItem` ).
     ENDIF.
-    DATA(lo_cells) = lo_row->open( `cells` ).
+    DATA(lo_cells) = lo_row->ele( `cells` ).
 
     LOOP AT lt_columns INTO ls_col.
       render_cell( io_cells = lo_cells
@@ -527,16 +527,16 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD render_toolbar.
 
-    DATA(lo_toolbar) = io_table->open( `headerToolbar`
-        )->open( `OverflowToolbar` ).
+    DATA(lo_toolbar) = io_table->ele( `headerToolbar`
+        )->ele( `OverflowToolbar` ).
 
-    lo_toolbar->leaf( `Title`
+    lo_toolbar->tag( `Title`
         )->a( n = `text`
               v = mv_title && ` (` && client->_bind( mv_count ) && `)` ).
 
-    lo_toolbar->leaf( `ToolbarSpacer` ).
+    lo_toolbar->tag( `ToolbarSpacer` ).
 
-    lo_toolbar->leaf( `Button`
+    lo_toolbar->tag( `Button`
         )->a( n = `text`
               v = `Create`
         )->a( n = `press`
@@ -546,9 +546,11 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         )->a( n = `icon`
               v = `sap-icon://add` ).
 
-    lo_toolbar->leaf( `Button`
+    lo_toolbar->tag( `Button`
         )->a( n = `icon`
               v = `sap-icon://refresh`
+        )->a( n = `tooltip`
+              v = `Refresh`
         )->a( n = `press`
               v = client->_event( cs_event-refresh ) ).
 
@@ -564,26 +566,26 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     "@UI.lineItem importance drives responsive popin behavior
     IF is_col-line_item_importance CS `MEDIUM`.
-      io_columns->open( `Column`
+      io_columns->ele( `Column`
           )->a( n = `minScreenWidth`
                 v = `Tablet`
           )->a( n = `demandPopin`
                 v = `true`
-          )->leaf( `Text`
+          )->tag( `Text`
               )->a( n = `text`
                     v = lv_col_label ).
     ELSEIF is_col-line_item_importance CS `LOW`.
-      io_columns->open( `Column`
+      io_columns->ele( `Column`
           )->a( n = `minScreenWidth`
                 v = `Desktop`
           )->a( n = `demandPopin`
                 v = `true`
-          )->leaf( `Text`
+          )->tag( `Text`
               )->a( n = `text`
                     v = lv_col_label ).
     ELSE.
-      io_columns->open( `Column`
-          )->leaf( `Text`
+      io_columns->ele( `Column`
+          )->tag( `Text`
               )->a( n = `text`
                     v = lv_col_label ).
     ENDIF.
@@ -602,7 +604,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       IF lv_crit_field IS INITIAL.
         lv_crit_field = is_col-datapoint_crit_field.
       ENDIF.
-      io_cells->leaf( `ObjectStatus`
+      io_cells->tag( `ObjectStatus`
           )->a( n = `text`
                 v = lv_path
           )->a( n = `state`
@@ -614,7 +616,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     "amount + currency -> ObjectNumber
     ELSEIF is_col-is_amount_field = abap_true
       AND is_col-semantics_currency_code IS NOT INITIAL.
-      io_cells->leaf( `ObjectNumber`
+      io_cells->tag( `ObjectNumber`
           )->a( n = `number`
                 v = lv_path
           )->a( n = `unit`
@@ -623,14 +625,14 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     "quantity + unit -> ObjectNumber
     ELSEIF is_col-is_quantity_field = abap_true
       AND is_col-semantics_unit_of_measure IS NOT INITIAL.
-      io_cells->leaf( `ObjectNumber`
+      io_cells->tag( `ObjectNumber`
           )->a( n = `number`
                 v = lv_path
           )->a( n = `unit`
                 v = `{` && to_upper( is_col-semantics_unit_of_measure ) && `}` ).
 
     ELSE.
-      io_cells->leaf( `Text`
+      io_cells->tag( `Text`
           )->a( n = `text`
                 v = lv_path ).
     ENDIF.

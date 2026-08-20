@@ -1,3 +1,11 @@
+![ABAP](https://img.shields.io/badge/ABAP-Standard%20(Steampunk)-blue)
+[![namespace](https://img.shields.io/badge/namespace-z2ui5__cl__rap-blue)](abaplint.jsonc)
+[![dependency](https://img.shields.io/badge/dependency-abap2UI5-blue)](https://github.com/abap2UI5/abap2UI5)
+[![abap2UI5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fabap2UI5-addons%2Frap-ext%2Fmain%2F.github%2Fbadges%2Fabap2ui5.json)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check.yml)
+<br><br>
+[![check-abap2UI5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fabap2UI5-addons%2Frap-ext%2Fmain%2F.github%2Fbadges%2Fcheck-abap2ui5.json)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check.yml)
+[![check](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check.yml/badge.svg)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check.yml)
+
 # rap-extension
 
 Display RAP and CDS artifacts with abap2UI5
@@ -10,15 +18,21 @@ ordinary abap2UI5 view code, and events the floorplan does not know are
 routed to the `on_event` hook. Breaking out of a floorplan is not a
 breakout — it is just another view method.
 
-> **Builder change (breaking for subclasses).** The floorplans now build
-> their views with the generic builder **`z2ui5_cl_ai_xml`** instead of the
+> **Builder change (breaking for subclasses).** The floorplans build their
+> views with the core's generic builder
+> **`z2ui5_cl_ui5_view_builder`** (`src/02`, the released API) instead of the
 > frozen `z2ui5_cl_xml_view`. Every render hook that takes a builder handle
 > (`io_page`, `io_table`, `io_columns`, `io_cells`, `io_op`, `io_actions`,
-> `io_parent`, `io_container`) now types it `TYPE REF TO z2ui5_cl_ai_xml`,
-> and a redefining subclass has to be updated to the four verbs
-> `open` / `leaf` / `a` / `shut` shown below. Parameter names and the set of
-> hooks are unchanged. In return the views are now checkable without an SAP
-> system — see "Validate".
+> `io_parent`, `io_container`) types it
+> `TYPE REF TO z2ui5_cl_ui5_view_builder`, and a redefining subclass has to
+> be updated to the verbs `ele` / `tag` / `a` / `end` shown below. Parameter
+> names and the set of hooks are unchanged. In return the views are now
+> checkable without an SAP system — see "Validate".
+>
+> An earlier version of this note named the builder `z2ui5_cl_ai_xml` and the
+> verbs `open` / `leaf` / `shut`. No such class ever shipped in the core, so
+> the repository did not compile against it; the names here are the ones
+> `abap2UI5/abap2UI5` actually releases.
 
 ```abap
 CLASS zcl_my_report DEFINITION PUBLIC
@@ -38,21 +52,21 @@ CLASS zcl_my_report IMPLEMENTATION.
 
   METHOD render_toolbar.
     "replace the generated toolbar with your own - plain abap2UI5 view code
-    DATA(lo_toolbar) = io_table->open( `headerToolbar`
-        )->open( `OverflowToolbar` ).
+    DATA(lo_toolbar) = io_table->ele( `headerToolbar`
+        )->ele( `OverflowToolbar` ).
 
-    lo_toolbar->leaf( `Title`
+    lo_toolbar->tag( `Title`
         )->a( n = `text`
               v = mv_title && ` (` && client->_bind( mv_count ) && `)` ).
 
-    lo_toolbar->leaf( `ToolbarSpacer` ).
+    lo_toolbar->tag( `ToolbarSpacer` ).
 
-    lo_toolbar->leaf( `Button`
+    lo_toolbar->tag( `Button`
         )->a( n = `text`  v = `Approve`
         )->a( n = `type`  v = `Emphasized`
         )->a( n = `press` v = client->_event( `APPROVE` ) ).
 
-    lo_toolbar->leaf( `Button`
+    lo_toolbar->tag( `Button`
         )->a( n = `icon`  v = `sap-icon://refresh`
         )->a( n = `press` v = client->_event( cs_event-refresh ) ).
   ENDMETHOD.
@@ -77,7 +91,7 @@ Overridable steps per floorplan:
 Scope: this addon renders from **CDS annotations**. For a list report over a
 plain internal table there is no counterpart in the abap2UI5 core today — an
 RTTI-based `z2ui5_cl_fp_list_report` existed there briefly and was removed
-again, so do not rely on it; build such a view with `z2ui5_cl_ai_xml`
+again, so do not rely on it; build such a view with `z2ui5_cl_ui5_view_builder`
 directly.
 
 ### Validate

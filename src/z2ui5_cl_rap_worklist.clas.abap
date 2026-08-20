@@ -29,7 +29,6 @@ CLASS z2ui5_cl_rap_worklist DEFINITION
     DATA mv_max_rows  TYPE i.
     DATA ms_entity    TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
     DATA mr_data      TYPE REF TO data.
-    DATA mv_search    TYPE string.
 
   PROTECTED SECTION.
 
@@ -82,12 +81,19 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
 
     IF client->check_on_event( cs_event-refresh ).
       load_data( ).
-      client->view_model_update( ).
       RETURN.
     ENDIF.
 
     IF client->check_on_event( cs_event-back ).
       client->nav_app_leave( ).
+      RETURN.
+    ENDIF.
+
+    "returning from a called app or a restored bookmark: check_on_init( ) is
+    "false here and the browser still shows the OTHER app's view, so the view
+    "has to be built again - a model push would reach nothing
+    IF client->check_on_navigated( ).
+      render_page( client ).
       RETURN.
     ENDIF.
 
@@ -145,9 +151,9 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     DATA(lt_columns) = get_line_item_fields( ).
     DATA(lv_count) = CONV string( lines( <lt_data> ) ).
 
-    DATA(lo_view) = z2ui5_cl_ai_xml=>factory( ).
+    DATA(lo_view) = z2ui5_cl_ui5_view_builder=>factory( ).
 
-    DATA(lo_page) = lo_view->open( n  = `View`
+    DATA(lo_page) = lo_view->ele( n  = `View`
                                    ns = `mvc`
         )->a( n = `xmlns`
               v = `sap.m`
@@ -158,17 +164,17 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
         )->a( n = `height`
               v = `100%`
 
-        )->open( `Shell`
-            )->open( `Page`
+        )->ele( `Shell`
+            )->ele( `Page`
                 )->a( n = `title`
                       v = mv_title
                 )->a( n = `showNavButton`
-                      v = z2ui5_cl_ai_xml=>as_bool( client->check_app_prev_stack( ) )
+                      b = client->check_app_prev_stack( )
                 )->a( n = `navButtonPress`
                       v = client->_event( cs_event-back ) ).
 
     "table
-    DATA(lo_table) = lo_page->open( `Table`
+    DATA(lo_table) = lo_page->ele( `Table`
         )->a( n = `items`
               v = `{path:'` && client->_bind( val  = <lt_data>
                                               path = abap_true ) && `'}`
@@ -182,38 +188,40 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
               v = `None` ).
 
     "toolbar
-    lo_table->open( `headerToolbar`
-        )->open( `OverflowToolbar`
-            )->leaf( `Title`
+    lo_table->ele( `headerToolbar`
+        )->ele( `OverflowToolbar`
+            )->tag( `Title`
                 )->a( n = `text`
                       v = |{ mv_title } ({ lv_count })|
-            )->leaf( `ToolbarSpacer`
-            )->leaf( `Button`
+            )->tag( `ToolbarSpacer`
+            )->tag( `Button`
                 )->a( n = `icon`
                       v = `sap-icon://refresh`
+                )->a( n = `tooltip`
+                      v = `Refresh`
                 )->a( n = `press`
                       v = client->_event( cs_event-refresh ) ).
 
     "columns
-    DATA(lo_columns) = lo_table->open( `columns` ).
+    DATA(lo_columns) = lo_table->ele( `columns` ).
     LOOP AT lt_columns INTO DATA(ls_col).
       DATA(lv_col_label) = ls_col-line_item_label.
       IF lv_col_label IS INITIAL.
         lv_col_label = ls_col-label.
       ENDIF.
-      lo_columns->open( `Column`
-          )->leaf( `Text`
+      lo_columns->ele( `Column`
+          )->tag( `Text`
               )->a( n = `text`
                     v = lv_col_label ).
     ENDLOOP.
 
     "items
-    DATA(lo_cells) = lo_table->open( `items`
-        )->open( `ColumnListItem`
-            )->open( `cells` ).
+    DATA(lo_cells) = lo_table->ele( `items`
+        )->ele( `ColumnListItem`
+            )->ele( `cells` ).
 
     LOOP AT lt_columns INTO ls_col.
-      lo_cells->leaf( `Text`
+      lo_cells->tag( `Text`
           )->a( n = `text`
                 v = `{` && ls_col-name && `}` ).
     ENDLOOP.

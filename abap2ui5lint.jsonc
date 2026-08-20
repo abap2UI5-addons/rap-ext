@@ -11,5 +11,15 @@
   // actually run.
   "ui5": "1.77",
   "distribution": "sapui5",
+  // The two README badges, rewritten on every run. They say two different
+  // things: what is here, and what CI made of it. A green workflow badge only
+  // means the job exited zero - which was also true while every floorplan
+  // named a builder class that ships nowhere and the linter found nothing
+  // checkable in this repository at all.
+  "badge": [
+    { "kind": "corpus", "file": ".github/badges/abap2ui5.json" },
+    { "kind": "checks", "file": ".github/badges/check-abap2ui5.json" }
+  ],
+
   "failOn": "warning"
 }

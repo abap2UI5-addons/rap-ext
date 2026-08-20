@@ -135,6 +135,14 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "returning from a called app or a restored bookmark: check_on_init( ) is
+    "false here and the browser still shows the OTHER app's view, so the view
+    "has to be built again - a model push would reach nothing
+    IF client->check_on_navigated( ).
+      render_dialog( client ).
+      RETURN.
+    ENDIF.
+
     "unknown events land in the subclass hook - the escape hatch
     on_event( client ).
 
@@ -175,16 +183,16 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
     FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
     ASSIGN mr_data->* TO <lt_data>.
 
-    DATA(lo_popup) = z2ui5_cl_ai_xml=>factory( ).
+    DATA(lo_popup) = z2ui5_cl_ui5_view_builder=>factory( ).
 
-    DATA(lo_dialog) = lo_popup->open( n  = `FragmentDefinition`
+    DATA(lo_dialog) = lo_popup->ele( n  = `FragmentDefinition`
                                       ns = `core`
         )->a( n = `xmlns`
               v = `sap.m`
         )->a( n = `xmlns:core`
               v = `sap.ui.core`
 
-        )->open( `TableSelectDialog`
+        )->ele( `TableSelectDialog`
             )->a( n = `title`
                   v = mv_title
             )->a( n = `confirm`
@@ -195,31 +203,31 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
                   v = `{path:'` && client->_bind( val  = <lt_data>
                                                   path = abap_true ) && `'}` ).
 
-    DATA(lo_columns) = lo_dialog->open( `columns` ).
-    DATA(lo_cells) = lo_dialog->open( `items`
-        )->open( `ColumnListItem`
-            )->open( `cells` ).
+    DATA(lo_columns) = lo_dialog->ele( `columns` ).
+    DATA(lo_cells) = lo_dialog->ele( `items`
+        )->ele( `ColumnListItem`
+            )->ele( `cells` ).
 
     "render only visible, non-hidden fields
     LOOP AT ms_entity-fields INTO DATA(ls_field)
       WHERE is_visible = abap_true AND is_hidden = abap_false.
-      lo_columns->open( `Column`
-          )->leaf( `Text`
+      lo_columns->ele( `Column`
+          )->tag( `Text`
               )->a( n = `text`
                     v = ls_field-label ).
       DATA(lv_path) = `{` && ls_field-name && `}`.
-      lo_cells->leaf( `Text`
+      lo_cells->tag( `Text`
           )->a( n = `text`
                 v = lv_path ).
 
       "if text element exists, add description column
       IF ls_field-text_element IS NOT INITIAL.
-        lo_columns->open( `Column`
-            )->leaf( `Text`
+        lo_columns->ele( `Column`
+            )->tag( `Text`
                 )->a( n = `text`
                       v = ls_field-text_element ).
         DATA(lv_text_path) = `{` && ls_field-text_element && `}`.
-        lo_cells->leaf( `Text`
+        lo_cells->tag( `Text`
             )->a( n = `text`
                   v = lv_text_path ).
       ENDIF.
