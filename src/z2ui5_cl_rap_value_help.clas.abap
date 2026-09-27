@@ -42,6 +42,9 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
+    DATA mr_data TYPE REF TO data.
+
+  PROTECTED SECTION.
     DATA mv_cds_view   TYPE string.
     DATA mv_element    TYPE string.
     DATA mv_title      TYPE string.
@@ -50,9 +53,6 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
     DATA ms_entity     TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
     DATA mr_selected   TYPE REF TO data.
     DATA mv_result_val TYPE string.
-    DATA mr_data       TYPE REF TO data.
-
-  PROTECTED SECTION.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app
@@ -194,7 +194,7 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
 
         )->ele( `TableSelectDialog`
             )->a( n = `title`
-                  v = mv_title
+                  t = mv_title
             )->a( n = `confirm`
                   v = client->_event( cs_event-confirm )
             )->a( n = `cancel`
@@ -214,8 +214,8 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
       lo_columns->ele( `Column`
           )->tag( `Text`
               )->a( n = `text`
-                    v = ls_field-label ).
-      DATA(lv_path) = `{` && ls_field-name && `}`.
+                    t = ls_field-label ).
+      DATA(lv_path) = |\{{ ls_field-name }\}|.
       lo_cells->tag( `Text`
           )->a( n = `text`
                 v = lv_path ).
@@ -225,8 +225,8 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
         lo_columns->ele( `Column`
             )->tag( `Text`
                 )->a( n = `text`
-                      v = ls_field-text_element ).
-        DATA(lv_text_path) = `{` && ls_field-text_element && `}`.
+                      t = ls_field-text_element ).
+        DATA(lv_text_path) = |\{{ ls_field-text_element }\}|.
         lo_cells->tag( `Text`
             )->a( n = `text`
                   v = lv_text_path ).

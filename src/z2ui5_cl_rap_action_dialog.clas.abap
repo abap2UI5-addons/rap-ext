@@ -30,10 +30,7 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
         title TYPE string OPTIONAL.
 
     DATA ms_cds TYPE REF TO data.
-    DATA mv_title TYPE string.
-    DATA ms_entity TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
 
-    DATA mv_vh_field TYPE string.
     DATA mt_vh_data TYPE REF TO data.
 
     METHODS result
@@ -44,9 +41,11 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
-    DATA mv_confirmed TYPE abap_bool.
-
   PROTECTED SECTION.
+    DATA mv_title     TYPE string.
+    DATA ms_entity    TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
+    DATA mv_vh_field  TYPE string.
+    DATA mv_confirmed TYPE abap_bool.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app
@@ -201,7 +200,7 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
 
         )->ele( `Dialog`
             )->a( n = `title`
-                  v = mv_title
+                  t = mv_title
             )->a( n = `contentWidth`
                   v = `450px`
             )->a( n = `draggable`
@@ -226,13 +225,13 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
       IF ls_field-is_mandatory = abap_true.
         lo_form->tag( `Label`
             )->a( n = `text`
-                  v = ls_field-label
+                  t = ls_field-label
             )->a( n = `required`
                   v = `true` ).
       ELSE.
         lo_form->tag( `Label`
             )->a( n = `text`
-                  v = ls_field-label ).
+                  t = ls_field-label ).
       ENDIF.
       get_control_for_field(
         io_container = lo_form
@@ -269,32 +268,28 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
     IF is_field-is_boolean = abap_true.
       io_container->tag( `CheckBox`
           )->a( n = `selected`
-                v = client->_bind( val  = <field>
-                                   view = z2ui5_if_client=>cs_view-popup ) ).
+                v = client->_bind( <field> ) ).
       RETURN.
     ENDIF.
 
     IF is_field-type_kind = `DATS`.
       io_container->tag( `DatePicker`
           )->a( n = `value`
-                v = client->_bind( val  = <field>
-                                   view = z2ui5_if_client=>cs_view-popup ) ).
+                v = client->_bind( <field> ) ).
       RETURN.
     ENDIF.
 
     IF is_field-type_kind = `TIMS`.
       io_container->tag( `TimePicker`
           )->a( n = `value`
-                v = client->_bind( val  = <field>
-                                   view = z2ui5_if_client=>cs_view-popup ) ).
+                v = client->_bind( <field> ) ).
       RETURN.
     ENDIF.
 
     IF is_field-is_multiline = abap_true OR is_field-type_kind = `STRING`.
       io_container->tag( `TextArea`
           )->a( n = `value`
-                v = client->_bind( val  = <field>
-                                   view = z2ui5_if_client=>cs_view-popup )
+                v = client->_bind( <field> )
           )->a( n = `rows`
                 v = `3`
           )->a( n = `width`
@@ -308,11 +303,10 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
         FIELD-SYMBOLS <lt_dd> TYPE STANDARD TABLE.
         ASSIGN lr_dd_data->* TO <lt_dd>.
         DATA(lv_elem_path) = is_field-value_help-element.
-        DATA(lv_key_path) = `{` && lv_elem_path && `}`.
+        DATA(lv_key_path) = |\{{ lv_elem_path }\}|.
         io_container->ele( `ComboBox`
             )->a( n = `selectedKey`
-                  v = client->_bind( val  = <field>
-                                     view = z2ui5_if_client=>cs_view-popup )
+                  v = client->_bind( <field> )
             )->a( n = `items`
                   v = client->_bind( <lt_dd> )
             )->tag( n  = `Item`
@@ -324,8 +318,7 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
       ELSE.
         io_container->tag( `Input`
             )->a( n = `value`
-                  v = client->_bind( val  = <field>
-                                     view = z2ui5_if_client=>cs_view-popup ) ).
+                  v = client->_bind( <field> ) ).
       ENDIF.
       RETURN.
     ENDIF.
@@ -333,20 +326,18 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
     IF is_field-value_help-entity_name IS NOT INITIAL.
       io_container->tag( `Input`
           )->a( n = `value`
-                v = client->_bind( val  = <field>
-                                   view = z2ui5_if_client=>cs_view-popup )
+                v = client->_bind( <field> )
           )->a( n = `showValueHelp`
                 v = `true`
           )->a( n = `valueHelpRequest`
-                v = client->_event( val   = cs_event-value_help
-                                    t_arg = VALUE #( ( is_field-name ) ) ) ).
+                v = client->_event( val = cs_event-value_help
+                                    arg = is_field-name ) ).
       RETURN.
     ENDIF.
 
     io_container->tag( `Input`
         )->a( n = `value`
-              v = client->_bind( val  = <field>
-                                 view = z2ui5_if_client=>cs_view-popup ) ).
+              v = client->_bind( <field> ) ).
 
   ENDMETHOD.
 
@@ -393,7 +384,7 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
 
         )->ele( `TableSelectDialog`
             )->a( n = `title`
-                  v = ls_field-label
+                  t = ls_field-label
             )->a( n = `confirm`
                   v = client->_event( cs_event-vh_confirm )
             )->a( n = `cancel`
@@ -413,8 +404,8 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
       lo_columns->ele( `Column`
           )->tag( `Text`
               )->a( n = `text`
-                    v = ls_vh_field-label ).
-      DATA(lv_path) = `{` && ls_vh_field-name && `}`.
+                    t = ls_vh_field-label ).
+      DATA(lv_path) = |\{{ ls_vh_field-name }\}|.
       lo_cells->tag( `Text`
           )->a( n = `text`
                 v = lv_path ).

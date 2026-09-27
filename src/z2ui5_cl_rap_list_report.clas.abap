@@ -43,15 +43,15 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         title         TYPE string OPTIONAL
         max_rows      TYPE i DEFAULT 500.
 
-    DATA mv_cds_view TYPE string.
-    DATA mv_title    TYPE string.
-    DATA mv_max_rows TYPE i.
     DATA mv_count    TYPE string.
-    DATA ms_entity   TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
     DATA mr_data     TYPE REF TO data.
     DATA mt_filter   TYPE ty_t_filter.
 
   PROTECTED SECTION.
+    DATA mv_cds_view TYPE string.
+    DATA mv_title    TYPE string.
+    DATA mv_max_rows TYPE i.
+    DATA ms_entity   TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
 
     DATA mt_row_key TYPE string_table.
 
@@ -408,7 +408,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         )->ele( `Shell`
             )->ele( `Page`
                 )->a( n = `title`
-                      v = mv_title
+                      t = mv_title
                 )->a( n = `showNavButton`
                       b = client->check_app_prev_stack( )
                 )->a( n = `navButtonPress`
@@ -573,7 +573,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                 v = `true`
           )->tag( `Text`
               )->a( n = `text`
-                    v = lv_col_label ).
+                    t = lv_col_label ).
     ELSEIF is_col-line_item_importance CS `LOW`.
       io_columns->ele( `Column`
           )->a( n = `minScreenWidth`
@@ -582,12 +582,12 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                 v = `true`
           )->tag( `Text`
               )->a( n = `text`
-                    v = lv_col_label ).
+                    t = lv_col_label ).
     ELSE.
       io_columns->ele( `Column`
           )->tag( `Text`
               )->a( n = `text`
-                    v = lv_col_label ).
+                    t = lv_col_label ).
     ENDIF.
 
   ENDMETHOD.
@@ -595,7 +595,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD render_cell.
 
-    DATA(lv_path) = `{` && is_col-name && `}`.
+    DATA(lv_path) = |\{{ is_col-name }\}|.
 
     "criticality -> ObjectStatus
     IF is_col-datapoint_crit_field IS NOT INITIAL
@@ -620,7 +620,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           )->a( n = `number`
                 v = lv_path
           )->a( n = `unit`
-                v = `{` && to_upper( is_col-semantics_currency_code ) && `}` ).
+                v = |\{{ to_upper( is_col-semantics_currency_code ) }\}| ).
 
     "quantity + unit -> ObjectNumber
     ELSEIF is_col-is_quantity_field = abap_true
@@ -629,7 +629,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           )->a( n = `number`
                 v = lv_path
           )->a( n = `unit`
-                v = `{` && to_upper( is_col-semantics_unit_of_measure ) && `}` ).
+                v = |\{{ to_upper( is_col-semantics_unit_of_measure ) }\}| ).
 
     ELSE.
       io_cells->tag( `Text`

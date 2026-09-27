@@ -14,10 +14,14 @@ Two automated gates, both running offline against cloned dependencies (no
 SAP system needed):
 
 ```bash
-npx --yes @abaplint/cli@latest abaplint.jsonc     # expect 0 issues
-npx --yes github:abap2UI5/abap2UI5-linter         # views: metadata + headless render
-npx --yes github:abap2UI5/abap2UI5-linter --no-render   # fast loop, no browser
+npm ci                          # @abaplint/cli, @abap2ui5/linter and its render
+                                # runtime @abap2ui5/linter-render, from the lockfile
+npm run lint                    # abaplint - expect 0 issues
+npx abap2ui5lint                # views: metadata + headless render
+npx abap2ui5lint --no-render    # fast loop, no browser
 ```
+
+`npm run check` runs both, exactly as CI does.
 
 - abaplint clones the two dependencies from the URLs in `abaplint.jsonc`
   (the steampunk-2305 API set and the abap2UI5 core repo), so the first run
@@ -25,7 +29,9 @@ npx --yes github:abap2UI5/abap2UI5-linter --no-render   # fast loop, no browser
 - The **abap2UI5-linter** checks every view the floorplans build: unknown,
   deprecated or too-new controls and members, binding mistakes, malformed
   builder trees, and a real headless `XMLView.create`. Its settings (paths,
-  UI5 floor, fail level) live in `abap2ui5lint.jsonc`.
+  UI5 floor, fail level, the one rule switched off and why) live in
+  `abap2ui5lint.jsonc`; `abap2ui5lint-baseline.json` records the findings it
+  gets wrong here, and only shrinks.
 - CI (`.github/workflows/check.yml`) runs both gates on every push and PR —
   a local clean run means CI passes.
 - **There is no unit test suite and no transpiled runtime here.** The only
@@ -67,7 +73,7 @@ npx --yes github:abap2UI5/abap2UI5-linter --no-render   # fast loop, no browser
 ## What the view gate can and cannot see here
 
 Since the migration to `z2ui5_cl_ui5_view_builder` the
-[abap2UI5-linter](https://github.com/abap2UI5/abap2UI5-linter) reconstructs
+[abap2UI5-linter](https://github.com/abap2UI5/linter) reconstructs
 these views statically, including the parts built in the render hooks: a hook
 that takes a builder handle (`io_table`, `io_op`, `io_container`, …) is
 replayed against the handle it is passed. What it cannot follow is a view

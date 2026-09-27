@@ -100,10 +100,10 @@ Both gates run offline, no SAP system needed (settings live in
 `abap2ui5lint.jsonc`; CI runs the same two on every push and PR):
 
 ```bash
-npx --yes @abaplint/cli@latest abaplint.jsonc          # syntax/style, 0 issues expected
-npx --yes github:abap2UI5/abap2UI5-linter              # every generated view: UI5
-                                                       # metadata + headless render
-npx --yes github:abap2UI5/abap2UI5-linter --no-render  # fast loop, no browser
+npm ci                          # the pinned toolchain, linter and render runtime
+npm run lint                    # abaplint: syntax/style, 0 issues expected
+npx abap2ui5lint                # every generated view: UI5 metadata + headless render
+npx abap2ui5lint --no-render    # fast loop, no browser
 ```
 
 End-to-end still needs a system: install via abapGit and run
