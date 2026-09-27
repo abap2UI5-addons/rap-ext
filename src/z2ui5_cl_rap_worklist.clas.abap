@@ -24,13 +24,13 @@ CLASS z2ui5_cl_rap_worklist DEFINITION
         title         TYPE string OPTIONAL
         max_rows      TYPE i DEFAULT 500.
 
-    DATA mv_cds_view  TYPE string.
-    DATA mv_title     TYPE string.
-    DATA mv_max_rows  TYPE i.
-    DATA ms_entity    TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
-    DATA mr_data      TYPE REF TO data.
+    DATA mr_data TYPE REF TO data.
 
   PROTECTED SECTION.
+    DATA mv_cds_view TYPE string.
+    DATA mv_title    TYPE string.
+    DATA mv_max_rows TYPE i.
+    DATA ms_entity   TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app
@@ -167,7 +167,7 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
         )->ele( `Shell`
             )->ele( `Page`
                 )->a( n = `title`
-                      v = mv_title
+                      t = mv_title
                 )->a( n = `showNavButton`
                       b = client->check_app_prev_stack( )
                 )->a( n = `navButtonPress`
@@ -192,7 +192,7 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
         )->ele( `OverflowToolbar`
             )->tag( `Title`
                 )->a( n = `text`
-                      v = |{ mv_title } ({ lv_count })|
+                      t = |{ mv_title } ({ lv_count })|
             )->tag( `ToolbarSpacer`
             )->tag( `Button`
                 )->a( n = `icon`
@@ -212,7 +212,7 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
       lo_columns->ele( `Column`
           )->tag( `Text`
               )->a( n = `text`
-                    v = lv_col_label ).
+                    t = lv_col_label ).
     ENDLOOP.
 
     "items
@@ -223,7 +223,7 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     LOOP AT lt_columns INTO ls_col.
       lo_cells->tag( `Text`
           )->a( n = `text`
-                v = `{` && ls_col-name && `}` ).
+                v = |\{{ ls_col-name }\}| ).
     ENDLOOP.
 
     client->view_display( lo_view->stringify( ) ).

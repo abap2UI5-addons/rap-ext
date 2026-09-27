@@ -1,6 +1,6 @@
 {
   // abap2UI5-linter settings for this repo (CLI flag > this file > defaults)
-  // docs: https://github.com/abap2UI5/abap2UI5-linter#configuration-file--abap2ui5lintjsonc
+  // docs: https://github.com/abap2UI5/linter
   "paths": ["src"],
   // The floor is the oldest UI5 this addon promises to run on. It sits at
   // 1.77 because sap.uxap.ObjectPageSubSection.showTitle is @since 1.77 and
@@ -21,5 +21,25 @@
     { "kind": "checks", "file": ".github/badges/check-abap2ui5.json" }
   ],
 
-  "failOn": "warning"
+  "failOn": "warning",
+
+  // Seven PUBLIC data references the gate reads as unbound
+  // (unbound-public-attribute): mr_data, ms_data, ms_cds, mt_vh_data and
+  // mt_card_data ARE bound - through the reference, as _bind( <lt_data> )
+  // after ASSIGN mr_data->* - which the rule does not follow, and a binding
+  // needs the attribute PUBLIC. Recorded here instead of moved to PROTECTED.
+  // An entry whose finding is gone is stale and fails, so this file only
+  // shrinks; refresh it with `npx abap2ui5lint --update-baseline`.
+  "baseline": "abap2ui5lint-baseline.json",
+
+  "rules": {
+    // The rule reads every `cs_event-<name>` handed to client->_event( ) as
+    // one of z2ui5_if_client's frontend actions. Here it never is: each
+    // floorplan declares its OWN cs_event constants (BACK, GO, SAVE, ...),
+    // backend events its on_event branch handles - and part of the public
+    // contract (AGENTS.md), so they cannot be renamed. Its --fix would turn
+    // every one of them into a follow_up_action( ) that nothing handles.
+    // Off until the rule tells a class's own constants from the client's.
+    "frontend-action-as-backend-event": false
+  }
 }

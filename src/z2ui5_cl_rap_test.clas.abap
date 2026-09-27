@@ -321,7 +321,7 @@ CLASS z2ui5_cl_rap_test IMPLEMENTATION.
                 ELSE.
                   client->message_toast_display( `Cancelled` ).
                 ENDIF.
-              CATCH cx_sy_move_cast_error.
+              CATCH cx_sy_move_cast_error ##NO_HANDLER.
             ENDTRY.
         ENDTRY.
       ENDIF.

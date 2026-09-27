@@ -42,13 +42,13 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         VALUE(result) TYPE REF TO data.
 
     DATA ms_data TYPE REF TO data.
-    DATA mv_title TYPE string.
-    DATA ms_entity TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
     DATA mv_editable TYPE abap_bool.
-    DATA mv_is_create TYPE abap_bool.
-    DATA mv_saved TYPE abap_bool.
 
   PROTECTED SECTION.
+    DATA mv_title     TYPE string.
+    DATA ms_entity    TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
+    DATA mv_is_create TYPE abap_bool.
+    DATA mv_saved     TYPE abap_bool.
 
     TYPES:
       BEGIN OF ty_s_section,
@@ -464,7 +464,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         )->ele( `Shell`
             )->ele( `Page`
                 )->a( n = `title`
-                      v = mv_title
+                      t = mv_title
                 )->a( n = `showNavButton`
                       b = client->check_app_prev_stack( )
                 )->a( n = `navButtonPress`
@@ -509,21 +509,21 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                  ns = `uxap`
         )->tag( `Title`
             )->a( n = `text`
-                  v = lv_title_text ).
+                  t = lv_title_text ).
 
     "snapped heading
     lo_ht->ele( n  = `snappedHeading`
                  ns = `uxap`
         )->tag( `Title`
             )->a( n = `text`
-                  v = lv_title_text ).
+                  t = lv_title_text ).
 
     "snapped title on mobile
     lo_ht->ele( n  = `snappedTitleOnMobile`
                  ns = `uxap`
         )->tag( `Title`
             )->a( n = `text`
-                  v = lv_title_text ).
+                  t = lv_title_text ).
 
     DATA(lo_actions) = lo_ht->ele( n  = `actions`
                                     ns = `uxap` ).
@@ -613,10 +613,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                   v = `sapUiSmallMarginEnd sapUiSmallMarginBottom`
             )->tag( `Label`
                 )->a( n = `text`
-                      v = ls_id-label
+                      t = ls_id-label
             )->tag( `Text`
                 )->a( n = `text`
-                      v = lv_val_str ).
+                      t = lv_val_str ).
       ENDIF.
     ENDLOOP.
 
@@ -635,12 +635,12 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                 v = `sapUiSmallMarginEnd sapUiSmallMarginBottom`
           )->tag( `Label`
               )->a( n = `text`
-                    v = ls_dp-label
+                    t = ls_dp-label
           )->tag( `ObjectStatus`
               )->a( n = `text`
-                    v = lv_val_str
+                    t = lv_val_str
               )->a( n = `state`
-                    v = lv_state ).
+                    t = lv_state ).
     ENDLOOP.
 
   ENDMETHOD.
@@ -657,7 +657,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
           )->a( n = `titleUppercase`
                 v = `false`
           )->a( n = `title`
-                v = ls_section-title ).
+                t = ls_section-title ).
 
       DATA(lo_sub_sections) = lo_section->ele( n  = `subSections`
                                                 ns = `uxap` ).
@@ -666,7 +666,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       DATA(lo_blocks) = lo_sub_sections->ele( n  = `ObjectPageSubSection`
                                                ns = `uxap`
           )->a( n = `title`
-                v = ls_section-title
+                t = ls_section-title
           )->a( n = `showTitle`
                 v = `false`
           )->ele( n  = `blocks`
@@ -715,7 +715,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
       lo_form->tag( `Label`
           )->a( n = `text`
-                v = ls_field-label ).
+                t = ls_field-label ).
 
       "=== EDIT MODE: render input controls ===
       IF mv_editable = abap_true.
@@ -752,7 +752,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         IF ls_field-datapoint_crit_field IS NOT INITIAL.
           lo_form->tag( `ObjectStatus`
               )->a( n = `text`
-                    v = lv_display_val
+                    t = lv_display_val
               )->a( n = `state`
                     v = get_criticality_state( get_crit_value( ls_field-datapoint_crit_field ) ) ).
 
@@ -763,7 +763,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
             name = ls_field-semantics_currency_code ).
           lo_form->tag( `ObjectNumber`
               )->a( n = `number`
-                    v = lv_display_val
+                    t = lv_display_val
               )->a( n = `unit`
                     v = get_field_value( ls_currency )
               )->a( n = `emphasized`
@@ -776,7 +776,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
             name = ls_field-semantics_unit_of_measure ).
           lo_form->tag( `ObjectNumber`
               )->a( n = `number`
-                    v = lv_display_val
+                    t = lv_display_val
               )->a( n = `unit`
                     v = get_field_value( ls_unit )
               )->a( n = `emphasized`
@@ -785,7 +785,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         ELSE.
           lo_form->tag( `Text`
               )->a( n = `text`
-                    v = lv_display_val ).
+                    t = lv_display_val ).
         ENDIF.
 
       ENDIF.

@@ -33,9 +33,6 @@ CLASS z2ui5_cl_rap_overview_page DEFINITION
         title TYPE string OPTIONAL
         cards TYPE ty_t_card.
 
-    DATA mv_title TYPE string.
-    DATA mt_cards TYPE ty_t_card.
-
     TYPES:
       BEGIN OF ty_s_card_data,
         entity   TYPE z2ui5_cl_rap_util=>ty_s_entity_info,
@@ -49,6 +46,8 @@ CLASS z2ui5_cl_rap_overview_page DEFINITION
     DATA mt_card_data TYPE ty_t_card_data.
 
   PROTECTED SECTION.
+    DATA mv_title TYPE string.
+    DATA mt_cards TYPE ty_t_card.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app
@@ -203,7 +202,7 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
         )->ele( `Shell`
             )->ele( `Page`
                 )->a( n = `title`
-                      v = mv_title
+                      t = mv_title
                 )->a( n = `showNavButton`
                       b = client->check_app_prev_stack( )
                 )->a( n = `navButtonPress`
@@ -272,7 +271,7 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
     "panel as card container
     DATA(lo_panel) = io_container->ele( `Panel`
         )->a( n = `headerText`
-              v = |{ is_card-title } ({ is_card-count })| ).
+              t = |{ is_card-title } ({ is_card-count })| ).
 
     "table inside panel
     DATA(lo_table) = lo_panel->ele( `Table`
@@ -291,14 +290,14 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
       lo_columns->ele( `Column`
           )->tag( `Text`
               )->a( n = `text`
-                    v = lv_label ).
+                    t = lv_label ).
     ENDLOOP.
 
     DATA(lo_items) = lo_table->ele( `items` ).
     DATA(lo_row) = lo_items->ele( `ColumnListItem` ).
     DATA(lo_cells) = lo_row->ele( `cells` ).
     LOOP AT lt_columns INTO ls_field.
-      DATA(lv_path) = `{` && ls_field-name && `}`.
+      DATA(lv_path) = |\{{ ls_field-name }\}|.
       lo_cells->tag( `Text`
           )->a( n = `text`
                 v = lv_path ).
@@ -338,15 +337,15 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
     "render as GenericTile with NumericContent
     io_container->ele( `GenericTile`
         )->a( n = `header`
-              v = is_card-title
+              t = is_card-title
         )->a( n = `subheader`
-              v = |{ is_card-count } items|
+              t = |{ is_card-count } items|
         )->a( n = `frameType`
               v = `OneByOne`
         )->ele( `TileContent`
             )->tag( `NumericContent`
                 )->a( n = `value`
-                      v = lv_kpi_value ).
+                      t = lv_kpi_value ).
 
   ENDMETHOD.
 
