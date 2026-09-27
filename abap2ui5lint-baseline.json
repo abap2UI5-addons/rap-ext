@@ -1,12 +1,6 @@
 {
   "note": "abap2ui5-linter baseline: findings that existed when the linter was adopted. Suppressed on every run; NEW findings still fail, a STALE entry fails too. Regenerate with --update-baseline.",
   "findings": {
-    "src/z2ui5_cl_rap_action_dialog.clas.abap|unbound-public-attribute||ms_cds|": 1,
-    "src/z2ui5_cl_rap_action_dialog.clas.abap|unbound-public-attribute||mt_vh_data|": 1,
-    "src/z2ui5_cl_rap_list_report.clas.abap|unbound-public-attribute||mr_data|": 1,
-    "src/z2ui5_cl_rap_object_page.clas.abap|unbound-public-attribute||ms_data|": 1,
-    "src/z2ui5_cl_rap_overview_page.clas.abap|unbound-public-attribute||mt_card_data|": 1,
-    "src/z2ui5_cl_rap_value_help.clas.abap|unbound-public-attribute||mr_data|": 1,
-    "src/z2ui5_cl_rap_worklist.clas.abap|unbound-public-attribute||mr_data|": 1
+    "src/z2ui5_cl_rap_overview_page.clas.abap|unbound-public-attribute||mt_card_data|": 1
   }
 }

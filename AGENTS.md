@@ -29,9 +29,9 @@ npx abap2ui5lint --no-render    # fast loop, no browser
 - The **abap2UI5-linter** checks every view the floorplans build: unknown,
   deprecated or too-new controls and members, binding mistakes, malformed
   builder trees, and a real headless `XMLView.create`. Its settings (paths,
-  UI5 floor, fail level, the one rule switched off and why) live in
-  `abap2ui5lint.jsonc`; `abap2ui5lint-baseline.json` records the findings it
-  gets wrong here, and only shrinks.
+  UI5 floor, fail level) live in `abap2ui5lint.jsonc`;
+  `abap2ui5lint-baseline.json` records the one open finding (the overview
+  page's `mt_card_data`, explained in `abap2ui5lint.jsonc`), and only shrinks.
 - CI (`.github/workflows/check.yml`) runs both gates on every push and PR —
   a local clean run means CI passes.
 - **There is no unit test suite and no transpiled runtime here.** The only
