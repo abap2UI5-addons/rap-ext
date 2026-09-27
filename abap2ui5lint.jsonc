@@ -23,13 +23,16 @@
 
   "failOn": "warning",
 
-  // One open finding (unbound-public-attribute on the overview page's
-  // mt_card_data). It is not the linter misreading a binding: each card
-  // binds the table behind mt_card_data[ n ]-data_ref, and the core resolves
-  // a binding only through attributes, structures and references - never
-  // into the rows of a table - so no binding reaches mt_card_data. Fixing it
-  // means reworking how the cards hold their data, and ty_s_card_data and
-  // the card render hooks are public contract (AGENTS.md).
+  // One accepted finding (unbound-public-attribute on the overview page's
+  // mt_card_data). The finding is right - no binding reaches mt_card_data -
+  // and it stays because its remedy, moving the attribute to PROTECTED,
+  // breaks the public contract (AGENTS.md): mt_card_data is public API.
+  // The cards bind their rows through mr_card_rows, a public REF TO data
+  // the core can resolve and carry through the draft. They used to bind the
+  // table behind mt_card_data[ n ]-data_ref, which the core cannot resolve -
+  // it never looks into the rows of a table - and every table card ended
+  // with BINDING_ERROR; that was verified at runtime, transpiled against
+  // the core, as was the fix (see the overview page's unit test).
   // An entry whose finding is gone is stale and fails, so this file only
   // shrinks; refresh it with `npx abap2ui5lint --update-baseline`.
   "baseline": "abap2ui5lint-baseline.json"
