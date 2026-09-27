@@ -45,6 +45,16 @@ CLASS z2ui5_cl_rap_overview_page DEFINITION
 
     DATA mt_card_data TYPE ty_t_card_data.
 
+    "! The rows of every loaded card - what the card render hooks bind. A
+    "! structure built at runtime with one component per card, CARD_1,
+    "! CARD_2, ... after the card's position in mt_card_data, each typed as
+    "! that card's table. PUBLIC and a REF TO data on purpose: that is what
+    "! the abap2UI5 model resolves a binding into and carries through the
+    "! draft. The data_ref in a row of mt_card_data is neither - the model
+    "! never looks into the rows of a table, so a binding on it ended the
+    "! first render of every table card with BINDING_ERROR.
+    DATA mr_card_rows TYPE REF TO data.
+
   PROTECTED SECTION.
     DATA mv_title TYPE string.
     DATA mt_cards TYPE ty_t_card.
@@ -57,9 +67,16 @@ CLASS z2ui5_cl_rap_overview_page DEFINITION
 
     METHODS load_all_cards.
 
-    "! load, render, then drop the generic references again - render_page( )
-    "! needs every data_ref BOUND, and they cannot survive serialization, so
-    "! the three steps only ever make sense together
+    "! Move the rows each loaded card holds into mr_card_rows, one component
+    "! per card, and point the card's data_ref at its component - so the
+    "! is_card-data_ref->* a render hook binds is a data object the model
+    "! can resolve. Runs between load_all_cards and render_page.
+    METHODS collect_card_rows.
+
+    "! load, collect the rows into mr_card_rows, render, then drop the
+    "! generic references again - render_page( ) needs every data_ref BOUND
+    "! and pointing into mr_card_rows, and a data_ref cannot survive
+    "! serialization, so the four steps only ever make sense together
     METHODS display
       IMPORTING
         client TYPE REF TO z2ui5_if_client.
@@ -169,12 +186,64 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD collect_card_rows.
+
+    DATA lt_comp TYPE cl_abap_structdescr=>component_table.
+    DATA lv_name TYPE string.
+    FIELD-SYMBOLS <ls_rows> TYPE any.
+    FIELD-SYMBOLS <lt_card> TYPE any.
+    FIELD-SYMBOLS <lt_comp> TYPE any.
+
+    CLEAR mr_card_rows.
+
+    LOOP AT mt_card_data INTO DATA(ls_cd).
+      DATA(lv_card) = sy-tabix.
+      IF ls_cd-data_ref IS NOT BOUND.
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( name = |CARD_{ lv_card }|
+                      type = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_data_ref( ls_cd-data_ref ) ) )
+        TO lt_comp.
+    ENDLOOP.
+
+    IF lt_comp IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    DATA(lo_rows) = cl_abap_structdescr=>create( lt_comp ).
+    CREATE DATA mr_card_rows TYPE HANDLE lo_rows.
+    ASSIGN mr_card_rows->* TO <ls_rows>.
+
+    "a copy per card - the tables are the few rows load_all_cards selected
+    LOOP AT mt_card_data ASSIGNING FIELD-SYMBOL(<ls_cd>).
+      lv_card = sy-tabix.
+      IF <ls_cd>-data_ref IS NOT BOUND.
+        CONTINUE.
+      ENDIF.
+      lv_name = |CARD_{ lv_card }|.
+      ASSIGN COMPONENT lv_name OF STRUCTURE <ls_rows> TO <lt_comp>.
+      ASSIGN <ls_cd>-data_ref->* TO <lt_card>.
+      <lt_comp> = <lt_card>.
+      <ls_cd>-data_ref = REF #( <lt_comp> ).
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
   METHOD display.
 
+    "load_all_cards appends - without this, a second display( )
+    "(check_on_navigated) kept the first set in front of the new one, and
+    "render_page( ), which reads the card type from mt_cards by row index,
+    "rendered every new card with the type of the last one
+    CLEAR mt_card_data.
     load_all_cards( ).
+    collect_card_rows( ).
     render_page( client ).
 
-    "the refs point into loaded tables and cannot survive serialization
+    "data_ref points into mr_card_rows now, which the framework carries
+    "through the draft; a generic reference in a row of mt_card_data is not
+    "serializable, so it is dropped once the view is built
     LOOP AT mt_card_data ASSIGNING FIELD-SYMBOL(<ls_cd>).
       CLEAR <ls_cd>-data_ref.
     ENDLOOP.

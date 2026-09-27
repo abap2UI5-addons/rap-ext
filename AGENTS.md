@@ -30,12 +30,22 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   deprecated or too-new controls and members, binding mistakes, malformed
   builder trees, and a real headless `XMLView.create`. Its settings (paths,
   UI5 floor, fail level) live in `abap2ui5lint.jsonc`;
-  `abap2ui5lint-baseline.json` records the one open finding (the overview
-  page's `mt_card_data`, explained in `abap2ui5lint.jsonc`), and only shrinks.
+  `abap2ui5lint-baseline.json` records the one accepted finding (the
+  overview page's public `mt_card_data`, kept for the public contract and
+  explained in `abap2ui5lint.jsonc`), and only shrinks.
 - CI (`.github/workflows/check.yml`) runs both gates on every push and PR —
   a local clean run means CI passes.
-- **There is no unit test suite and no transpiled runtime here.** The only
-  end-to-end verification is manual: install via abapGit in a system with
+- **There is no transpiled runtime here, and CI runs no unit tests.** One
+  ABAP Unit class exists: `z2ui5_cl_rap_overview_page.clas.testclasses.abap`
+  drives a table card through the core's client, and a draft roundtrip
+  through its handler. It runs in a system; offline it runs only when
+  transpiled together with the core in a scratch copy, built the way the
+  core's `npm run downport` and `npm run auto_transpile` build its own
+  tree. It uses the same core internals as the core's own app tests
+  (`z2ui5_cl_ui5_action`, `z2ui5_cl_ui5_handler`, `z2ui5_cl_ui5_client`,
+  `z2ui5_cl_ui5_app_cont`), so when a core refactor turns `npm run lint`
+  red there, follow what the core's tests did.
+  Everything else is verified by hand: install via abapGit in a system with
   CDS views, run the demo class `z2ui5_cl_rap_test`, and click through the
   floorplans. State in the PR what was and was not verified that way.
 

@@ -86,7 +86,8 @@ ENDCLASS.
 Overridable steps per floorplan:
 - **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `load_data`, `get_where_clause`, `on_event`
 - **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_form`, `save_data`, `delete_data`, `format_value`, `on_event`
-- **Worklist / Value Help / Overview Page / Action Dialog**: their render and data-loading steps plus `on_event`
+- **Overview Page**: `render_page`, `render_table_card`, `render_kpi_card`, `load_all_cards`, `collect_card_rows`, `display`, `on_event`
+- **Worklist / Value Help / Action Dialog**: their render and data-loading steps plus `on_event`
 
 Scope: this addon renders from **CDS annotations**. For a list report over a
 plain internal table there is no counterpart in the abap2UI5 core today — an
@@ -230,6 +231,13 @@ client->nav_app_call( NEW z2ui5_cl_rap_overview_page(
     ( cds_view_name = `I_COUNTRY`  title = `Countries`  card_type = `TABLE` max_rows = 5 )
     ( cds_view_name = `I_LANGUAGE` title = `Languages`  card_type = `KPI` ) ) ) ).
 ```
+
+The cards bind their rows through the public `mr_card_rows`: after
+`load_all_cards( )` has filled `mt_card_data`, `collect_card_rows( )` moves
+each card's rows into a component of it (`CARD_1`, `CARD_2`, ... by position)
+and points the card's `data_ref` there. A redefined `render_table_card` binds
+`is_card-data_ref->*` the way the shipped one does, and a redefined
+`load_all_cards` only has to fill `mt_card_data`.
 
 ### Demo
 
