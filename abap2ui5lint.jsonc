@@ -23,23 +23,14 @@
 
   "failOn": "warning",
 
-  // Seven PUBLIC data references the gate reads as unbound
-  // (unbound-public-attribute): mr_data, ms_data, ms_cds, mt_vh_data and
-  // mt_card_data ARE bound - through the reference, as _bind( <lt_data> )
-  // after ASSIGN mr_data->* - which the rule does not follow, and a binding
-  // needs the attribute PUBLIC. Recorded here instead of moved to PROTECTED.
+  // One open finding (unbound-public-attribute on the overview page's
+  // mt_card_data). It is not the linter misreading a binding: each card
+  // binds the table behind mt_card_data[ n ]-data_ref, and the core resolves
+  // a binding only through attributes, structures and references - never
+  // into the rows of a table - so no binding reaches mt_card_data. Fixing it
+  // means reworking how the cards hold their data, and ty_s_card_data and
+  // the card render hooks are public contract (AGENTS.md).
   // An entry whose finding is gone is stale and fails, so this file only
   // shrinks; refresh it with `npx abap2ui5lint --update-baseline`.
-  "baseline": "abap2ui5lint-baseline.json",
-
-  "rules": {
-    // The rule reads every `cs_event-<name>` handed to client->_event( ) as
-    // one of z2ui5_if_client's frontend actions. Here it never is: each
-    // floorplan declares its OWN cs_event constants (BACK, GO, SAVE, ...),
-    // backend events its on_event branch handles - and part of the public
-    // contract (AGENTS.md), so they cannot be renamed. Its --fix would turn
-    // every one of them into a follow_up_action( ) that nothing handles.
-    // Off until the rule tells a class's own constants from the client's.
-    "frontend-action-as-backend-event": false
-  }
+  "baseline": "abap2ui5lint-baseline.json"
 }
