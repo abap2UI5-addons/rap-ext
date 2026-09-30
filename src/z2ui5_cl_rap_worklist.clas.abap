@@ -1,4 +1,13 @@
-"! Read-only worklist table of a CDS view with @UI.lineItem columns.
+"! Worklist of a CDS view: the items to work through, with a search field
+"! instead of a filter bar, optional segments (an IconTabBar with one tab
+"! per value of segment_field and the count of each), row navigation to
+"! the object page and the @UI.lineItem actions.
+"!
+"! Since 2026-09 a subclass of z2ui5_cl_rap_list_report - it used to be a
+"! copy of it with fewer features. Its steps (render_page, load_data,
+"! get_line_item_fields, on_event) keep their names and signatures, and
+"! the list report's steps (render_toolbar, render_cell, get_where_clause,
+"! on_row_press, ...) are now overridable here as well.
 "!
 "! The escape hatch is plain inheritance: the class is deliberately not
 "! FINAL and every rendering and event step is a protected method a
@@ -6,47 +15,52 @@
 "! floorplan does not know are routed to on_event.
 CLASS z2ui5_cl_rap_worklist DEFINITION
   PUBLIC
+  INHERITING FROM z2ui5_cl_rap_list_report
   CREATE PUBLIC.
 
   PUBLIC SECTION.
 
-    INTERFACES z2ui5_if_app.
+    CONSTANTS cv_event_segment TYPE string VALUE `SEGMENT`.
+    CONSTANTS cv_segment_all TYPE string VALUE `ALL`.
 
-    CONSTANTS:
-      BEGIN OF cs_event,
-        refresh TYPE string VALUE `REFRESH`,
-        back    TYPE string VALUE `BACK`,
-      END OF cs_event.
+    TYPES:
+      BEGIN OF ty_s_segment,
+        key   TYPE string,
+        text  TYPE string,
+        count TYPE i,
+      END OF ty_s_segment.
 
+    TYPES ty_t_segment TYPE STANDARD TABLE OF ty_s_segment WITH DEFAULT KEY.
+
+    "! segment_field: a field whose values split the items into tabs
+    "! (a status, a type) - no tabs without it
     METHODS constructor
       IMPORTING
         cds_view_name TYPE clike
         title         TYPE string OPTIONAL
-        max_rows      TYPE i DEFAULT 500.
+        max_rows      TYPE i DEFAULT 500
+        segment_field TYPE clike OPTIONAL.
 
-    DATA mr_data TYPE REF TO data.
+    METHODS z2ui5_if_app~main REDEFINITION.
+
+    "! the tabs - the first is all items
+    DATA mt_segment TYPE ty_t_segment.
+    "! the selected tab
+    DATA mv_segment TYPE string.
 
   PROTECTED SECTION.
-    DATA mv_cds_view TYPE string.
-    DATA mv_title    TYPE string.
-    DATA mv_max_rows TYPE i.
-    DATA ms_entity   TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
+    DATA mv_segment_field TYPE string.
 
-    "! subclass hook - called for every event the floorplan itself does
-    "! not handle, exactly like the event branch of a hand-written app
-    METHODS on_event
+    METHODS load_data REDEFINITION.
+    METHODS get_where_clause REDEFINITION.
+    METHODS render_page REDEFINITION.
+    METHODS render_filter_bar REDEFINITION.
+    METHODS render_toolbar REDEFINITION.
+
+    "! the values of segment_field with their counts
+    METHODS load_segments
       IMPORTING
-        client TYPE REF TO z2ui5_if_client.
-
-    METHODS load_data.
-
-    METHODS render_page
-      IMPORTING
-        client TYPE REF TO z2ui5_if_client.
-
-    METHODS get_line_item_fields
-      RETURNING
-        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_field_info.
+        where TYPE string.
 
   PRIVATE SECTION.
 
@@ -57,100 +71,108 @@ ENDCLASS.
 CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
 
   METHOD constructor.
-    mv_cds_view = to_upper( cds_view_name ).
-    mv_title = title.
-    mv_max_rows = max_rows.
+    super->constructor( cds_view_name = cds_view_name
+                        title         = title
+                        max_rows      = max_rows ).
+    mv_floorplan = cs_floorplan-worklist.
+    mv_segment_field = to_upper( segment_field ).
+    mv_segment = cv_segment_all.
   ENDMETHOD.
 
 
   METHOD z2ui5_if_app~main.
 
-    IF client->check_on_init( ).
-      ms_entity = z2ui5_cl_rap_util=>read_entity( mv_cds_view ).
-      IF mv_title IS INITIAL.
-        IF ms_entity-header_info-type_name_plural IS NOT INITIAL.
-          mv_title = ms_entity-header_info-type_name_plural.
-        ELSE.
-          mv_title = mv_cds_view.
-        ENDIF.
-      ENDIF.
-      load_data( ).
-      render_page( client ).
-      RETURN.
-    ENDIF.
-
-    IF client->check_on_event( cs_event-refresh ).
+    IF client->check_on_init( ) = abap_false
+      AND client->check_on_event( cv_event_segment ).
+      mv_segment = client->get_event_arg( ).
       load_data( ).
       RETURN.
     ENDIF.
 
-    IF client->check_on_event( cs_event-back ).
-      client->nav_app_leave( ).
-      RETURN.
-    ENDIF.
-
-    "returning from a called app or a restored bookmark: check_on_init( ) is
-    "false here and the browser still shows the OTHER app's view, so the view
-    "has to be built again - a model push would reach nothing
-    IF client->check_on_navigated( ).
-      render_page( client ).
-      RETURN.
-    ENDIF.
-
-    "unknown events land in the subclass hook - the escape hatch
-    on_event( client ).
+    super->z2ui5_if_app~main( client ).
 
   ENDMETHOD.
 
 
-  METHOD on_event ##NEEDED.
-    "subclass hook - the floorplan itself has nothing to do here
+  METHOD get_where_clause.
+
+    result = super->get_where_clause( ).
+    IF mv_segment_field IS INITIAL OR mv_segment IS INITIAL OR mv_segment = cv_segment_all.
+      RETURN.
+    ENDIF.
+    READ TABLE ms_entity-fields INTO DATA(ls_field) WITH KEY name = mv_segment_field.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    DATA(lv_cond) = build_filter_condition( is_field = ls_field
+                                            value    = |={ mv_segment }| ).
+    result = COND #( WHEN result IS INITIAL THEN lv_cond ELSE |{ result } AND { lv_cond }| ).
+
   ENDMETHOD.
 
 
   METHOD load_data.
-    TRY.
-        DATA(lo_descr) = CAST cl_abap_structdescr(
-          cl_abap_typedescr=>describe_by_name( mv_cds_view ) ).
-        DATA(lo_table_type) = cl_abap_tabledescr=>create( lo_descr ).
-        CREATE DATA mr_data TYPE HANDLE lo_table_type.
-        FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
-        ASSIGN mr_data->* TO <lt_data>.
-        SELECT * FROM (mv_cds_view) INTO TABLE @<lt_data>
-          UP TO @mv_max_rows ROWS.
-      CATCH cx_root.
-        CLEAR mr_data.
-    ENDTRY.
+
+    super->load_data( ).
+    IF mv_segment_field IS NOT INITIAL.
+      "the counts of every tab, whatever tab is selected
+      load_segments( super->get_where_clause( ) ).
+    ENDIF.
+
   ENDMETHOD.
 
 
-  METHOD get_line_item_fields.
-    LOOP AT ms_entity-fields INTO DATA(ls_field)
-      WHERE line_item_pos > 0 AND is_hidden = abap_false.
-      APPEND ls_field TO result.
-    ENDLOOP.
-    SORT result BY line_item_pos.
-    IF result IS INITIAL.
-      LOOP AT ms_entity-fields INTO ls_field
-        WHERE is_hidden = abap_false.
-        APPEND ls_field TO result.
-      ENDLOOP.
+  METHOD load_segments.
+
+    TYPES:
+      BEGIN OF ty_s_group,
+        segment_key   TYPE string,
+        segment_count TYPE int8,
+      END OF ty_s_group.
+    DATA lt_group TYPE STANDARD TABLE OF ty_s_group WITH DEFAULT KEY.
+
+    CLEAR mt_segment.
+    IF NOT line_exists( ms_entity-fields[ name = mv_segment_field ] ).
+      RETURN.
     ENDIF.
+
+    DATA(lv_select) = |{ mv_segment_field } AS segment_key, COUNT(*) AS segment_count|.
+    TRY.
+        SELECT (lv_select) FROM (mv_cds_view)
+          WHERE (where)
+          GROUP BY (mv_segment_field)
+          INTO CORRESPONDING FIELDS OF TABLE @lt_group
+          UP TO 20 ROWS.
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+
+    DATA lv_total TYPE i.
+    LOOP AT lt_group INTO DATA(ls_group).
+      lv_total = lv_total + ls_group-segment_count.
+    ENDLOOP.
+    APPEND VALUE #( key   = cv_segment_all
+                    text  = get_text( cs_text-all )
+                    count = lv_total ) TO mt_segment.
+    LOOP AT lt_group INTO ls_group.
+      APPEND VALUE #( key   = ls_group-segment_key
+                      text  = COND #( WHEN ls_group-segment_key IS INITIAL THEN `-` ELSE ls_group-segment_key )
+                      count = ls_group-segment_count ) TO mt_segment.
+    ENDLOOP.
+
   ENDMETHOD.
 
 
   METHOD render_page.
 
     IF mr_data IS NOT BOUND.
+      client->message_box_display( text = |{ get_text( cs_text-load_error ) }: { mv_cds_view }|
+                                   type = `error` ).
       RETURN.
     ENDIF.
 
-    FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
-    ASSIGN mr_data->* TO <lt_data>.
-
-    DATA(lt_columns) = get_line_item_fields( ).
-    DATA(lv_count) = CONV string( lines( <lt_data> ) ).
-
+    "the events of the list report this class inherits
+    DATA(ls_event) = z2ui5_cl_rap_list_report=>cs_event.
     DATA(lo_view) = z2ui5_cl_ui5_view_builder=>factory( ).
 
     DATA(lo_page) = lo_view->ele( n  = `View`
@@ -171,62 +193,83 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
                 )->a( n = `showNavButton`
                       b = client->check_app_prev_stack( )
                 )->a( n = `navButtonPress`
-                      v = client->_event( cs_event-back ) ).
+                      v = client->_event( ls_event-back ) ).
 
-    "table
-    DATA(lo_table) = lo_page->ele( `Table`
-        )->a( n = `items`
-              v = `{path:'` && client->_bind( val  = <lt_data>
-                                              path = abap_true ) && `'}`
-        )->a( n = `growing`
-              v = `true`
-        )->a( n = `growingThreshold`
-              v = `50`
-        )->a( n = `sticky`
-              v = `ColumnHeaders,HeaderToolbar`
-        )->a( n = `mode`
-              v = `None` ).
-
-    "toolbar
-    lo_table->ele( `headerToolbar`
-        )->ele( `OverflowToolbar`
-            )->tag( `Title`
-                )->a( n = `text`
-                      t = |{ mv_title } ({ lv_count })|
-            )->tag( `ToolbarSpacer`
-            )->tag( `Button`
-                )->a( n = `icon`
-                      v = `sap-icon://refresh`
-                )->a( n = `tooltip`
-                      v = `Refresh`
-                )->a( n = `press`
-                      v = client->_event( cs_event-refresh ) ).
-
-    "columns
-    DATA(lo_columns) = lo_table->ele( `columns` ).
-    LOOP AT lt_columns INTO DATA(ls_col).
-      DATA(lv_col_label) = ls_col-line_item_label.
-      IF lv_col_label IS INITIAL.
-        lv_col_label = ls_col-label.
-      ENDIF.
-      lo_columns->ele( `Column`
-          )->tag( `Text`
+    IF mt_segment IS INITIAL.
+      render_table( io_page = lo_page
+                    client  = client ).
+    ELSE.
+      "one tab per segment - the table is the content of the bar
+      DATA(lo_bar) = lo_page->ele( `IconTabBar`
+          )->a( n = `selectedKey`
+                v = client->_bind( mv_segment )
+          )->a( n = `select`
+                v = client->_event( val = cv_event_segment
+                                    arg = `${$parameters>/key}` )
+          )->a( n = `expandable`
+                v = `false`
+          )->a( n = `items`
+                v = client->_bind( mt_segment ) ).
+      lo_bar->ele( `items`
+          )->tag( `IconTabFilter`
+              )->a( n = `key`
+                    v = `{KEY}`
               )->a( n = `text`
-                    t = lv_col_label ).
-    ENDLOOP.
-
-    "items
-    DATA(lo_cells) = lo_table->ele( `items`
-        )->ele( `ColumnListItem`
-            )->ele( `cells` ).
-
-    LOOP AT lt_columns INTO ls_col.
-      lo_cells->tag( `Text`
-          )->a( n = `text`
-                v = |\{{ ls_col-name }\}| ).
-    ENDLOOP.
+                    v = `{TEXT}`
+              )->a( n = `count`
+                    v = `{COUNT}` ).
+      render_table( io_page = lo_bar->ele( `content` )
+                    client  = client ).
+    ENDIF.
 
     client->view_display( lo_view->stringify( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD render_filter_bar ##NEEDED.
+    "no filter bar - the worklist searches in its toolbar
+  ENDMETHOD.
+
+
+  METHOD render_toolbar.
+
+    "the events of the list report this class inherits
+    DATA(ls_event) = z2ui5_cl_rap_list_report=>cs_event.
+    DATA(lo_toolbar) = io_table->ele( `headerToolbar`
+        )->ele( `OverflowToolbar` ).
+
+    lo_toolbar->tag( `Title`
+        )->a( n = `text`
+              v = mv_title && ` (` && client->_bind( mv_count ) && `)` ).
+
+    lo_toolbar->tag( `ToolbarSpacer` ).
+
+    lo_toolbar->tag( `SearchField`
+        )->a( n = `value`
+              v = client->_bind( mv_search )
+        )->a( n = `search`
+              v = client->_event( ls_event-search )
+        )->a( n = `width`
+              v = `15rem` ).
+
+    "@UI.lineItem actions of type #FOR_ACTION - on the selected rows
+    LOOP AT get_line_item_actions( abap_false ) INTO DATA(ls_action).
+      lo_toolbar->tag( `Button`
+          )->a( n = `text`
+                t = ls_action-label
+          )->a( n = `press`
+                v = client->_event( val = ls_event-action
+                                    arg = ls_action-name ) ).
+    ENDLOOP.
+
+    lo_toolbar->tag( `Button`
+        )->a( n = `icon`
+              v = `sap-icon://refresh`
+        )->a( n = `tooltip`
+              t = get_text( cs_text-refresh )
+        )->a( n = `press`
+              v = client->_event( ls_event-refresh ) ).
 
   ENDMETHOD.
 
