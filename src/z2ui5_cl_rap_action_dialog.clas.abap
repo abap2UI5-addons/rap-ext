@@ -1,6 +1,14 @@
 "! Popup dialog for an abstract CDS entity, driven by its annotations
 "! (labels, tooltips, default values, value helps, multiline texts,
-"! hidden fields).
+"! hidden fields, mandatory fields).
+"!
+"! A value help is the addon's z2ui5_cl_rap_value_help, called as an app of
+"! its own (render_value_help) and applied on the return
+"! (handle_value_help_confirm) - one value help for every floorplan instead
+"! of a second copy in here. A small value help (sizeCategory #XS) is a
+"! ComboBox whose entries live in mr_value_lists: a table the dialog
+"! loaded into a local variable, as it did up to 2026-09, is nothing the
+"! abap2UI5 model can bind.
 "!
 "! The escape hatch is plain inheritance: the class is deliberately not
 "! FINAL and every rendering and event step is a protected method a
@@ -9,6 +17,7 @@
 "! field. Events the floorplan does not know are routed to on_event.
 CLASS z2ui5_cl_rap_action_dialog DEFINITION
   PUBLIC
+  INHERITING FROM z2ui5_cl_rap_floorplan
   CREATE PUBLIC.
 
   PUBLIC SECTION.
@@ -31,6 +40,7 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
 
     DATA ms_cds TYPE REF TO data.
 
+    "! the rows the last value help returned (a table of its entity)
     DATA mt_vh_data TYPE REF TO data.
 
     METHODS result
@@ -59,11 +69,13 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
       IMPORTING
         client TYPE REF TO z2ui5_if_client.
 
+    "! call the value help of field_name
     METHODS render_value_help
       IMPORTING
         client     TYPE REF TO z2ui5_if_client
         field_name TYPE string.
 
+    "! apply what the value help returned, then show the dialog again
     METHODS handle_value_help_confirm
       IMPORTING
         client TYPE REF TO z2ui5_if_client.
@@ -80,6 +92,11 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
       RETURNING
         VALUE(result) TYPE REF TO data.
 
+    "! the labels of the mandatory fields that are still empty
+    METHODS get_missing_fields
+      RETURNING
+        VALUE(result) TYPE string_table.
+
   PRIVATE SECTION.
 
 ENDCLASS.
@@ -89,6 +106,8 @@ ENDCLASS.
 CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
 
   METHOD constructor.
+    super->constructor( ).
+    mv_floorplan = cs_floorplan-action_dialog.
     CREATE DATA ms_cds LIKE val.
     ms_cds->* = val.
     mv_title = title.
@@ -101,15 +120,30 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
       DATA(lo_datadescr) = cl_abap_datadescr=>describe_by_data( ms_cds->* ).
       DATA(lv_entity_name) = lo_datadescr->get_relative_name( ).
       ms_entity = z2ui5_cl_rap_util=>read_entity( lv_entity_name ).
+      adjust_entity( CHANGING cs_entity = ms_entity ).
       IF mv_title IS INITIAL.
-        mv_title = ms_entity-name.
+        mv_title = COND #( WHEN ms_entity-description IS NOT INITIAL THEN ms_entity-description
+                           ELSE ms_entity-name ).
       ENDIF.
       apply_default_values( ).
+      prepare_value_lists( ms_entity-fields ).
       render_action_dialog( client ).
       RETURN.
     ENDIF.
 
+    IF ext_on_event( client ) = abap_true.
+      RETURN.
+    ENDIF.
+
     IF client->check_on_event( cs_event-confirm ).
+      DATA(lt_missing) = get_missing_fields( ).
+      IF lt_missing IS NOT INITIAL.
+        "the dialog stays open - a button press does not close it
+        client->message_box_display(
+          text = |{ get_text( cs_text-required ) }: { concat_lines_of( table = lt_missing sep = `, ` ) }|
+          type = `warning` ).
+        RETURN.
+      ENDIF.
       mv_confirmed = abap_true.
       client->popup_destroy( ).
       client->nav_app_leave( ).
@@ -124,11 +158,13 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
     ENDIF.
 
     IF client->check_on_event( cs_event-value_help ).
-      DATA(lv_vh_field) = client->get_event_arg( ).
-      render_value_help( client = client field_name = lv_vh_field ).
+      render_value_help( client     = client
+                         field_name = client->get_event_arg( ) ).
       RETURN.
     ENDIF.
 
+    "kept for subclasses that still render the value help popup of their
+    "own with these two events
     IF client->check_on_event( cs_event-vh_confirm ).
       handle_value_help_confirm( client ).
       RETURN.
@@ -140,11 +176,11 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    "returning from a called app or a restored bookmark: check_on_init( ) is
-    "false here and the browser still shows the OTHER app's view, so the view
-    "has to be built again - a model push would reach nothing
+    "returning from the value help, another called app or a restored
+    "bookmark: check_on_init( ) is false here and the browser still shows
+    "the OTHER app's view, so the view has to be built again
     IF client->check_on_navigated( ).
-      render_action_dialog( client ).
+      handle_value_help_confirm( client ).
       RETURN.
     ENDIF.
 
@@ -160,28 +196,33 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
 
 
   METHOD apply_default_values.
+    FIELD-SYMBOLS <fld> TYPE any.
     LOOP AT ms_entity-fields INTO DATA(ls_field) WHERE default_value IS NOT INITIAL.
-      FIELD-SYMBOLS <fld> TYPE any.
       ASSIGN COMPONENT ls_field-name OF STRUCTURE ms_cds->* TO <fld>.
       IF sy-subrc = 0 AND <fld> IS INITIAL.
-        <fld> = ls_field-default_value.
+        TRY.
+            <fld> = ls_field-default_value.
+          CATCH cx_root ##NO_HANDLER.
+        ENDTRY.
       ENDIF.
     ENDLOOP.
   ENDMETHOD.
 
 
   METHOD load_dropdown_data.
-    TRY.
-        DATA(lo_descr) = CAST cl_abap_structdescr(
-          cl_abap_typedescr=>describe_by_name( entity_name ) ).
-        DATA(lo_table_type) = cl_abap_tabledescr=>create( lo_descr ).
-        CREATE DATA result TYPE HANDLE lo_table_type.
-        FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
-        ASSIGN result->* TO <lt_data>.
-        SELECT * FROM (entity_name) INTO TABLE @<lt_data> UP TO 500 ROWS.
-      CATCH cx_root.
-        CLEAR result.
-    ENDTRY.
+    result = select_rows( entity_name = to_upper( entity_name ) ).
+  ENDMETHOD.
+
+
+  METHOD get_missing_fields.
+    FIELD-SYMBOLS <fld> TYPE any.
+    LOOP AT ms_entity-fields INTO DATA(ls_field)
+      WHERE is_mandatory = abap_true AND is_hidden = abap_false.
+      ASSIGN COMPONENT ls_field-name OF STRUCTURE ms_cds->* TO <fld>.
+      IF sy-subrc = 0 AND <fld> IS INITIAL.
+        APPEND ls_field-label TO result.
+      ENDIF.
+    ENDLOOP.
   ENDMETHOD.
 
 
@@ -218,21 +259,12 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
         )->ele( n  = `content`
                  ns = `form` ).
 
-    LOOP AT ms_entity-fields INTO DATA(ls_field).
-      IF ls_field-is_hidden = abap_true.
-        CONTINUE.
-      ENDIF.
-      IF ls_field-is_mandatory = abap_true.
-        lo_form->tag( `Label`
-            )->a( n = `text`
-                  t = ls_field-label
-            )->a( n = `required`
-                  v = `true` ).
-      ELSE.
-        lo_form->tag( `Label`
-            )->a( n = `text`
-                  t = ls_field-label ).
-      ENDIF.
+    LOOP AT ms_entity-fields INTO DATA(ls_field) WHERE is_hidden = abap_false.
+      lo_form->tag( `Label`
+          )->a( n = `text`
+                t = ls_field-label
+          )->a( n = `required`
+                b = ls_field-is_mandatory ).
       get_control_for_field(
         io_container = lo_form
         is_field     = ls_field
@@ -242,7 +274,7 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
     lo_dialog->ele( `beginButton`
         )->tag( `Button`
             )->a( n = `text`
-                  v = `OK`
+                  t = get_text( cs_text-ok )
             )->a( n = `press`
                   v = client->_event( cs_event-confirm )
             )->a( n = `type`
@@ -251,7 +283,7 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
     lo_dialog->ele( `endButton`
         )->tag( `Button`
             )->a( n = `text`
-                  v = `Cancel`
+                  t = get_text( cs_text-cancel )
             )->a( n = `press`
                   v = client->_event( cs_event-cancel ) ).
 
@@ -264,211 +296,47 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
 
     FIELD-SYMBOLS <field> TYPE any.
     ASSIGN COMPONENT is_field-name OF STRUCTURE ms_cds->* TO <field>.
-
-    IF is_field-is_boolean = abap_true.
-      io_container->tag( `CheckBox`
-          )->a( n = `selected`
-                v = client->_bind( <field> ) ).
+    IF sy-subrc <> 0.
       RETURN.
     ENDIF.
 
-    IF is_field-type_kind = `DATS`.
-      io_container->tag( `DatePicker`
-          )->a( n = `value`
-                v = client->_bind( <field> ) ).
-      RETURN.
-    ENDIF.
-
-    IF is_field-type_kind = `TIMS`.
-      io_container->tag( `TimePicker`
-          )->a( n = `value`
-                v = client->_bind( <field> ) ).
-      RETURN.
-    ENDIF.
-
-    IF is_field-is_multiline = abap_true OR is_field-type_kind = `STRING`.
-      io_container->tag( `TextArea`
-          )->a( n = `value`
-                v = client->_bind( <field> )
-          )->a( n = `rows`
-                v = `3`
-          )->a( n = `width`
-                v = `100%` ).
-      RETURN.
-    ENDIF.
-
-    IF is_field-value_help-is_dropdown = abap_true.
-      DATA(lr_dd_data) = load_dropdown_data( is_field-value_help-entity_name ).
-      IF lr_dd_data IS BOUND.
-        FIELD-SYMBOLS <lt_dd> TYPE STANDARD TABLE.
-        ASSIGN lr_dd_data->* TO <lt_dd>.
-        DATA(lv_elem_path) = is_field-value_help-element.
-        DATA(lv_key_path) = |\{{ lv_elem_path }\}|.
-        io_container->ele( `ComboBox`
-            )->a( n = `selectedKey`
-                  v = client->_bind( <field> )
-            )->a( n = `items`
-                  v = client->_bind( <lt_dd> )
-            )->tag( n  = `Item`
-                     ns = `core`
-            )->a( n = `key`
-                  v = lv_key_path
-            )->a( n = `text`
-                  v = lv_key_path ).
-      ELSE.
-        io_container->tag( `Input`
-            )->a( n = `value`
-                  v = client->_bind( <field> ) ).
-      ENDIF.
-      RETURN.
-    ENDIF.
-
-    IF is_field-value_help-entity_name IS NOT INITIAL.
-      io_container->tag( `Input`
-          )->a( n = `value`
-                v = client->_bind( <field> )
-          )->a( n = `showValueHelp`
-                v = `true`
-          )->a( n = `valueHelpRequest`
-                v = client->_event( val = cs_event-value_help
-                                    arg = is_field-name ) ).
-      RETURN.
-    ENDIF.
-
-    io_container->tag( `Input`
-        )->a( n = `value`
-              v = client->_bind( <field> ) ).
+    render_field_input( io_container = io_container
+                        is_field     = is_field
+                        client       = client
+                        value        = <field>
+                        vh_event     = cs_event-value_help ).
 
   ENDMETHOD.
 
 
   METHOD render_value_help.
 
-    mv_vh_field = field_name.
-
     READ TABLE ms_entity-fields INTO DATA(ls_field)
-      WITH KEY name = field_name.
+      WITH KEY name = to_upper( field_name ).
     IF sy-subrc <> 0 OR ls_field-value_help-entity_name IS INITIAL.
       RETURN.
     ENDIF.
 
-    DATA(lv_entity) = ls_field-value_help-entity_name.
-
-    TRY.
-        DATA(lo_descr) = CAST cl_abap_structdescr(
-          cl_abap_typedescr=>describe_by_name( lv_entity ) ).
-        DATA(lo_table_type) = cl_abap_tabledescr=>create( lo_descr ).
-        DATA lt_result TYPE REF TO data.
-        CREATE DATA lt_result TYPE HANDLE lo_table_type.
-        FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
-        ASSIGN lt_result->* TO <lt_data>.
-        SELECT * FROM (lv_entity) INTO TABLE @<lt_data> UP TO 200 ROWS.
-      CATCH cx_root.
-        client->message_toast_display( `Could not load value help data` ).
-        RETURN.
-    ENDTRY.
-
-    mt_vh_data = lt_result.
-
-    "read VH entity metadata for column labels
-    DATA(ls_vh_meta) = z2ui5_cl_rap_util=>read_entity( lv_entity ).
-
-    DATA(lo_popup) = z2ui5_cl_ui5_view_builder=>factory( ).
-
-    DATA(lo_dialog) = lo_popup->ele( n  = `FragmentDefinition`
-                                      ns = `core`
-        )->a( n = `xmlns`
-              v = `sap.m`
-        )->a( n = `xmlns:core`
-              v = `sap.ui.core`
-
-        )->ele( `TableSelectDialog`
-            )->a( n = `title`
-                  t = ls_field-label
-            )->a( n = `confirm`
-                  v = client->_event( cs_event-vh_confirm )
-            )->a( n = `cancel`
-                  v = client->_event( cs_event-vh_cancel )
-            )->a( n = `items`
-                  v = `{path:'` && client->_bind( val  = <lt_data>
-                                                  path = abap_true ) && `'}` ).
-
-    "use visible fields from VH metadata
-    DATA(lo_columns) = lo_dialog->ele( `columns` ).
-    DATA(lo_items) = lo_dialog->ele( `items` ).
-    DATA(lo_row) = lo_items->ele( `ColumnListItem` ).
-    DATA(lo_cells) = lo_row->ele( `cells` ).
-
-    LOOP AT ls_vh_meta-fields INTO DATA(ls_vh_field)
-      WHERE is_visible = abap_true AND is_hidden = abap_false.
-      lo_columns->ele( `Column`
-          )->tag( `Text`
-              )->a( n = `text`
-                    t = ls_vh_field-label ).
-      DATA(lv_path) = |\{{ ls_vh_field-name }\}|.
-      lo_cells->tag( `Text`
-          )->a( n = `text`
-                v = lv_path ).
-    ENDLOOP.
-
-    client->popup_display( lo_popup->stringify( ) ).
+    mv_vh_field = ls_field-name.
+    open_value_help( client   = client
+                     is_field = ls_field
+                     source   = ms_cds->* ).
 
   ENDMETHOD.
 
 
   METHOD handle_value_help_confirm.
 
-    DATA(lv_index_str) = client->get_event_arg( ).
-
-    IF mt_vh_data IS BOUND AND mv_vh_field IS NOT INITIAL.
-      FIELD-SYMBOLS <lt_vh_data> TYPE STANDARD TABLE.
-      ASSIGN mt_vh_data->* TO <lt_vh_data>.
-
-      DATA(lv_index) = CONV i( lv_index_str ).
-      IF lv_index > 0 AND lv_index <= lines( <lt_vh_data> ).
-        READ TABLE ms_entity-fields INTO DATA(ls_field)
-          WITH KEY name = mv_vh_field.
-        IF sy-subrc = 0.
-          FIELD-SYMBOLS <ls_row> TYPE any.
-          READ TABLE <lt_vh_data> INDEX lv_index ASSIGNING <ls_row>.
-          IF sy-subrc = 0.
-            IF ls_field-value_help-element IS NOT INITIAL.
-              FIELD-SYMBOLS <lv_vh_value> TYPE any.
-              FIELD-SYMBOLS <lv_target> TYPE any.
-              ASSIGN COMPONENT ls_field-value_help-element
-                OF STRUCTURE <ls_row> TO <lv_vh_value>.
-              DATA(lv_vh_value_subrc) = sy-subrc.
-              ASSIGN COMPONENT mv_vh_field
-                OF STRUCTURE ms_cds->* TO <lv_target>.
-              IF lv_vh_value_subrc = 0 AND sy-subrc = 0.
-                <lv_target> = <lv_vh_value>.
-              ENDIF.
-            ENDIF.
-
-            " check sy-subrc after each ASSIGN - a field symbol stays
-            " assigned from the previous loop iteration
-            LOOP AT ls_field-value_help-additional_binding INTO DATA(ls_bind)
-              WHERE usage CS `RESULT`.
-              IF ls_bind-element IS NOT INITIAL AND ls_bind-local_element IS NOT INITIAL.
-                FIELD-SYMBOLS <lv_src> TYPE any.
-                FIELD-SYMBOLS <lv_tgt> TYPE any.
-                ASSIGN COMPONENT ls_bind-element OF STRUCTURE <ls_row> TO <lv_src>.
-                IF sy-subrc <> 0.
-                  CONTINUE.
-                ENDIF.
-                ASSIGN COMPONENT ls_bind-local_element OF STRUCTURE ms_cds->* TO <lv_tgt>.
-                IF sy-subrc <> 0.
-                  CONTINUE.
-                ENDIF.
-                <lv_tgt> = <lv_src>.
-              ENDIF.
-            ENDLOOP.
-          ENDIF.
-        ENDIF.
-      ENDIF.
+    DATA(lo_vh) = get_value_help_result( client ).
+    IF lo_vh IS BOUND.
+      mt_vh_data = lo_vh->result_table( ).
     ENDIF.
 
-    client->popup_destroy( ).
+    apply_value_help( EXPORTING client    = client
+                                it_fields = ms_entity-fields
+                      CHANGING  target    = ms_cds->* ).
+    CLEAR mv_vh_field.
+
     render_action_dialog( client ).
 
   ENDMETHOD.

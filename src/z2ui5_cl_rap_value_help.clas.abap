@@ -1,12 +1,23 @@
 "! Table select dialog for any CDS view - columns come from the entity
 "! metadata, @ObjectModel.text.element adds description columns.
 "!
+"! The selection travels in a column of the rows (cv_select_column, bound to
+"! the selected property of each item) - an event argument cannot carry it:
+"! the confirm event's selectedItem is a control, which the frontend reduces
+"! to its properties, and a binding context is not transportable at all.
+"! Until 2026-09 the confirm read an event argument that was never sent, so
+"! the value help returned nothing.
+"!
+"! The search field searches in the database (the searchable text fields,
+"! see build_search_condition), not only in the rows already loaded.
+"!
 "! The escape hatch is plain inheritance: the class is deliberately not
 "! FINAL and every rendering and event step is a protected method a
 "! subclass can redefine with ordinary abap2UI5 view code. Events the
 "! floorplan does not know are routed to on_event.
 CLASS z2ui5_cl_rap_value_help DEFINITION
   PUBLIC
+  INHERITING FROM z2ui5_cl_rap_floorplan
   CREATE PUBLIC.
 
   PUBLIC SECTION.
@@ -17,6 +28,7 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
       BEGIN OF cs_event,
         confirm TYPE string VALUE `VH_CONFIRM`,
         cancel  TYPE string VALUE `VH_CANCEL`,
+        search  TYPE string VALUE `VH_SEARCH`,
       END OF cs_event.
 
     METHODS constructor
@@ -24,15 +36,30 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
         cds_view_name TYPE clike
         element       TYPE clike OPTIONAL
         title         TYPE string OPTIONAL
-        max_rows      TYPE i DEFAULT 200.
+        max_rows      TYPE i DEFAULT 200
+        multi_select  TYPE abap_bool DEFAULT abap_false
+        filters       TYPE ty_t_name_value OPTIONAL
+        search        TYPE string OPTIONAL.
 
+    "! the first selected row, typed as the entity
     METHODS result
       RETURNING
         VALUE(result) TYPE REF TO data.
 
+    "! the element value of the first selected row
     METHODS result_value
       RETURNING
         VALUE(result) TYPE string.
+
+    "! every selected row, a table of the entity
+    METHODS result_table
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
+    "! the element value of every selected row
+    METHODS result_values
+      RETURNING
+        VALUE(result) TYPE string_table.
 
     METHODS was_confirmed
       RETURNING
@@ -42,7 +69,13 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
+    "! the rows the dialog shows - with the selection column
     DATA mr_data TYPE REF TO data.
+
+    "! the selected rows after the confirm, a table of the entity. PUBLIC
+    "! because the core carries a generic reference through the draft only
+    "! as a public attribute - the caller reads it after nav_app_leave( )
+    DATA mr_result_table TYPE REF TO data.
 
   PROTECTED SECTION.
     DATA mv_cds_view   TYPE string.
@@ -53,6 +86,10 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
     DATA ms_entity     TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
     DATA mr_selected   TYPE REF TO data.
     DATA mv_result_val TYPE string.
+    DATA mv_multi      TYPE abap_bool.
+    DATA mt_filters    TYPE ty_t_name_value.
+    DATA mv_search     TYPE string.
+    DATA mt_result_values TYPE string_table.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app
@@ -62,7 +99,17 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
 
     METHODS load_data.
 
+    "! the WHERE clause: the caller's filters and the search text
+    METHODS get_where_clause
+      RETURNING
+        VALUE(result) TYPE string.
+
     METHODS render_dialog
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    "! read the selected rows into the results
+    METHODS on_confirm
       IMPORTING
         client TYPE REF TO z2ui5_if_client.
 
@@ -75,10 +122,15 @@ ENDCLASS.
 CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
 
   METHOD constructor.
+    super->constructor( ).
+    mv_floorplan = cs_floorplan-value_help.
     mv_cds_view = to_upper( cds_view_name ).
     mv_element = to_upper( element ).
     mv_title = title.
     mv_max_rows = max_rows.
+    mv_multi = multi_select.
+    mt_filters = filters.
+    mv_search = search.
   ENDMETHOD.
 
 
@@ -86,45 +138,31 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
 
     IF client->check_on_init( ).
       ms_entity = z2ui5_cl_rap_util=>read_entity( mv_cds_view ).
+      adjust_entity( CHANGING cs_entity = ms_entity ).
       IF mv_title IS INITIAL.
-        mv_title = ms_entity-name.
+        mv_title = COND #( WHEN ms_entity-header_info-type_name_plural IS NOT INITIAL
+                           THEN ms_entity-header_info-type_name_plural
+                           ELSE ms_entity-name ).
       ENDIF.
-      IF mv_element IS INITIAL AND lines( ms_entity-fields ) > 0.
-        mv_element = ms_entity-fields[ 1 ]-name.
+      IF mv_element IS INITIAL.
+        "the key is what a value help returns - the first field otherwise
+        IF ms_entity-keys IS NOT INITIAL.
+          mv_element = ms_entity-keys[ 1 ].
+        ELSEIF lines( ms_entity-fields ) > 0.
+          mv_element = ms_entity-fields[ 1 ]-name.
+        ENDIF.
       ENDIF.
       load_data( ).
       render_dialog( client ).
       RETURN.
     ENDIF.
 
+    IF ext_on_event( client ) = abap_true.
+      RETURN.
+    ENDIF.
+
     IF client->check_on_event( cs_event-confirm ).
-      mv_confirmed = abap_true.
-
-      DATA(lv_index_str) = client->get_event_arg( ).
-      DATA(lv_index) = CONV i( lv_index_str ).
-
-      IF mr_data IS BOUND AND lv_index > 0.
-        FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
-        ASSIGN mr_data->* TO <lt_data>.
-
-        IF lv_index <= lines( <lt_data> ).
-          FIELD-SYMBOLS <ls_row> TYPE any.
-          READ TABLE <lt_data> INDEX lv_index ASSIGNING <ls_row>.
-          IF sy-subrc = 0.
-            CREATE DATA mr_selected LIKE <ls_row>.
-            mr_selected->* = <ls_row>.
-
-            IF mv_element IS NOT INITIAL.
-              FIELD-SYMBOLS <lv_val> TYPE any.
-              ASSIGN COMPONENT mv_element OF STRUCTURE <ls_row> TO <lv_val>.
-              IF sy-subrc = 0.
-                mv_result_val = <lv_val>.
-              ENDIF.
-            ENDIF.
-          ENDIF.
-        ENDIF.
-      ENDIF.
-
+      on_confirm( client ).
       client->nav_app_leave( ).
       RETURN.
     ENDIF.
@@ -132,6 +170,13 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
     IF client->check_on_event( cs_event-cancel ).
       mv_confirmed = abap_false.
       client->nav_app_leave( ).
+      RETURN.
+    ENDIF.
+
+    IF client->check_on_event( cs_event-search ).
+      "the new rows reach the open dialog with this roundtrip's model
+      mv_search = client->get_event_arg( ).
+      load_data( ).
       RETURN.
     ENDIF.
 
@@ -154,33 +199,89 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD get_where_clause.
+
+    DATA lt_and TYPE string_table.
+
+    LOOP AT mt_filters INTO DATA(ls_filter) WHERE value IS NOT INITIAL.
+      READ TABLE ms_entity-fields INTO DATA(ls_field) WITH KEY name = to_upper( ls_filter-name ).
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_cond) = build_filter_condition( is_field = ls_field
+                                              value    = |={ ls_filter-value }| ).
+      IF lv_cond IS NOT INITIAL.
+        APPEND lv_cond TO lt_and.
+      ENDIF.
+    ENDLOOP.
+
+    lv_cond = build_search_condition( it_fields = ms_entity-fields
+                                      search    = mv_search ).
+    IF lv_cond IS NOT INITIAL.
+      APPEND lv_cond TO lt_and.
+    ENDIF.
+
+    result = concat_lines_of( table = lt_and sep = ` AND ` ).
+
+  ENDMETHOD.
+
+
   METHOD load_data.
-    TRY.
-        DATA(lo_descr) = CAST cl_abap_structdescr(
-          cl_abap_typedescr=>describe_by_name( mv_cds_view ) ).
-        DATA(lo_table_type) = cl_abap_tabledescr=>create( lo_descr ).
-        CREATE DATA mr_data TYPE HANDLE lo_table_type.
-        FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
-        ASSIGN mr_data->* TO <lt_data>.
-        SELECT * FROM (mv_cds_view) INTO TABLE @<lt_data>
-          UP TO @mv_max_rows ROWS.
-      CATCH cx_root.
-        CLEAR mr_data.
-    ENDTRY.
+    mr_data = select_rows( entity_name    = mv_cds_view
+                           where          = get_where_clause( )
+                           max_rows       = mv_max_rows
+                           with_selection = abap_true ).
+  ENDMETHOD.
+
+
+  METHOD on_confirm.
+
+    FIELD-SYMBOLS <lt_selected> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lv_val> TYPE any.
+
+    mv_confirmed = abap_true.
+    CLEAR: mr_selected, mv_result_val, mt_result_values.
+
+    mr_result_table = get_selected_rows( entity_name = mv_cds_view
+                                         data        = mr_data ).
+    IF mr_result_table IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN mr_result_table->* TO <lt_selected>.
+
+    LOOP AT <lt_selected> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      IF mr_selected IS NOT BOUND.
+        "typed by the entity's name - a named type survives the draft
+        mr_selected = to_entity_row( entity_name = mv_cds_view
+                                     row         = <ls_row> ).
+      ENDIF.
+      IF mv_element IS NOT INITIAL.
+        ASSIGN COMPONENT mv_element OF STRUCTURE <ls_row> TO <lv_val>.
+        IF sy-subrc = 0.
+          APPEND |{ <lv_val> }| TO mt_result_values.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+
+    IF mt_result_values IS NOT INITIAL.
+      mv_result_val = mt_result_values[ 1 ].
+    ENDIF.
+
   ENDMETHOD.
 
 
   METHOD render_dialog.
 
+    FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
+
     IF mr_data IS NOT BOUND.
       client->message_box_display(
-        text = |Could not load data from { mv_cds_view }|
+        text = |{ get_text( cs_text-load_error ) }: { mv_cds_view }|
         type = `error` ).
       client->nav_app_leave( ).
       RETURN.
     ENDIF.
 
-    FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
     ASSIGN mr_data->* TO <lt_data>.
 
     DATA(lo_popup) = z2ui5_cl_ui5_view_builder=>factory( ).
@@ -199,6 +300,13 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
                   v = client->_event( cs_event-confirm )
             )->a( n = `cancel`
                   v = client->_event( cs_event-cancel )
+            )->a( n = `search`
+                  v = client->_event( val = cs_event-search
+                                      arg = `${$parameters>/value}` )
+            )->a( n = `multiSelect`
+                  b = mv_multi
+            )->a( n = `growing`
+                  b = abap_true
             )->a( n = `items`
                   v = `{path:'` && client->_bind( val  = <lt_data>
                                                   path = abap_true ) && `'}` ).
@@ -206,6 +314,8 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
     DATA(lo_columns) = lo_dialog->ele( `columns` ).
     DATA(lo_cells) = lo_dialog->ele( `items`
         )->ele( `ColumnListItem`
+            )->a( n = `selected`
+                  v = |\{{ cv_select_column }\}|
             )->ele( `cells` ).
 
     "render only visible, non-hidden fields
@@ -221,11 +331,18 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
                 v = lv_path ).
 
       "if text element exists, add description column
-      IF ls_field-text_element IS NOT INITIAL.
+      IF ls_field-text_element IS NOT INITIAL
+        AND line_exists( ms_entity-fields[ name = ls_field-text_element ] ).
+        DATA(lv_text_label) = ms_entity-fields[ name = ls_field-text_element ]-label.
+        IF ms_entity-fields[ name = ls_field-text_element ]-is_visible = abap_true
+          AND ms_entity-fields[ name = ls_field-text_element ]-is_hidden = abap_false.
+          "rendered as a column of its own anyway
+          CONTINUE.
+        ENDIF.
         lo_columns->ele( `Column`
             )->tag( `Text`
                 )->a( n = `text`
-                      t = ls_field-text_element ).
+                      t = lv_text_label ).
         DATA(lv_text_path) = |\{{ ls_field-text_element }\}|.
         lo_cells->tag( `Text`
             )->a( n = `text`
@@ -245,6 +362,16 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
 
   METHOD result_value.
     result = mv_result_val.
+  ENDMETHOD.
+
+
+  METHOD result_table.
+    result = mr_result_table.
+  ENDMETHOD.
+
+
+  METHOD result_values.
+    result = mt_result_values.
   ENDMETHOD.
 
 
