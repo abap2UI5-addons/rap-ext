@@ -1,6 +1,6 @@
 "! Fiori-Elements-style list report generated from the annotations of a
-"! CDS view - columns, filter bar, criticality, units and row navigation
-"! all come from the metadata (see README).
+"! CDS view - columns, filter bar, value helps, criticality, units, actions
+"! and row navigation all come from the metadata (see README).
 "!
 "! The escape hatch is plain inheritance: the class is deliberately not
 "! FINAL and every rendering and event step is a protected method a
@@ -8,11 +8,11 @@
 "! floorplan does not know are routed to on_event, so a subclass adds its
 "! own actions the same way any abap2UI5 app handles them.
 "!
-"! Related: z2ui5_cl_fp_list_report in the abap2UI5 core generates the
-"! same UX from any flat internal table via RTTI - use it when the data
-"! source is not a CDS view with UI annotations.
+"! The data source is always a CDS view with UI annotations - the abap2UI5
+"! core ships no list report over a plain internal table (see README).
 CLASS z2ui5_cl_rap_list_report DEFINITION
   PUBLIC
+  INHERITING FROM z2ui5_cl_rap_floorplan
   CREATE PUBLIC.
 
   PUBLIC SECTION.
@@ -21,20 +21,25 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
 
     TYPES:
       BEGIN OF ty_s_filter,
-        name  TYPE string,
-        label TYPE string,
-        value TYPE string,
+        name    TYPE string,
+        label   TYPE string,
+        value   TYPE string,
+        "the field has a value help - the input shows its button
+        show_vh TYPE abap_bool,
       END OF ty_s_filter.
 
     TYPES ty_t_filter TYPE STANDARD TABLE OF ty_s_filter WITH DEFAULT KEY.
 
     CONSTANTS:
       BEGIN OF cs_event,
-        refresh   TYPE string VALUE `REFRESH`,
-        go        TYPE string VALUE `GO`,
-        row_press TYPE string VALUE `ROW_PRESS`,
-        back      TYPE string VALUE `BACK`,
-        create    TYPE string VALUE `CREATE`,
+        refresh    TYPE string VALUE `REFRESH`,
+        go         TYPE string VALUE `GO`,
+        row_press  TYPE string VALUE `ROW_PRESS`,
+        back       TYPE string VALUE `BACK`,
+        create     TYPE string VALUE `CREATE`,
+        value_help TYPE string VALUE `FILTER_VALUE_HELP`,
+        action     TYPE string VALUE `ACTION`,
+        search     TYPE string VALUE `SEARCH`,
       END OF cs_event.
 
     METHODS constructor
@@ -43,9 +48,13 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         title         TYPE string OPTIONAL
         max_rows      TYPE i DEFAULT 500.
 
+    "! the number of rows that match the filters (not only the loaded ones)
     DATA mv_count    TYPE string.
+    "! the rows - with the selection column when the entity has actions
     DATA mr_data     TYPE REF TO data.
     DATA mt_filter   TYPE ty_t_filter.
+    "! the free-text search (the worklist renders a field for it)
+    DATA mv_search   TYPE string.
 
   PROTECTED SECTION.
     DATA mv_cds_view TYPE string.
@@ -54,6 +63,14 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     DATA ms_entity   TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
 
     DATA mt_row_key TYPE string_table.
+
+    "! what the entity lets the user write (create button, actions)
+    DATA ms_caps TYPE ty_s_capabilities.
+    "! an action waiting for its parameter dialog to return
+    DATA mv_pending_action TYPE string.
+    "! the keys of the row an inline action was pressed on - empty for a
+    "! toolbar action, which runs on the selected rows
+    DATA mt_pending_keys TYPE string_table.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app;
@@ -106,6 +123,23 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       IMPORTING
         client TYPE REF TO z2ui5_if_client.
 
+    "! a toolbar or inline action - asks for the parameter first when the
+    "! action has one
+    METHODS on_action
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    "! run the pending action on its rows, param is its parameter
+    METHODS execute_action
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client
+        param  TYPE REF TO data OPTIONAL.
+
+    "! the return from a called app: value help, action dialog, object page
+    METHODS on_navigated
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
     METHODS get_line_item_fields
       RETURNING
         VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_field_info.
@@ -117,6 +151,13 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     METHODS get_row_key_fields
       RETURNING
         VALUE(result) TYPE string_table.
+
+    "! the actions of @UI.lineItem - inline ones render per row
+    METHODS get_line_item_actions
+      IMPORTING
+        inline        TYPE abap_bool
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_action.
 
     METHODS normalize_value
       IMPORTING
@@ -133,6 +174,8 @@ ENDCLASS.
 CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD constructor.
+    super->constructor( ).
+    mv_floorplan = cs_floorplan-list_report.
     mv_cds_view = to_upper( cds_view_name ).
     mv_title = title.
     mv_max_rows = max_rows.
@@ -143,6 +186,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     IF client->check_on_init( ).
       ms_entity = z2ui5_cl_rap_util=>read_entity( mv_cds_view ).
+      adjust_entity( CHANGING cs_entity = ms_entity ).
       IF mv_title IS INITIAL.
         IF ms_entity-header_info-type_name_plural IS NOT INITIAL.
           mv_title = ms_entity-header_info-type_name_plural.
@@ -154,19 +198,27 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       "init filter bar from @UI.selectionField
       LOOP AT get_selection_fields( ) INTO DATA(ls_sel).
         APPEND VALUE ty_s_filter(
-          name  = ls_sel-name
-          label = ls_sel-label ) TO mt_filter.
+          name    = ls_sel-name
+          label   = ls_sel-label
+          value   = ls_sel-filter_default
+          show_vh = xsdbool( ls_sel-value_help-entity_name IS NOT INITIAL ) ) TO mt_filter.
       ENDLOOP.
 
       mt_row_key = get_row_key_fields( ).
+      ms_caps = get_capabilities( mv_cds_view ).
 
       load_data( ).
       render_page( client ).
       RETURN.
     ENDIF.
 
+    IF ext_on_event( client ) = abap_true.
+      RETURN.
+    ENDIF.
+
     IF client->check_on_event( cs_event-refresh )
-      OR client->check_on_event( cs_event-go ).
+      OR client->check_on_event( cs_event-go )
+      OR client->check_on_event( cs_event-search ).
       load_data( ).
       RETURN.
     ENDIF.
@@ -186,20 +238,23 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    "handle return from Object Page - refresh if data was saved
-    IF client->check_on_navigated( ).
-      IF client->check_app_prev_stack( ).
-        TRY.
-            DATA(lo_prev_op) = CAST z2ui5_cl_rap_object_page(
-              client->get_app_prev( ) ).
-            IF lo_prev_op->was_saved( ).
-              load_data( ).
-              client->message_toast_display( `Data refreshed` ).
-            ENDIF.
-          CATCH cx_sy_move_cast_error ##NO_HANDLER.
-        ENDTRY.
+    IF client->check_on_event( cs_event-value_help ).
+      READ TABLE ms_entity-fields INTO DATA(ls_field) WITH KEY name = client->get_event_arg( ).
+      IF sy-subrc = 0.
+        open_value_help( client       = client
+                         is_field     = ls_field
+                         multi_select = abap_true ).
       ENDIF.
-      render_page( client ).
+      RETURN.
+    ENDIF.
+
+    IF client->check_on_event( cs_event-action ).
+      on_action( client ).
+      RETURN.
+    ENDIF.
+
+    IF client->check_on_navigated( ).
+      on_navigated( client ).
       RETURN.
     ENDIF.
 
@@ -216,63 +271,101 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD load_data.
+  METHOD on_navigated.
+
+    "back from the value help of a filter: its values, exact
+    DATA(lo_vh) = get_value_help_result( client ).
+    IF lo_vh IS BOUND.
+      READ TABLE mt_filter ASSIGNING FIELD-SYMBOL(<ls_filter>) WITH KEY name = mv_vh_target.
+      IF sy-subrc = 0.
+        DATA lt_exact TYPE string_table.
+        LOOP AT lo_vh->result_values( ) INTO DATA(lv_value).
+          APPEND |={ lv_value }| TO lt_exact.
+        ENDLOOP.
+        <ls_filter>-value = concat_lines_of( table = lt_exact sep = `;` ).
+      ENDIF.
+      CLEAR mv_vh_target.
+      load_data( ).
+      render_page( client ).
+      RETURN.
+    ENDIF.
+    CLEAR mv_vh_target.
+
+    "what came back is decided by what this app called, not by
+    "check_app_prev_stack( ) - that answers whether this app has a caller,
+    "and a root list report has none
+
+    "back from the parameter dialog of an action
+    IF mv_pending_action IS NOT INITIAL.
+      TRY.
+          DATA(lo_dialog) = CAST z2ui5_cl_rap_action_dialog( client->get_app_prev( ) ).
+          IF lo_dialog->was_confirmed( ).
+            execute_action( client = client
+                            param  = lo_dialog->result( ) ).
+          ENDIF.
+        CATCH cx_root ##NO_HANDLER.
+      ENDTRY.
+      CLEAR: mv_pending_action, mt_pending_keys.
+    ENDIF.
+
+    "back from the object page - refresh if data was saved
     TRY.
-        DATA(lo_descr) = CAST cl_abap_structdescr(
-          cl_abap_typedescr=>describe_by_name( mv_cds_view ) ).
-        DATA(lo_table_type) = cl_abap_tabledescr=>create( lo_descr ).
-        CREATE DATA mr_data TYPE HANDLE lo_table_type.
-        FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
-        ASSIGN mr_data->* TO <lt_data>.
-        DATA(lv_where) = get_where_clause( ).
-        SELECT * FROM (mv_cds_view)
-          WHERE (lv_where)
-          INTO TABLE @<lt_data>
-          UP TO @mv_max_rows ROWS.
-        mv_count = lines( <lt_data> ).
-      CATCH cx_root.
-        CLEAR mr_data.
-        mv_count = `0`.
+        DATA(lo_prev_op) = CAST z2ui5_cl_rap_object_page( client->get_app_prev( ) ).
+        IF lo_prev_op->was_saved( ).
+          load_data( ).
+          client->message_toast_display( get_text( cs_text-refreshed ) ).
+        ENDIF.
+      "a cast error, or a previous app the draft no longer has
+      CATCH cx_root ##NO_HANDLER.
     ENDTRY.
+
+    render_page( client ).
+
+  ENDMETHOD.
+
+
+  METHOD load_data.
+
+    DATA(lv_where) = get_where_clause( ).
+    mr_data = select_rows(
+      entity_name    = mv_cds_view
+      where          = lv_where
+      max_rows       = mv_max_rows
+      with_selection = xsdbool( get_line_item_actions( abap_false ) IS NOT INITIAL ) ).
+    IF mr_data IS BOUND.
+      mv_count = count_rows( entity_name = mv_cds_view
+                             where       = lv_where ).
+    ELSE.
+      mv_count = `0`.
+    ENDIF.
+
   ENDMETHOD.
 
 
   METHOD get_where_clause.
 
+    DATA lt_and TYPE string_table.
+
     LOOP AT mt_filter INTO DATA(ls_filter) WHERE value IS NOT INITIAL.
-      DATA(lv_value) = replace( val  = ls_filter-value
-                                sub  = `'`
-                                with = `''`
-                                occ  = 0 ).
       READ TABLE ms_entity-fields INTO DATA(ls_field)
         WITH KEY name = ls_filter-name.
       IF sy-subrc <> 0.
         CONTINUE.
       ENDIF.
-
-      DATA(lv_cond) = ``.
-      CASE ls_field-type_kind.
-        WHEN `CHAR` OR `STRING`.
-          "wildcard search: user pattern via *, otherwise contains
-          IF lv_value CS `*`.
-            lv_value = replace( val  = lv_value
-                                sub  = `*`
-                                with = `%`
-                                occ  = 0 ).
-            lv_cond = |{ ls_filter-name } LIKE '{ lv_value }'|.
-          ELSE.
-            lv_cond = |{ ls_filter-name } LIKE '%{ lv_value }%'|.
-          ENDIF.
-        WHEN OTHERS.
-          lv_cond = |{ ls_filter-name } = '{ lv_value }'|.
-      ENDCASE.
-
-      IF result IS INITIAL.
-        result = lv_cond.
-      ELSE.
-        result = |{ result } AND { lv_cond }|.
+      DATA(lv_cond) = build_filter_condition( is_field = ls_field
+                                              value    = ls_filter-value ).
+      IF lv_cond IS NOT INITIAL.
+        APPEND lv_cond TO lt_and.
       ENDIF.
     ENDLOOP.
+
+    lv_cond = build_search_condition( it_fields = ms_entity-fields
+                                      search    = mv_search ).
+    IF lv_cond IS NOT INITIAL.
+      APPEND lv_cond TO lt_and.
+    ENDIF.
+
+    result = concat_lines_of( table = lt_and sep = ` AND ` ).
 
   ENDMETHOD.
 
@@ -305,8 +398,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD get_row_key_fields.
 
-    "prefer @ObjectModel.semanticKey, fallback to all line item columns
-    LOOP AT ms_entity-semantic_key INTO DATA(lv_key).
+    "the keys of the entity (DDIC keys, else @ObjectModel.semanticKey),
+    "fallback to all line item columns
+    LOOP AT ms_entity-keys INTO DATA(lv_key).
       IF line_exists( ms_entity-fields[ name = lv_key ] ).
         APPEND lv_key TO result.
       ENDIF.
@@ -321,67 +415,149 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD get_line_item_actions.
+    "actions exist only on a RAP business object
+    IF ms_caps-is_rap_bo = abap_false.
+      RETURN.
+    ENDIF.
+    LOOP AT ms_entity-actions INTO DATA(ls_action)
+      WHERE source = `LINEITEM` AND inline = inline.
+      APPEND ls_action TO result.
+    ENDLOOP.
+  ENDMETHOD.
+
+
   METHOD normalize_value.
-    "align ABAP and JSON model representations (dates, times, padding)
-    result = val.
-    REPLACE ALL OCCURRENCES OF `-` IN result WITH ``.
-    REPLACE ALL OCCURRENCES OF `:` IN result WITH ``.
-    CONDENSE result.
+    result = normalize_key_value( val ).
   ENDMETHOD.
 
 
   METHOD on_row_press.
 
-    IF mr_data IS NOT BOUND OR mt_row_key IS INITIAL.
+    FIELD-SYMBOLS <ls_row> TYPE any.
+
+    DATA(lr_row) = find_row_by_event_keys( data       = mr_data
+                                           key_fields = mt_row_key
+                                           client     = client ).
+    IF lr_row IS NOT BOUND.
       RETURN.
     ENDIF.
+    ASSIGN lr_row->* TO <ls_row>.
 
-    FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
-    ASSIGN mr_data->* TO <lt_data>.
-
-    LOOP AT <lt_data> ASSIGNING FIELD-SYMBOL(<ls_row>).
-      DATA(lv_match) = abap_true.
-      DATA(lv_index) = 0.
-      LOOP AT mt_row_key INTO DATA(lv_key).
-        lv_index = lv_index + 1.
-        ASSIGN COMPONENT lv_key OF STRUCTURE <ls_row> TO FIELD-SYMBOL(<lv_val>).
-        IF sy-subrc <> 0
-          OR normalize_value( CONV #( <lv_val> ) )
-          <> normalize_value( client->get_event_arg( lv_index ) ).
-          lv_match = abap_false.
-          EXIT.
-        ENDIF.
-      ENDLOOP.
-
-      IF lv_match = abap_true.
-        client->nav_app_call( NEW z2ui5_cl_rap_object_page( val = <ls_row> ) ).
-        RETURN.
-      ENDIF.
-    ENDLOOP.
+    "typed as the entity again - the object page reads its annotations
+    "from the type name, which a row with the selection column has not
+    DATA(lr_entity_row) = to_entity_row( entity_name = mv_cds_view
+                                         row         = <ls_row> ).
+    ASSIGN lr_entity_row->* TO <ls_row>.
+    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( val = <ls_row> ).
+    lo_op->set_extension( mo_ext ).
+    client->nav_app_call( lo_op ).
 
   ENDMETHOD.
 
 
   METHOD on_create.
 
+    FIELD-SYMBOLS <ls_empty> TYPE any.
+
+    IF ms_caps-can_create = abap_false.
+      client->message_box_display( text = get_text( cs_text-read_only )
+                                   type = `error` ).
+      RETURN.
+    ENDIF.
+
     TRY.
-        DATA(lo_descr) = CAST cl_abap_structdescr(
-          cl_abap_typedescr=>describe_by_name( mv_cds_view ) ).
         DATA lr_empty TYPE REF TO data.
-        CREATE DATA lr_empty TYPE HANDLE lo_descr.
-        FIELD-SYMBOLS <ls_empty> TYPE any.
+        CREATE DATA lr_empty TYPE (mv_cds_view).
         ASSIGN lr_empty->* TO <ls_empty>.
-        client->nav_app_call(
-          NEW z2ui5_cl_rap_object_page(
-            val       = <ls_empty>
-            title     = `Create ` && mv_title
-            editable  = abap_true
-            is_create = abap_true ) ).
+        DATA(lo_op) = NEW z2ui5_cl_rap_object_page(
+          val       = <ls_empty>
+          title     = |{ get_text( cs_text-create_title ) } { mv_title }|
+          editable  = abap_true
+          is_create = abap_true ).
+        lo_op->set_extension( mo_ext ).
+        client->nav_app_call( lo_op ).
       CATCH cx_root.
         client->message_box_display(
-          text = `Cannot create entry for this entity`
+          text = get_text( cs_text-read_only )
           type = `error` ).
     ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD on_action.
+
+    "arg 1 the action, args 2... the keys of the row of an inline action
+    mv_pending_action = client->get_event_arg( ).
+    CLEAR mt_pending_keys.
+    DO lines( mt_row_key ) TIMES.
+      DATA(lv_key) = client->get_event_arg( sy-index + 1 ).
+      IF lv_key IS INITIAL AND sy-index = 1.
+        EXIT.
+      ENDIF.
+      APPEND lv_key TO mt_pending_keys.
+    ENDDO.
+
+    DATA(lr_param) = create_action_parameter( entity_name = mv_cds_view
+                                              action      = mv_pending_action ).
+    IF lr_param IS BOUND.
+      "the parameter first - the action runs on the return (on_navigated)
+      ASSIGN lr_param->* TO FIELD-SYMBOL(<ls_param>).
+      READ TABLE ms_entity-actions INTO DATA(ls_action) WITH KEY name = mv_pending_action.
+      DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = <ls_param>
+                                                        title = ls_action-label ).
+      lo_dialog->set_extension( mo_ext ).
+      client->nav_app_call( lo_dialog ).
+      RETURN.
+    ENDIF.
+
+    execute_action( client ).
+    CLEAR: mv_pending_action, mt_pending_keys.
+
+  ENDMETHOD.
+
+
+  METHOD execute_action.
+
+    FIELD-SYMBOLS <ls_row> TYPE any.
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+    DATA lr_rows TYPE REF TO data.
+
+    IF mt_pending_keys IS INITIAL.
+      lr_rows = get_selected_rows( entity_name = mv_cds_view
+                                   data        = mr_data ).
+    ELSE.
+      "the row of an inline action, found again by its keys
+      DATA(lr_row) = find_row_by_keys( data       = mr_data
+                                       key_fields = mt_row_key
+                                       key_values = mt_pending_keys ).
+      lr_rows = create_entity_table( mv_cds_view ).
+      IF lr_row IS BOUND AND lr_rows IS BOUND.
+        ASSIGN lr_rows->* TO <lt_rows>.
+        ASSIGN lr_row->* TO <ls_row>.
+        APPEND INITIAL LINE TO <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_new>).
+        MOVE-CORRESPONDING <ls_row> TO <ls_new>.
+      ENDIF.
+    ENDIF.
+
+    DATA(ls_result) = run_action( entity_name = mv_cds_view
+                                  action      = mv_pending_action
+                                  rows        = lr_rows
+                                  param       = param ).
+    IF ls_result-success = abap_true.
+      load_data( ).
+      IF ls_result-messages IS INITIAL.
+        client->message_toast_display( get_text( cs_text-action_done ) ).
+      ELSE.
+        show_messages( client   = client
+                       messages = ls_result-messages
+                       type     = `success` ).
+      ENDIF.
+    ELSE.
+      show_messages( client   = client
+                     messages = ls_result-messages ).
+    ENDIF.
 
   ENDMETHOD.
 
@@ -389,6 +565,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   METHOD render_page.
 
     IF mr_data IS NOT BOUND.
+      client->message_box_display( text = |{ get_text( cs_text-load_error ) }: { mv_cds_view }|
+                                   type = `error` ).
       RETURN.
     ENDIF.
 
@@ -427,12 +605,25 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD render_filter_bar.
 
-    IF mt_filter IS INITIAL.
+    IF mt_filter IS INITIAL AND ms_entity-is_searchable = abap_false.
       RETURN.
     ENDIF.
 
     DATA(lo_bar) = io_page->ele( `subHeader`
         )->ele( `OverflowToolbar` ).
+
+    "@Search.searchable: the free-text search over the search elements
+    IF ms_entity-is_searchable = abap_true.
+      lo_bar->tag( `SearchField`
+          )->a( n = `value`
+                v = client->_bind( mv_search )
+          )->a( n = `search`
+                v = client->_event( cs_event-search )
+          )->a( n = `width`
+                v = `15rem`
+          )->a( n = `class`
+                v = `sapUiTinyMarginEnd` ).
+    ENDIF.
 
     DATA(lo_fbox) = lo_bar->ele( `HBox`
         )->a( n = `items`
@@ -447,6 +638,13 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
               v = `{VALUE}`
         )->a( n = `placeholder`
               v = `{LABEL}`
+        )->a( n = `tooltip`
+              t = get_text( cs_text-filter_hint )
+        )->a( n = `showValueHelp`
+              v = `{SHOW_VH}`
+        )->a( n = `valueHelpRequest`
+              v = client->_event( val = cs_event-value_help
+                                  arg = `${NAME}` )
         )->a( n = `submit`
               v = client->_event( cs_event-go )
         )->a( n = `width`
@@ -458,7 +656,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     lo_bar->tag( `Button`
         )->a( n = `text`
-              v = `Go`
+              t = get_text( cs_text-go )
         )->a( n = `type`
               v = `Emphasized`
         )->a( n = `press`
@@ -475,6 +673,13 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     ASSIGN mr_data->* TO <lt_data>.
 
     DATA(lt_columns) = get_line_item_fields( ).
+    DATA(lt_inline) = get_line_item_actions( abap_true ).
+    DATA(lv_select) = xsdbool( get_line_item_actions( abap_false ) IS NOT INITIAL ).
+    "the rows are selectable when there are actions to run on them
+    DATA(lv_mode) = `None`.
+    IF lv_select = abap_true.
+      lv_mode = `MultiSelect`.
+    ENDIF.
 
     DATA(lo_table) = io_page->ele( `Table`
         )->a( n = `items`
@@ -487,7 +692,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         )->a( n = `sticky`
               v = `ColumnHeaders,HeaderToolbar`
         )->a( n = `mode`
-              v = `None` ).
+              v = lv_mode ).
 
     render_toolbar( io_table = lo_table
                     client   = client ).
@@ -497,15 +702,20 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       render_column( io_columns = lo_columns
                      is_col     = ls_col ).
     ENDLOOP.
+    LOOP AT lt_inline INTO DATA(ls_inline).
+      lo_columns->ele( `Column`
+          )->a( n = `hAlign`
+                v = `End` ).
+    ENDLOOP.
 
     "items - row press navigates to a generated object page
     DATA(lo_items) = lo_table->ele( `items` ).
     DATA lo_row TYPE REF TO z2ui5_cl_ui5_view_builder.
+    DATA lt_arg TYPE string_table.
+    LOOP AT mt_row_key INTO DATA(lv_key).
+      APPEND `${` && lv_key && `}` TO lt_arg.
+    ENDLOOP.
     IF mt_row_key IS NOT INITIAL.
-      DATA lt_arg TYPE string_table.
-      LOOP AT mt_row_key INTO DATA(lv_key).
-        APPEND `${` && lv_key && `}` TO lt_arg.
-      ENDLOOP.
       lo_row = lo_items->ele( `ColumnListItem`
           )->a( n = `type`
                 v = `Navigation`
@@ -515,11 +725,27 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     ELSE.
       lo_row = lo_items->ele( `ColumnListItem` ).
     ENDIF.
+    IF lv_select = abap_true.
+      lo_row->a( n = `selected`
+                 v = |\{{ cv_select_column }\}| ).
+    ENDIF.
     DATA(lo_cells) = lo_row->ele( `cells` ).
 
     LOOP AT lt_columns INTO ls_col.
       render_cell( io_cells = lo_cells
                    is_col   = ls_col ).
+    ENDLOOP.
+
+    "inline actions - one button per row, the row found again by its keys
+    LOOP AT lt_inline INTO ls_inline.
+      DATA(lt_action_arg) = VALUE string_table( ( ls_inline-name ) ).
+      APPEND LINES OF lt_arg TO lt_action_arg.
+      lo_cells->tag( `Button`
+          )->a( n = `text`
+                t = ls_inline-label
+          )->a( n = `press`
+                v = client->_event( val   = cs_event-action
+                                    t_arg = lt_action_arg ) ).
     ENDLOOP.
 
   ENDMETHOD.
@@ -536,21 +762,33 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     lo_toolbar->tag( `ToolbarSpacer` ).
 
-    lo_toolbar->tag( `Button`
-        )->a( n = `text`
-              v = `Create`
-        )->a( n = `press`
-              v = client->_event( cs_event-create )
-        )->a( n = `type`
-              v = `Emphasized`
-        )->a( n = `icon`
-              v = `sap-icon://add` ).
+    "@UI.lineItem actions of type #FOR_ACTION - on the selected rows
+    LOOP AT get_line_item_actions( abap_false ) INTO DATA(ls_action).
+      lo_toolbar->tag( `Button`
+          )->a( n = `text`
+                t = ls_action-label
+          )->a( n = `press`
+                v = client->_event( val = cs_event-action
+                                    arg = ls_action-name ) ).
+    ENDLOOP.
+
+    IF ms_caps-can_create = abap_true.
+      lo_toolbar->tag( `Button`
+          )->a( n = `text`
+                t = get_text( cs_text-create )
+          )->a( n = `press`
+                v = client->_event( cs_event-create )
+          )->a( n = `type`
+                v = `Emphasized`
+          )->a( n = `icon`
+                v = `sap-icon://add` ).
+    ENDIF.
 
     lo_toolbar->tag( `Button`
         )->a( n = `icon`
               v = `sap-icon://refresh`
         )->a( n = `tooltip`
-              v = `Refresh`
+              t = get_text( cs_text-refresh )
         )->a( n = `press`
               v = client->_event( cs_event-refresh ) ).
 
@@ -608,10 +846,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           )->a( n = `text`
                 v = lv_path
           )->a( n = `state`
-                v = `{= ${` && lv_crit_field &&
-                    `} === 3 ? 'Success' : (${` && lv_crit_field &&
-                    `} === 1 ? 'Error' : (${` && lv_crit_field &&
-                    `} === 2 ? 'Warning' : 'None')) }` ).
+                v = criticality_expression( lv_crit_field ) ).
 
     "amount + currency -> ObjectNumber
     ELSEIF is_col-is_amount_field = abap_true
@@ -620,7 +855,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           )->a( n = `number`
                 v = lv_path
           )->a( n = `unit`
-                v = |\{{ to_upper( is_col-semantics_currency_code ) }\}| ).
+                v = |\{{ is_col-semantics_currency_code }\}| ).
 
     "quantity + unit -> ObjectNumber
     ELSEIF is_col-is_quantity_field = abap_true
@@ -629,7 +864,14 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           )->a( n = `number`
                 v = lv_path
           )->a( n = `unit`
-                v = |\{{ to_upper( is_col-semantics_unit_of_measure ) }\}| ).
+                v = |\{{ is_col-semantics_unit_of_measure }\}| ).
+
+    "@ObjectModel.text.element - "Text (Value)", the Fiori default
+    ELSEIF is_col-text_element IS NOT INITIAL
+      AND line_exists( ms_entity-fields[ name = is_col-text_element ] ).
+      io_cells->tag( `Text`
+          )->a( n = `text`
+                v = |\{{ is_col-text_element }\} ({ lv_path })| ).
 
     ELSE.
       io_cells->tag( `Text`

@@ -12,15 +12,14 @@ npm run check
 ```
 
 `npm run check` is the same set of steps the workflows run on a pull request,
-so a green run locally is a green run there. `npm test` is an alias for it —
-this repository has no separate unit-test suite; its ABAP is checked, not
-executed.
+so a green run locally is a green run there. `npm test` is an alias for it.
 
 ## What the gates are
 
 | Gate | What it proves |
 | --- | --- |
-| `npm run lint` | abaplint: syntax and style, resolved against the abap2UI5 core |
+| `npm run lint` | abaplint: syntax and style, resolved against the abap2UI5 release pinned in `abaplint.jsonc` |
+| `npm run unit` | the ABAP Unit tests that need no SAP system, transpiled with open-abap-core (`scripts/unit.mjs`) |
 | `npm run check:abap2ui5` | [abap2UI5-linter](https://github.com/abap2UI5/linter): the app class and the view it builds, judged together — controls, members, bindings, the UI5 version floor, and a headless render of every view |
 
 The abap2UI5-linter keeps a baseline in `abap2ui5lint-baseline.json`. Findings
@@ -53,3 +52,10 @@ translate a UI5 XML view one to one. Two things to know before editing a chain:
 The frozen `z2ui5_cl_xml_view` is gone from this repository. Do not reintroduce
 it: it lives in the core's `src/99`, outside the released API, and the view gate
 can read nothing that is built with it.
+
+## What no gate sees
+
+The RAP write path (`z2ui5_cl_rap_eml`), the reading of metadata extensions
+and every database access run only in a system. A change there says in its
+pull request whether it was tried in one - install with abapGit and click
+through `z2ui5_cl_rap_test`.
