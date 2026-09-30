@@ -92,7 +92,7 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
 
     TYPES ty_t_section TYPE STANDARD TABLE OF ty_s_section WITH DEFAULT KEY.
 
-    "! a #LINEITEM_REFERENCE section with its entity
+    " a #LINEITEM_REFERENCE section with its entity
     TYPES:
       BEGIN OF ty_s_child,
         section_id TYPE string,

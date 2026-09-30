@@ -23,7 +23,7 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         overview_page TYPE string VALUE `OVERVIEW_PAGE`,
       END OF cs_floorplan.
 
-    "! The keys of get_text( ) - z2ui5_if_rap_ext~get_text translates them
+    " The keys of get_text( ) - z2ui5_if_rap_ext~get_text translates them
     CONSTANTS:
       BEGIN OF cs_text,
         create         TYPE string VALUE `CREATE`,
@@ -153,12 +153,8 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE i.
 
-    "! the WHERE condition for the user's filter text on one field:
-    "!   abc     contains (text fields) / equals (other types)
-    "!   a*c     pattern             =abc   equals
-    "!   !abc    not                 a..z   between
-    "!   >x >=x <x <=x               compare
-    "!   several of them separated by ; are ORed
+    "! the WHERE condition for the user's filter text on one field - the
+    "! syntax is z2ui5_cl_rap_util=>build_filter_condition's
     METHODS build_filter_condition
       IMPORTING
         is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
@@ -331,13 +327,6 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
-    METHODS literal
-      IMPORTING
-        is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
-        value         TYPE string
-      RETURNING
-        VALUE(result) TYPE string.
-
 ENDCLASS.
 
 
@@ -367,7 +356,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD get_capabilities.
 
-    DATA(lv_entity) = CONV string( to_upper( entity_name ) ).
+    DATA(lv_entity) = to_upper( entity_name ).
     IF lv_entity IS INITIAL.
       RETURN.
     ENDIF.
@@ -539,118 +528,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD literal.
-
-    "the value as an ABAP SQL literal of the field's type: quotes doubled,
-    "dates and times in their internal form, a decimal comma as a point
-    result = value.
-    CASE is_field-type_kind.
-      WHEN `DATS` OR `TIMS`.
-        result = normalize_key_value( result ).
-      WHEN `DEC` OR `INT`.
-        REPLACE ALL OCCURRENCES OF `,` IN result WITH `.`.
-        CONDENSE result NO-GAPS.
-    ENDCASE.
-    result = replace( val = result sub = `'` with = `''` occ = 0 ).
-    result = |'{ result }'|.
-
-  ENDMETHOD.
-
-
   METHOD build_filter_condition.
-
-    DATA lt_or TYPE string_table.
-    DATA(lv_name) = is_field-name.
-    DATA(lv_text_field) = xsdbool( is_field-type_kind = `CHAR` ).
-
-    SPLIT value AT `;` INTO TABLE DATA(lt_parts).
-    LOOP AT lt_parts INTO DATA(lv_part).
-      CONDENSE lv_part.
-      IF lv_part IS INITIAL.
-        CONTINUE.
-      ENDIF.
-
-      DATA(lv_cond) = ``.
-      DATA(lv_not) = abap_false.
-      IF lv_part(1) = `!`.
-        lv_not = abap_true.
-        lv_part = substring( val = lv_part off = 1 ).
-        IF lv_part IS INITIAL.
-          CONTINUE.
-        ENDIF.
-      ENDIF.
-
-      IF lv_part CS `..`.
-        SPLIT lv_part AT `..` INTO DATA(lv_low) DATA(lv_high).
-        lv_cond = |{ lv_name } BETWEEN { literal( is_field = is_field value = lv_low ) }| &&
-                  | AND { literal( is_field = is_field value = lv_high ) }|.
-      ELSEIF strlen( lv_part ) > 2 AND ( lv_part(2) = `>=` OR lv_part(2) = `<=` ).
-        lv_cond = |{ lv_name } { lv_part(2) } { literal( is_field = is_field value = substring( val = lv_part off = 2 ) ) }|.
-      ELSEIF strlen( lv_part ) > 1 AND ( lv_part(1) = `>` OR lv_part(1) = `<` ).
-        lv_cond = |{ lv_name } { lv_part(1) } { literal( is_field = is_field value = substring( val = lv_part off = 1 ) ) }|.
-      ELSEIF strlen( lv_part ) > 1 AND lv_part(1) = `=`.
-        lv_cond = |{ lv_name } = { literal( is_field = is_field value = substring( val = lv_part off = 1 ) ) }|.
-      ELSEIF lv_text_field = abap_true.
-        "LIKE: the user's * is the wildcard, their own % and _ are escaped
-        DATA(lv_like) = lv_part.
-        lv_like = replace( val = lv_like sub = `#` with = `##` occ = 0 ).
-        lv_like = replace( val = lv_like sub = `%` with = `#%` occ = 0 ).
-        lv_like = replace( val = lv_like sub = `_` with = `#_` occ = 0 ).
-        lv_like = replace( val = lv_like sub = `'` with = `''` occ = 0 ).
-        IF lv_like CS `*`.
-          lv_like = replace( val = lv_like sub = `*` with = `%` occ = 0 ).
-        ELSE.
-          lv_like = |%{ lv_like }%|.
-        ENDIF.
-        lv_cond = |{ lv_name } LIKE '{ lv_like }' ESCAPE '#'|.
-      ELSE.
-        lv_cond = |{ lv_name } = { literal( is_field = is_field value = lv_part ) }|.
-      ENDIF.
-
-      IF lv_not = abap_true.
-        lv_cond = |NOT ( { lv_cond } )|.
-      ENDIF.
-      APPEND lv_cond TO lt_or.
-    ENDLOOP.
-
-    IF lt_or IS INITIAL.
-      RETURN.
-    ENDIF.
-    IF lines( lt_or ) = 1.
-      result = lt_or[ 1 ].
-      RETURN.
-    ENDIF.
-    result = |( { concat_lines_of( table = lt_or sep = ` OR ` ) } )|.
-
+    result = z2ui5_cl_rap_util=>build_filter_condition( is_field = is_field
+                                                        value    = value ).
   ENDMETHOD.
 
 
   METHOD build_search_condition.
-
-    DATA lt_or TYPE string_table.
-    DATA(lv_search) = to_upper( condense( search ) ).
-    IF lv_search IS INITIAL.
-      RETURN.
-    ENDIF.
-    lv_search = replace( val = lv_search sub = `#` with = `##` occ = 0 ).
-    lv_search = replace( val = lv_search sub = `%` with = `#%` occ = 0 ).
-    lv_search = replace( val = lv_search sub = `_` with = `#_` occ = 0 ).
-    lv_search = replace( val = lv_search sub = `'` with = `''` occ = 0 ).
-    lv_search = replace( val = lv_search sub = `*` with = `%` occ = 0 ).
-
-    DATA(lv_only_searchable) = xsdbool( line_exists( it_fields[ is_searchable = abap_true ] ) ).
-    LOOP AT it_fields INTO DATA(ls_field)
-      WHERE type_kind = `CHAR` AND is_hidden = abap_false.
-      IF lv_only_searchable = abap_true AND ls_field-is_searchable = abap_false.
-        CONTINUE.
-      ENDIF.
-      APPEND |UPPER( { ls_field-name } ) LIKE '%{ lv_search }%' ESCAPE '#'| TO lt_or.
-    ENDLOOP.
-
-    IF lt_or IS NOT INITIAL.
-      result = |( { concat_lines_of( table = lt_or sep = ` OR ` ) } )|.
-    ENDIF.
-
+    result = z2ui5_cl_rap_util=>build_search_condition( it_fields = it_fields
+                                                        search    = search ).
   ENDMETHOD.
 
 
@@ -1179,10 +1065,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
 
   METHOD normalize_key_value.
-    result = val.
-    REPLACE ALL OCCURRENCES OF `-` IN result WITH ``.
-    REPLACE ALL OCCURRENCES OF `:` IN result WITH ``.
-    CONDENSE result.
+    result = z2ui5_cl_rap_util=>normalize_value( val ).
   ENDMETHOD.
 
 ENDCLASS.

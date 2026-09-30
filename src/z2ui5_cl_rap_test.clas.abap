@@ -19,6 +19,9 @@ CLASS z2ui5_cl_rap_test DEFINITION
         open_list_material TYPE string VALUE `OPEN_LIST_MATERIAL`,
         open_list_travel   TYPE string VALUE `OPEN_LIST_TRAVEL`,
         open_worklist      TYPE string VALUE `OPEN_WORKLIST`,
+        open_worklist_seg  TYPE string VALUE `OPEN_WORKLIST_SEG`,
+        open_rap_bo        TYPE string VALUE `OPEN_RAP_BO`,
+        open_op_by_key     TYPE string VALUE `OPEN_OP_BY_KEY`,
         open_overview_page TYPE string VALUE `OPEN_OVERVIEW_PAGE`,
       END OF cs_event.
 
@@ -129,6 +132,27 @@ CLASS z2ui5_cl_rap_test IMPLEMENTATION.
               v = client->_event( cs_event-open_worklist )
         )->a( n = `icon`
               v = `sap-icon://task` ).
+    lo_hbox2->tag( `Button`
+        )->a( n = `text`
+              v = `Worklist (segments by status)`
+        )->a( n = `press`
+              v = client->_event( cs_event-open_worklist_seg )
+        )->a( n = `icon`
+              v = `sap-icon://multi-select` ).
+    lo_hbox2->tag( `Button`
+        )->a( n = `text`
+              v = `RAP Business Object (/DMO/ managed)`
+        )->a( n = `press`
+              v = client->_event( cs_event-open_rap_bo )
+        )->a( n = `icon`
+              v = `sap-icon://edit` ).
+    lo_hbox2->tag( `Button`
+        )->a( n = `text`
+              v = `Object Page by key (I_Country DE)`
+        )->a( n = `press`
+              v = client->_event( cs_event-open_op_by_key )
+        )->a( n = `icon`
+              v = `sap-icon://detail-view` ).
     lo_hbox2->tag( `Button`
         )->a( n = `text`
               v = `Overview Page`
@@ -275,6 +299,34 @@ CLASS z2ui5_cl_rap_test IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    IF client->check_on_event( cs_event-open_worklist_seg ).
+      DATA(lo_wl2) = NEW z2ui5_cl_rap_worklist(
+        cds_view_name = `/DMO/I_TRAVEL_U`
+        title         = `Travels to process`
+        segment_field = `Status` ).
+      client->nav_app_call( lo_wl2 ).
+      RETURN.
+    ENDIF.
+
+    "=== RAP business object: Create/Edit/Delete and the actions go ===
+    "=== through EML - the flight reference scenario, managed      ===
+    IF client->check_on_event( cs_event-open_rap_bo ).
+      DATA(lo_bo) = NEW z2ui5_cl_rap_list_report(
+        cds_view_name = `/DMO/C_TRAVEL_PROCESSOR_M`
+        title         = `Travels (RAP, managed)` ).
+      client->nav_app_call( lo_bo ).
+      RETURN.
+    ENDIF.
+
+    "=== Object Page read by its key ===
+    IF client->check_on_event( cs_event-open_op_by_key ).
+      DATA(lo_op_key) = NEW z2ui5_cl_rap_object_page(
+        cds_view_name = `I_COUNTRY`
+        keys          = VALUE #( ( name = `Country` value = `DE` ) ) ).
+      client->nav_app_call( lo_op_key ).
+      RETURN.
+    ENDIF.
+
     "=== Overview Page ===
     IF client->check_on_event( cs_event-open_overview_page ).
       DATA(lo_ov) = NEW z2ui5_cl_rap_overview_page(
@@ -282,7 +334,12 @@ CLASS z2ui5_cl_rap_test IMPLEMENTATION.
         cards = VALUE #(
           ( cds_view_name = `I_COUNTRY`  title = `Countries`  card_type = `TABLE` max_rows = 5 )
           ( cds_view_name = `I_CURRENCY` title = `Currencies` card_type = `TABLE` max_rows = 5 )
-          ( cds_view_name = `I_LANGUAGE` title = `Languages`  card_type = `KPI` ) ) ).
+          ( cds_view_name = `I_LANGUAGE` title = `Languages`  card_type = `KPI` )
+          ( cds_view_name   = `I_CURRENCY`
+            title           = `Most decimals of a currency`
+            card_type       = `KPI`
+            kpi_field       = `Decimals`
+            kpi_aggregation = `MAX` ) ) ).
       client->nav_app_call( CAST #( lo_ov ) ).
       RETURN.
     ENDIF.

@@ -70,7 +70,7 @@ CLASS z2ui5_cl_rap_overview_page DEFINITION
 
     TYPES ty_t_card_data TYPE STANDARD TABLE OF ty_s_card_data WITH DEFAULT KEY.
 
-    "! a bar of a chart card - fixed names, so the card binds static paths
+    " a bar of a chart card - fixed names, so the card binds static paths
     TYPES:
       BEGIN OF ty_s_chart_row,
         dimension TYPE string,
@@ -308,7 +308,7 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
 
     LOOP AT mt_cards INTO DATA(ls_card).
       DATA(ls_cd) = VALUE ty_s_card_data( ).
-      DATA(lv_view) = CONV string( to_upper( ls_card-cds_view_name ) ).
+      DATA(lv_view) = to_upper( ls_card-cds_view_name ).
 
       ls_cd-entity = z2ui5_cl_rap_util=>read_entity( lv_view ).
       adjust_entity( CHANGING cs_entity = ls_cd-entity ).
@@ -349,10 +349,10 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
   METHOD load_kpi_value.
 
     DATA lv_value TYPE decfloat34.
-    DATA(lv_view) = CONV string( to_upper( is_card-cds_view_name ) ).
+    DATA(lv_view) = to_upper( is_card-cds_view_name ).
 
     "the field: the card's, else the first numeric data point
-    DATA(lv_field) = CONV string( to_upper( is_card-kpi_field ) ).
+    DATA(lv_field) = to_upper( is_card-kpi_field ).
     IF lv_field IS INITIAL.
       LOOP AT cs_card_data-entity-fields INTO DATA(ls_field)
         WHERE datapoint_qualifier IS NOT INITIAL
@@ -392,7 +392,7 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
 
     DATA lt_rows TYPE ty_t_chart_row.
 
-    DATA(lv_view) = CONV string( to_upper( is_card-cds_view_name ) ).
+    DATA(lv_view) = to_upper( is_card-cds_view_name ).
     DATA(ls_chart) = VALUE z2ui5_cl_rap_util=>ty_s_chart( ).
     IF is_card-chart_qualifier IS NOT INITIAL.
       READ TABLE cs_card_data-entity-charts INTO ls_chart WITH KEY qualifier = is_card-chart_qualifier.

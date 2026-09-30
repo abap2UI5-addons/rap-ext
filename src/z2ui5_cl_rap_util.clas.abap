@@ -169,8 +169,8 @@ CLASS z2ui5_cl_rap_util DEFINITION
         with_metadata_extensions TYPE abap_bool,
       END OF ty_s_raw_annotations.
 
-    "! An action a @UI.lineItem or @UI.identification entry of type
-    "! #FOR_ACTION offers - name is the action of the behavior definition
+    " An action a @UI.lineItem or @UI.identification entry of type
+    " #FOR_ACTION offers - name is the action of the behavior definition
     TYPES:
       BEGIN OF ty_s_action,
         name     TYPE string,
@@ -183,7 +183,7 @@ CLASS z2ui5_cl_rap_util DEFINITION
 
     TYPES ty_t_action TYPE STANDARD TABLE OF ty_s_action WITH DEFAULT KEY.
 
-    "! One @UI.chart entry
+    " One @UI.chart entry
     TYPES:
       BEGIN OF ty_s_chart,
         qualifier  TYPE string,
@@ -286,6 +286,40 @@ CLASS z2ui5_cl_rap_util DEFINITION
         it_elements TYPE ty_t_element_annotation
       CHANGING
         cs_entity   TYPE ty_s_entity_info.
+
+    "! The WHERE condition (ABAP SQL) for the user's filter text on one field:
+    "!   abc     contains (text fields) / equals (other types)
+    "!   a*c     pattern             =abc   equals
+    "!   !abc    not                 a..z   between
+    "!   &gt;x &gt;=x &lt;x &lt;=x       compare
+    "!   several of them separated by ; are ORed
+    "! Values become literals of the field's type with their quotes doubled,
+    "! and a LIKE escapes the user's own % and _ - the field name comes from
+    "! the metadata, never from the user.
+    CLASS-METHODS build_filter_condition
+      IMPORTING
+        is_field      TYPE ty_s_field_info
+        value         TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! The WHERE condition of a free-text search over the text fields of
+    "! it_fields - the @Search.defaultSearchElement ones when there are any,
+    "! else every visible one - case-insensitive, * as wildcard
+    CLASS-METHODS build_search_condition
+      IMPORTING
+        it_fields     TYPE ty_t_field_info
+        search        TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! align ABAP and JSON model representations of a key value: dates
+    "! (2024-01-15), times (12:30:00), padding
+    CLASS-METHODS normalize_value
+      IMPORTING
+        val           TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
 
     "! Remove one pair of enclosing single quotes and surrounding blanks
     CLASS-METHODS strip_quotes
@@ -392,6 +426,13 @@ CLASS z2ui5_cl_rap_util DEFINITION
         VALUE(result) TYPE ty_s_raw_annotations
       RAISING
         cx_root.
+
+    CLASS-METHODS literal
+      IMPORTING
+        is_field      TYPE ty_s_field_info
+        value         TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
 
     CLASS-METHODS read_annos_direct
       IMPORTING
@@ -895,7 +936,9 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       DATA(lv_rest) = substring( val = lv_key off = lv_len ).
       DATA(ls_entry) = VALUE ty_s_entry( value = ls_anno-value ).
       IF lv_rest(1) = `$`.
-        split_index( EXPORTING val  = lv_rest
+        "a copy - val is passed by reference and rest is cleared first
+        DATA(lv_indexed) = lv_rest.
+        split_index( EXPORTING val  = lv_indexed
                      IMPORTING idx  = ls_entry-idx
                                rest = lv_rest ).
         IF ls_entry-idx = 0.
@@ -964,7 +1007,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
   METHOD read_raw_annotations.
 
-    DATA(lv_name) = CONV string( to_upper( entity_name ) ).
+    DATA(lv_name) = to_upper( entity_name ).
     READ TABLE gt_cache INTO DATA(ls_cache) WITH KEY name = lv_name.
     IF sy-subrc = 0.
       result = ls_cache-raw.
@@ -1201,6 +1244,129 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
+  ENDMETHOD.
+
+
+  METHOD literal.
+
+    "the value as an ABAP SQL literal of the field's type: quotes doubled,
+    "dates and times in their internal form, a decimal comma as a point
+    result = value.
+    CASE is_field-type_kind.
+      WHEN `DATS` OR `TIMS`.
+        result = normalize_value( result ).
+      WHEN `DEC` OR `INT`.
+        REPLACE ALL OCCURRENCES OF `,` IN result WITH `.`.
+        CONDENSE result NO-GAPS.
+    ENDCASE.
+    result = replace( val = result sub = `'` with = `''` occ = 0 ).
+    result = |'{ result }'|.
+
+  ENDMETHOD.
+
+
+  METHOD build_filter_condition.
+
+    DATA lt_or TYPE string_table.
+    DATA(lv_name) = is_field-name.
+    DATA(lv_text_field) = xsdbool( is_field-type_kind = `CHAR` ).
+
+    SPLIT value AT `;` INTO TABLE DATA(lt_parts).
+    LOOP AT lt_parts INTO DATA(lv_part).
+      CONDENSE lv_part.
+      IF lv_part IS INITIAL.
+        CONTINUE.
+      ENDIF.
+
+      DATA(lv_cond) = ``.
+      DATA(lv_not) = abap_false.
+      IF lv_part(1) = `!`.
+        lv_not = abap_true.
+        lv_part = substring( val = lv_part off = 1 ).
+        IF lv_part IS INITIAL.
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
+      IF lv_part CS `..`.
+        SPLIT lv_part AT `..` INTO DATA(lv_low) DATA(lv_high).
+        lv_cond = |{ lv_name } BETWEEN { literal( is_field = is_field value = lv_low ) }| &&
+                  | AND { literal( is_field = is_field value = lv_high ) }|.
+      ELSEIF strlen( lv_part ) > 2 AND ( lv_part(2) = `>=` OR lv_part(2) = `<=` ).
+        lv_cond = |{ lv_name } { lv_part(2) } { literal( is_field = is_field value = substring( val = lv_part off = 2 ) ) }|.
+      ELSEIF strlen( lv_part ) > 1 AND ( lv_part(1) = `>` OR lv_part(1) = `<` ).
+        lv_cond = |{ lv_name } { lv_part(1) } { literal( is_field = is_field value = substring( val = lv_part off = 1 ) ) }|.
+      ELSEIF strlen( lv_part ) > 1 AND lv_part(1) = `=`.
+        lv_cond = |{ lv_name } = { literal( is_field = is_field value = substring( val = lv_part off = 1 ) ) }|.
+      ELSEIF lv_text_field = abap_true.
+        "LIKE: the user's * is the wildcard, their own % and _ are escaped
+        DATA(lv_like) = lv_part.
+        lv_like = replace( val = lv_like sub = `#` with = `##` occ = 0 ).
+        lv_like = replace( val = lv_like sub = `%` with = `#%` occ = 0 ).
+        lv_like = replace( val = lv_like sub = `_` with = `#_` occ = 0 ).
+        lv_like = replace( val = lv_like sub = `'` with = `''` occ = 0 ).
+        IF lv_like CS `*`.
+          lv_like = replace( val = lv_like sub = `*` with = `%` occ = 0 ).
+        ELSE.
+          lv_like = |%{ lv_like }%|.
+        ENDIF.
+        lv_cond = |{ lv_name } LIKE '{ lv_like }' ESCAPE '#'|.
+      ELSE.
+        lv_cond = |{ lv_name } = { literal( is_field = is_field value = lv_part ) }|.
+      ENDIF.
+
+      IF lv_not = abap_true.
+        lv_cond = |NOT ( { lv_cond } )|.
+      ENDIF.
+      APPEND lv_cond TO lt_or.
+    ENDLOOP.
+
+    IF lt_or IS INITIAL.
+      RETURN.
+    ENDIF.
+    IF lines( lt_or ) = 1.
+      result = lt_or[ 1 ].
+      RETURN.
+    ENDIF.
+    result = |( { concat_lines_of( table = lt_or sep = ` OR ` ) } )|.
+
+  ENDMETHOD.
+
+
+  METHOD build_search_condition.
+
+    DATA lt_or TYPE string_table.
+    DATA(lv_search) = to_upper( condense( search ) ).
+    IF lv_search IS INITIAL.
+      RETURN.
+    ENDIF.
+    lv_search = replace( val = lv_search sub = `#` with = `##` occ = 0 ).
+    lv_search = replace( val = lv_search sub = `%` with = `#%` occ = 0 ).
+    lv_search = replace( val = lv_search sub = `_` with = `#_` occ = 0 ).
+    lv_search = replace( val = lv_search sub = `'` with = `''` occ = 0 ).
+    lv_search = replace( val = lv_search sub = `*` with = `%` occ = 0 ).
+
+    DATA(lv_only_searchable) = xsdbool( line_exists( it_fields[ is_searchable = abap_true ] ) ).
+    LOOP AT it_fields INTO DATA(ls_field)
+      WHERE type_kind = `CHAR` AND is_hidden = abap_false.
+      IF lv_only_searchable = abap_true AND ls_field-is_searchable = abap_false.
+        CONTINUE.
+      ENDIF.
+      APPEND |UPPER( { ls_field-name } ) LIKE '%{ lv_search }%' ESCAPE '#'| TO lt_or.
+    ENDLOOP.
+
+    IF lt_or IS NOT INITIAL.
+      result = |( { concat_lines_of( table = lt_or sep = ` OR ` ) } )|.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD normalize_value.
+    result = val.
+    REPLACE ALL OCCURRENCES OF `-` IN result WITH ``.
+    REPLACE ALL OCCURRENCES OF `:` IN result WITH ``.
+    CONDENSE result.
   ENDMETHOD.
 
 

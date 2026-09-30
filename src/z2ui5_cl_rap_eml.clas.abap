@@ -177,7 +177,7 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
   METHOD execute_action.
 
     DATA(lv_entity) = to_upper( entity_name ).
-    DATA(lv_action) = CONV string( to_upper( action ) ).
+    DATA(lv_action) = to_upper( action ).
     FIELD-SYMBOLS <lt_inst> TYPE STANDARD TABLE.
     TRY.
         DATA(lr_inst) = create_instances( entity_name = lv_entity

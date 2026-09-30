@@ -56,6 +56,7 @@ CLASS z2ui5_cl_rap_worklist DEFINITION
     METHODS render_page REDEFINITION.
     METHODS render_filter_bar REDEFINITION.
     METHODS render_toolbar REDEFINITION.
+    METHODS get_selection_fields REDEFINITION.
 
     "! the values of segment_field with their counts
     METHODS load_segments
@@ -224,6 +225,12 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
 
     client->view_display( lo_view->stringify( ) ).
 
+  ENDMETHOD.
+
+
+  METHOD get_selection_fields ##NEEDED.
+    "no filters - a filter the worklist does not show, @Consumption.filter
+    "defaultValue included, would silently narrow the items
   ENDMETHOD.
 
 

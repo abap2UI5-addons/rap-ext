@@ -1,7 +1,8 @@
-# The two gates of this repo:
+# The three gates of this repo:
 #   abaplint - syntax/style with dependency resolution against the
 #              steampunk-2305 API set and the abap2UI5 core repo (both cloned
 #              by abaplint from the URLs in abaplint.jsonc)
+#   unit     - the ABAP Unit tests that need no system, transpiled
 #   linter   - abap2UI5-linter: every view the floorplans build is checked
 #              against the UI5 metadata (control/property/version) and
 #              rendered headless. Settings live in abap2ui5lint.jsonc
@@ -47,6 +48,22 @@ jobs:
         run: node scripts/core-pin.mjs set main
       - name: abaplint (expect 0 issues)
         run: npm run lint
+
+  # the ABAP Unit tests that need no system (scripts/unit.mjs), transpiled
+  # with open-abap-core - the parsing of the annotations and the filter and
+  # search syntax the floorplans put into their dynamic SELECTs
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: ABAP Unit (transpiled)
+        run: npm run unit
 
   view_lint:
     runs-on: ubuntu-latest
