@@ -936,6 +936,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                 v = `sap-icon://add` ).
     ENDIF.
 
+    render_extension( spot         = cs_spot-toolbar
+                      io_container = lo_toolbar
+                      client       = client ).
+
     lo_toolbar->tag( `Button`
         )->a( n = `icon`
               v = `sap-icon://refresh`

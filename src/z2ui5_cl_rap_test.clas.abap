@@ -21,6 +21,7 @@ CLASS z2ui5_cl_rap_test DEFINITION
         open_worklist      TYPE string VALUE `OPEN_WORKLIST`,
         open_worklist_seg  TYPE string VALUE `OPEN_WORKLIST_SEG`,
         open_rap_bo        TYPE string VALUE `OPEN_RAP_BO`,
+        open_rap_draft     TYPE string VALUE `OPEN_RAP_DRAFT`,
         open_op_by_key     TYPE string VALUE `OPEN_OP_BY_KEY`,
         open_overview_page TYPE string VALUE `OPEN_OVERVIEW_PAGE`,
       END OF cs_event.
@@ -144,6 +145,13 @@ CLASS z2ui5_cl_rap_test IMPLEMENTATION.
               v = `RAP Business Object (/DMO/ managed)`
         )->a( n = `press`
               v = client->_event( cs_event-open_rap_bo )
+        )->a( n = `icon`
+              v = `sap-icon://edit` ).
+    lo_hbox2->tag( `Button`
+        )->a( n = `text`
+              v = `RAP Business Object with draft (/DMO/)`
+        )->a( n = `press`
+              v = client->_event( cs_event-open_rap_draft )
         )->a( n = `icon`
               v = `sap-icon://edit` ).
     lo_hbox2->tag( `Button`
@@ -315,6 +323,15 @@ CLASS z2ui5_cl_rap_test IMPLEMENTATION.
         cds_view_name = `/DMO/C_TRAVEL_PROCESSOR_M`
         title         = `Travels (RAP, managed)` ).
       client->nav_app_call( lo_bo ).
+      RETURN.
+    ENDIF.
+
+    "=== the same with draft: a change goes Edit -> draft -> Activate ===
+    IF client->check_on_event( cs_event-open_rap_draft ).
+      DATA(lo_draft) = NEW z2ui5_cl_rap_list_report(
+        cds_view_name = `/DMO/C_TRAVEL_A_D`
+        title         = `Travels (RAP, draft)` ).
+      client->nav_app_call( lo_draft ).
       RETURN.
     ENDIF.
 

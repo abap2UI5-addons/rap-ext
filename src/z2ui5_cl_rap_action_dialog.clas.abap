@@ -306,6 +306,10 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
       ENDLOOP.
     ENDLOOP.
 
+    render_extension( spot         = cs_spot-dialog_content
+                      io_container = lo_content
+                      client       = client ).
+
     lo_dialog->ele( `beginButton`
         )->tag( `Button`
             )->a( n = `text`

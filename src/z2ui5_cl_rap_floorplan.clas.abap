@@ -54,6 +54,21 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         more           TYPE string VALUE `MORE`,
       END OF cs_text.
 
+    " Where z2ui5_if_rap_ext~extend_view may add controls
+    CONSTANTS:
+      BEGIN OF cs_spot,
+        "the table toolbar of the list report and the worklist
+        toolbar        TYPE string VALUE `TOOLBAR`,
+        "the header actions of the object page
+        header_actions TYPE string VALUE `HEADER_ACTIONS`,
+        "the sections of the object page - add ObjectPageSections
+        sections       TYPE string VALUE `SECTIONS`,
+        "the content of the action dialog, below the form
+        dialog_content TYPE string VALUE `DIALOG_CONTENT`,
+        "the grid of the overview page - add cards
+        cards          TYPE string VALUE `CARDS`,
+      END OF cs_spot.
+
     "! The selection column added to rows a table or dialog lets the user
     "! select - the name the core's own select popup uses
     CONSTANTS cv_select_column TYPE string VALUE `ZZSELKZ`.
@@ -131,6 +146,13 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     METHODS adjust_entity
       CHANGING
         cs_entity TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
+
+    "! let the extension add controls at one of the cs_spot places
+    METHODS render_extension
+      IMPORTING
+        spot         TYPE string
+        io_container TYPE REF TO z2ui5_cl_ui5_view_builder
+        client       TYPE REF TO z2ui5_if_client.
 
     "! let the extension take an event over - abap_true when it did
     METHODS ext_on_event
@@ -424,7 +446,39 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD get_text.
 
-    result = SWITCH #( key
+    "German for a German logon, English otherwise - every other language
+    "goes through z2ui5_if_rap_ext~get_text
+    IF sy-langu = 'D'.
+      result = SWITCH #( key
+        WHEN cs_text-create       THEN `Anlegen`
+        WHEN cs_text-edit         THEN `Bearbeiten`
+        WHEN cs_text-delete       THEN `Löschen`
+        WHEN cs_text-save         THEN `Sichern`
+        WHEN cs_text-cancel       THEN `Abbrechen`
+        WHEN cs_text-ok           THEN `OK`
+        WHEN cs_text-go           THEN `Start`
+        WHEN cs_text-refresh      THEN `Aktualisieren`
+        WHEN cs_text-search       THEN `Suchen`
+        WHEN cs_text-yes          THEN `Ja`
+        WHEN cs_text-no           THEN `Nein`
+        WHEN cs_text-all          THEN `Alle`
+        WHEN cs_text-general      THEN `Allgemein`
+        WHEN cs_text-items        THEN `Einträge`
+        WHEN cs_text-saved        THEN `Daten gesichert`
+        WHEN cs_text-deleted      THEN `Daten gelöscht`
+        WHEN cs_text-refreshed    THEN `Daten aktualisiert`
+        WHEN cs_text-action_done  THEN `Aktion ausgeführt`
+        WHEN cs_text-required     THEN `Bitte alle Pflichtfelder füllen`
+        WHEN cs_text-read_only    THEN `Diese Entität kann nicht geändert werden`
+        WHEN cs_text-load_error   THEN `Daten konnten nicht gelesen werden`
+        WHEN cs_text-no_selection THEN `Bitte mindestens eine Zeile markieren`
+        WHEN cs_text-filter_hint  THEN `abc, a*c, =abc, !abc, a..z, >x - mehrere mit ; trennen`
+        WHEN cs_text-create_title THEN `Anlegen`
+        WHEN cs_text-sort         THEN `Sortieren`
+        WHEN cs_text-more         THEN `Mehr`
+        ELSE key ).
+    ELSE.
+      result = SWITCH #( key
       WHEN cs_text-create       THEN `Create`
       WHEN cs_text-edit         THEN `Edit`
       WHEN cs_text-delete       THEN `Delete`
@@ -452,6 +506,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       WHEN cs_text-sort         THEN `Sort`
       WHEN cs_text-more         THEN `More`
       ELSE key ).
+    ENDIF.
 
     IF mo_ext IS BOUND.
       mo_ext->get_text( EXPORTING key  = key
@@ -465,6 +520,16 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     IF mo_ext IS BOUND.
       mo_ext->adjust_entity( EXPORTING floorplan = mv_floorplan
                              CHANGING  entity    = cs_entity ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD render_extension.
+    IF mo_ext IS BOUND.
+      mo_ext->extend_view( floorplan = mv_floorplan
+                           spot      = spot
+                           container = io_container
+                           client    = client ).
     ENDIF.
   ENDMETHOD.
 

@@ -1047,6 +1047,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
   METHOD render_actions.
 
     IF mv_editable = abap_false.
+      render_extension( spot         = cs_spot-header_actions
+                        io_container = io_actions
+                        client       = client ).
       "@UI.identification actions of type #FOR_ACTION
       IF ms_caps-is_rap_bo = abap_true.
         LOOP AT ms_entity-actions INTO DATA(ls_action) WHERE source = `IDENTIFICATION`.
@@ -1313,6 +1316,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                               is_section = ls_section
                               client     = client ).
     ENDLOOP.
+
+    render_extension( spot         = cs_spot-sections
+                      io_container = lo_sections
+                      client       = client ).
 
   ENDMETHOD.
 
