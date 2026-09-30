@@ -78,7 +78,10 @@ INTERFACE z2ui5_if_rap_ext
 
   "! add controls to a view the floorplan builds - spot is one of
   "! z2ui5_cl_rap_floorplan=>cs_spot, container the builder node there. An
-  "! event of an added control arrives in on_event first
+  "! event of an added control arrives in on_event first. Two limits: a
+  "! binding reaches only PUBLIC attributes of the floorplan (the app), not
+  "! the extension's own - use events and constant values; and a control
+  "! from another library declares its own xmlns (a( n = `xmlns:core` ... ))
   METHODS extend_view DEFAULT IGNORE
     IMPORTING
       floorplan TYPE string

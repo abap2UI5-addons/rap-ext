@@ -105,10 +105,12 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   absolute names (`\BDEF=...\ENTITY=...\TYPE=...`); whether an operation
   exists is whether its type can be created (`get_capabilities`). A
   draft-enabled BO (the draft action `EDIT` has a type) is written through
-  its draft - Edit, update with `%is_draft`, Activate, or create a draft and
-  Activate it by `%cid_ref` - each step its own `MODIFY ENTITIES
-  OPERATIONS`, one `COMMIT ENTITIES`, `ROLLBACK ENTITIES` on the first
-  failure (`run_steps`).
+  its draft - Edit (with `preserve_changes`, so an existing draft is an
+  error, never discarded), update with `%is_draft`, Activate; or create a
+  draft and Activate it by the key the create `MAPPED` (not by `%cid_ref`,
+  which a draft action's type may not carry) - each step its own `MODIFY
+  ENTITIES OPERATIONS`, one `COMMIT ENTITIES`, `ROLLBACK ENTITIES` on the
+  first failure (`run_steps`).
 - `z2ui5_cl_rap_util` reads types via **classic RTTI** (`cl_abap_typedescr`),
   not the XCO library. Do not rewrite RTTI to XCO or swap the annotation API
   "for cloud readiness" — that changes the supported platform and is a

@@ -250,7 +250,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                         label = COND #( WHEN ls_col-line_item_label IS NOT INITIAL THEN ls_col-line_item_label
                                         ELSE ls_col-label ) ) TO mt_sort_field.
       ENDLOOP.
-      IF ms_entity-sort_order IS NOT INITIAL.
+      IF ms_entity-sort_order IS NOT INITIAL
+        AND line_exists( mt_sort_field[ name = ms_entity-sort_order[ 1 ]-field ] ).
         mv_sort_field = ms_entity-sort_order[ 1 ]-field.
         mv_sort_desc = ms_entity-sort_order[ 1 ]-descending.
       ENDIF.
@@ -443,19 +444,32 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   METHOD get_order_by.
 
     DATA lt_order TYPE string_table.
+    DATA lt_used TYPE string_table.
 
-    IF mv_sort_field IS NOT INITIAL AND line_exists( ms_entity-fields[ name = mv_sort_field ] ).
+    "only a field the sort select offers - a STRING (LOB) column in an
+    "ORDER BY is invalid SQL and would empty the whole list
+    IF mv_sort_field IS NOT INITIAL AND line_exists( mt_sort_field[ name = mv_sort_field ] ).
       APPEND |{ mv_sort_field }{ COND #( WHEN mv_sort_desc = abap_true THEN ` DESCENDING` ELSE `` ) }| TO lt_order.
+      APPEND mv_sort_field TO lt_used.
     ENDIF.
-    "then by the rest of @UI.presentationVariant, then by the keys
-    LOOP AT ms_entity-sort_order INTO DATA(ls_sort) FROM 2.
-      IF ls_sort-field <> mv_sort_field AND line_exists( ms_entity-fields[ name = ls_sort-field ] ).
-        APPEND |{ ls_sort-field }{ COND #( WHEN ls_sort-descending = abap_true THEN ` DESCENDING` ELSE `` ) }| TO lt_order.
+    "then by the rest of @UI.presentationVariant, then by the keys - every
+    "key that is not in the list yet, so a page is the same page each time
+    LOOP AT ms_entity-sort_order INTO DATA(ls_sort).
+      IF line_exists( lt_used[ table_line = ls_sort-field ] )
+        OR NOT line_exists( mt_sort_field[ name = ls_sort-field ] ).
+        CONTINUE.
       ENDIF.
+      APPEND |{ ls_sort-field }{ COND #( WHEN ls_sort-descending = abap_true THEN ` DESCENDING` ELSE `` ) }| TO lt_order.
+      APPEND ls_sort-field TO lt_used.
     ENDLOOP.
     LOOP AT ms_entity-keys INTO DATA(lv_key).
-      IF lv_key <> mv_sort_field AND NOT line_exists( ms_entity-sort_order[ field = lv_key ] ).
+      IF line_exists( lt_used[ table_line = lv_key ] ).
+        CONTINUE.
+      ENDIF.
+      READ TABLE ms_entity-fields INTO DATA(ls_key_field) WITH KEY name = lv_key.
+      IF sy-subrc = 0 AND ls_key_field-type_kind <> `STRING`.
         APPEND lv_key TO lt_order.
+        APPEND lv_key TO lt_used.
       ENDIF.
     ENDLOOP.
 

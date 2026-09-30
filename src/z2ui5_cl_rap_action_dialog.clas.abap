@@ -288,7 +288,7 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
       lo_form->tag( n  = `Title`
                     ns = `core`
           )->a( n = `text`
-                t = COND #( WHEN ls_group-label IS NOT INITIAL THEN ls_group-label ELSE ls_group-qualifier ) ).
+                t = COND #( WHEN ls_group-group_label IS NOT INITIAL THEN ls_group-group_label ELSE ls_group-qualifier ) ).
       DATA lt_in_group TYPE z2ui5_cl_rap_util=>ty_t_field_info.
       CLEAR lt_in_group.
       LOOP AT ms_entity-fields INTO ls_field WHERE is_hidden = abap_false.

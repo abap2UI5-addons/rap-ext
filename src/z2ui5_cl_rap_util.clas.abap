@@ -44,7 +44,10 @@ CLASS z2ui5_cl_rap_util DEFINITION
       BEGIN OF ty_s_field_group,
         qualifier TYPE string,
         position  TYPE i,
+        "the field's label within the group (@UI.fieldGroup.label)
         label     TYPE string,
+        "the group's title (@UI.fieldGroup.groupLabel) - added 2026-10
+        group_label TYPE string,
       END OF ty_s_field_group.
 
     TYPES ty_t_field_group TYPE STANDARD TABLE OF ty_s_field_group WITH DEFAULT KEY.
@@ -352,8 +355,6 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
-    "! align ABAP and JSON model representations of a key value: dates
-    "! (2024-01-15), times (12:30:00), padding
     "! The WHERE condition (ABAP SQL) of a @UI.selectionVariant filter
     "! string: conditions "Field OP Value" joined with AND, OP one of EQ NE
     "! GT GE LT LE, the value optionally in quotes. Empty when the string
@@ -375,6 +376,8 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE i.
 
+    "! align ABAP and JSON model representations of a key value: dates
+    "! (2024-01-15), times (12:30:00), padding
     CLASS-METHODS normalize_value
       IMPORTING
         val           TYPE string
@@ -861,7 +864,8 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       DATA(ls_group) = VALUE ty_s_field_group(
         qualifier = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) )
         position  = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) )
-        label     = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) ) ).
+        label     = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) )
+        group_label = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `GROUPLABEL` ) ) ).
       IF ls_group-qualifier IS INITIAL OR line_exists( cs_field-field_groups[ qualifier = ls_group-qualifier ] ).
         CONTINUE.
       ENDIF.

@@ -828,7 +828,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         IF NOT line_exists( result[ field_group = ls_group-qualifier ] ).
           APPEND VALUE ty_s_section(
             id          = ls_group-qualifier
-            title       = COND #( WHEN ls_group-label IS NOT INITIAL THEN ls_group-label ELSE ls_group-qualifier )
+            title       = COND #( WHEN ls_group-group_label IS NOT INITIAL THEN ls_group-group_label ELSE ls_group-qualifier )
             field_group = ls_group-qualifier
             type        = `FIELDGROUP` ) TO result.
         ENDIF.
@@ -1115,7 +1115,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     LOOP AT lt_facets INTO ls_facet.
 
-      IF ls_facet-type CS `DATAPOINT`.
+      "a data point facet names its data point - without a qualifier it
+      "would match the first field that has none
+      IF ls_facet-type CS `DATAPOINT` AND ls_facet-target_qualifier IS NOT INITIAL.
         "the target qualifier names the data point
         LOOP AT ms_entity-fields INTO DATA(ls_dp)
           WHERE datapoint_qualifier = ls_facet-target_qualifier AND is_hidden = abap_false.

@@ -154,7 +154,9 @@ CLASS ltcl_annotations IMPLEMENTATION.
       ( element = `AGENCYID` key = `UI.FIELDGROUP$1$.QUALIFIER` value = `'General'` )
       ( element = `AGENCYID` key = `UI.FIELDGROUP$1$.POSITION`  value = `20` )
       ( element = `AGENCYID` key = `UI.FIELDGROUP$2$.QUALIFIER` value = `'Agency'` )
-      ( element = `AGENCYID` key = `UI.FIELDGROUP$2$.POSITION`  value = `10` ) ) ).
+      ( element = `AGENCYID` key = `UI.FIELDGROUP$2$.POSITION`  value = `10` )
+      ( element = `AGENCYID` key = `UI.FIELDGROUP$2$.LABEL`     value = `'ID'` )
+      ( element = `AGENCYID` key = `UI.FIELDGROUP$2$.GROUPLABEL` value = `'Travel Agency'` ) ) ).
 
     DATA(ls_field) = field( `AGENCYID` ).
     cl_abap_unit_assert=>assert_equals( exp = 2         act = lines( ls_field-field_groups ) ).
@@ -162,6 +164,9 @@ CLASS ltcl_annotations IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( exp = 20        act = ls_field-field_group_pos ).
     cl_abap_unit_assert=>assert_equals( exp = `Agency`  act = ls_field-field_groups[ 2 ]-qualifier ).
     cl_abap_unit_assert=>assert_equals( exp = 10        act = ls_field-field_groups[ 2 ]-position ).
+    " the field's label in the group and the group's title are two things
+    cl_abap_unit_assert=>assert_equals( exp = `ID`            act = ls_field-field_groups[ 2 ]-label ).
+    cl_abap_unit_assert=>assert_equals( exp = `Travel Agency` act = ls_field-field_groups[ 2 ]-group_label ).
 
   ENDMETHOD.
 
