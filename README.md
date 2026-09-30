@@ -170,6 +170,10 @@ client->nav_app_call( lo_report ).
 | `on_event` | every event, before the floorplan - return `abap_true` to take it over |
 | `get_text` | every text (keys in `z2ui5_cl_rap_floorplan=>cs_text`) - translation |
 | `resolve_association` | the target entity of a `#LINEITEM_REFERENCE` facet |
+| `extend_view` | add controls at fixed places (`z2ui5_cl_rap_floorplan=>cs_spot`): the table toolbar, the object page's header actions and sections, the dialog's content, the overview's cards - their events arrive in `on_event` first |
+
+The built-in texts are English, and German for a German logon (`sy-langu`
+`D`); every other language goes through `get_text`.
 
 The extension travels with the app through the abap2UI5 draft: the interface
 includes `if_serializable_object`, so keep its attributes serializable.
@@ -216,8 +220,11 @@ and qualifiers are read per entry:
 | `@UI.selectionField` | filter bar |
 | `@UI.identification` | object page header attributes; `#FOR_ACTION` entries are header actions |
 | `@UI.fieldGroup` | object page forms - a field can sit in several groups |
-| `@UI.facet` | object page sections: `#COLLECTION`, `#FIELDGROUP_REFERENCE`, `#IDENTIFICATION_REFERENCE`, `#LINEITEM_REFERENCE` - on the entity or on an element |
-| `@UI.dataPoint` | status with criticality, KPI cards |
+| `@UI.facet` | object page sections: `#COLLECTION`, `#FIELDGROUP_REFERENCE`, `#IDENTIFICATION_REFERENCE`, `#LINEITEM_REFERENCE` - on the entity or on an element; with `purpose: #HEADER` (`#DATAPOINT_REFERENCE`, `#FIELDGROUP_REFERENCE`) the object page header |
+| `@UI.dataPoint` | status with criticality, KPI cards; `criticalityCalculation` (`#MAXIMIZE`, `#MINIMIZE`, `#TARGET` with tolerance/deviation values) colors a KPI card |
+| `@UI.presentationVariant` | the default sort order (`sortOrder`) of list report and worklist |
+| `@UI.selectionVariant` | worklist tabs - one per variant, its `filter` string (`Status EQ O AND Priority GE 3`; EQ NE GT GE LT LE) |
+| `@UI.textArrangement` | how value and text are shown: `#TEXT_FIRST` (default), `#TEXT_LAST`, `#TEXT_ONLY`, `#TEXT_SEPARATE` |
 | `@UI.chart` | chart cards (first dimension, first measure) |
 | `@UI.hidden`, `@UI.multiLineText`, `@UI.defaultValue` | visibility, text areas, dialog defaults |
 | `@ObjectModel.text.element` | "Text (Value)" cells, value help descriptions |
@@ -247,8 +254,13 @@ After a RAP create the page reads the record again by the keys `MAPPED`
 returns; a business object that assigns its key only on save (late
 numbering) hands none back, and the page then returns to the list.
 
-Limits today: child entities are not written (only the root), drafts are not
-handled (a draft-enabled BO is written as active instances). See
+A **draft-enabled** business object (its BDEF has the draft action Edit) is
+written the way its own UI does: a change is Edit (a draft of the active
+instance), the change of the draft, Activate; a create is a draft that is
+activated. All of it runs before the one `COMMIT ENTITIES`, and a failed step
+rolls the request back - no draft is left behind.
+
+Limits today: child entities are not written (only the root). See
 [ROADMAP.md](ROADMAP.md).
 
 ### Filter syntax
@@ -348,6 +360,7 @@ Renders a Fiori-Elements-style list report for any CDS view, driven entirely by 
 - Criticality columns from `@UI.lineItem.criticality` / `@UI.dataPoint.criticality`
 - Amount/quantity columns from `@Semantics.amount.currencyCode` / `@Semantics.quantity.unitOfMeasure`, "Text (Value)" for `@ObjectModel.text.element`
 - Title from `@UI.headerInfo.typeNamePlural`, the count of all matching rows
+- Sorting in the database - a select of the columns and a direction button, the default from `@UI.presentationVariant`; "More" loads the next rows from the database
 - Actions from `@UI.lineItem` `#FOR_ACTION` (toolbar on the selected rows, or inline per row)
 - Create where the entity allows it; row navigation to a generated object page
 
@@ -363,7 +376,7 @@ client->nav_app_call( NEW z2ui5_cl_rap_list_report(
 
 Renders an object page for a single record of a CDS entity:
 - Header title/description from `@UI.headerInfo`
-- Header attributes from `@UI.identification` (fallback: first visible fields)
+- Header from the `@UI.facet` entries with `purpose: #HEADER`, else attributes from `@UI.identification` (fallback: first visible fields)
 - Status attributes with criticality from `@UI.dataPoint`
 - Sections from `@UI.facet`: collections with subsections, field groups, identification, tables of an association (`#LINEITEM_REFERENCE` - the target entity comes from `resolve_association`)
 - Edit/Save/Delete and the `@UI.identification` actions where the entity allows them; keys read-only on change, required fields checked, value helps and dropdowns in edit mode
@@ -383,8 +396,9 @@ client->nav_app_call( NEW z2ui5_cl_rap_object_page(
 ### CDS Worklist
 
 The items to work through: a table with `@UI.lineItem` columns, a search
-field, the actions and row navigation. With `segment_field`, a tab per value
-of that field with its count:
+field, sorting, the actions and row navigation. With `segment_field`, a tab
+per value of that field with its count; without it, a tab per
+`@UI.selectionVariant` of the entity:
 
 ```abap
 client->nav_app_call( NEW z2ui5_cl_rap_worklist(
@@ -441,6 +455,20 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
 - The overview page's cards are `sap.f.Card`s in a `sap.f.GridContainer`
   instead of panels and tiles in a layout grid; `count` is the number of rows
   of the view.
+
+### Changes in 2026-10
+
+- New protected members in the floorplans (`render_sort_controls`,
+  `get_order_by`, `render_header_facets`, `get_display_text`,
+  `render_dialog_field`, `render_extension`, ...) - the same rename rule as
+  above applies to a subclass.
+- `z2ui5_if_rap_ext` has a new method, `extend_view` - `DEFAULT IGNORE`, so
+  existing implementations keep compiling.
+- A draft-enabled business object is written through its draft (see
+  "Writing").
+- The list report sorts in the database, and its "more" button loads rows
+  instead of the table growing over the loaded ones; the object page header
+  follows the header facets when there are any.
 
 ### Demo
 

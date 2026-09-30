@@ -154,7 +154,9 @@ CLASS ltcl_annotations IMPLEMENTATION.
       ( element = `AGENCYID` key = `UI.FIELDGROUP$1$.QUALIFIER` value = `'General'` )
       ( element = `AGENCYID` key = `UI.FIELDGROUP$1$.POSITION`  value = `20` )
       ( element = `AGENCYID` key = `UI.FIELDGROUP$2$.QUALIFIER` value = `'Agency'` )
-      ( element = `AGENCYID` key = `UI.FIELDGROUP$2$.POSITION`  value = `10` ) ) ).
+      ( element = `AGENCYID` key = `UI.FIELDGROUP$2$.POSITION`  value = `10` )
+      ( element = `AGENCYID` key = `UI.FIELDGROUP$2$.LABEL`     value = `'ID'` )
+      ( element = `AGENCYID` key = `UI.FIELDGROUP$2$.GROUPLABEL` value = `'Travel Agency'` ) ) ).
 
     DATA(ls_field) = field( `AGENCYID` ).
     cl_abap_unit_assert=>assert_equals( exp = 2         act = lines( ls_field-field_groups ) ).
@@ -162,6 +164,9 @@ CLASS ltcl_annotations IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( exp = 20        act = ls_field-field_group_pos ).
     cl_abap_unit_assert=>assert_equals( exp = `Agency`  act = ls_field-field_groups[ 2 ]-qualifier ).
     cl_abap_unit_assert=>assert_equals( exp = 10        act = ls_field-field_groups[ 2 ]-position ).
+    " the field's label in the group and the group's title are two things
+    cl_abap_unit_assert=>assert_equals( exp = `ID`            act = ls_field-field_groups[ 2 ]-label ).
+    cl_abap_unit_assert=>assert_equals( exp = `Travel Agency` act = ls_field-field_groups[ 2 ]-group_label ).
 
   ENDMETHOD.
 
@@ -481,6 +486,180 @@ CLASS ltcl_filter IMPLEMENTATION.
     cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>build_search_condition(
       it_fields = VALUE #( ( name = `UUID` type_kind = `RAW` ) ( name = `RATE` type_kind = `FLTP` ) )
       search    = `x` ) ).
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+" @UI.presentationVariant, @UI.selectionVariant, @UI.textArrangement and
+" @UI.dataPoint.criticalityCalculation - the annotations the list report's
+" sorting, the worklist's tabs, the text cells and the KPI cards read.
+CLASS ltcl_variants DEFINITION FINAL
+  FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+
+  PRIVATE SECTION.
+    DATA ms_entity TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
+
+    METHODS setup.
+
+    METHODS sort_order_default_variant   FOR TESTING RAISING cx_static_check.
+    METHODS selection_variants           FOR TESTING RAISING cx_static_check.
+    METHODS selection_filter_where       FOR TESTING RAISING cx_static_check.
+    METHODS selection_filter_unreadable  FOR TESTING RAISING cx_static_check.
+    METHODS text_arrangement             FOR TESTING RAISING cx_static_check.
+    METHODS criticality_maximize         FOR TESTING RAISING cx_static_check.
+    METHODS criticality_minimize         FOR TESTING RAISING cx_static_check.
+    METHODS criticality_target           FOR TESTING RAISING cx_static_check.
+    METHODS criticality_incomplete       FOR TESTING RAISING cx_static_check.
+
+ENDCLASS.
+
+
+CLASS ltcl_variants IMPLEMENTATION.
+
+  METHOD setup.
+    ms_entity = VALUE #(
+      fields = VALUE #( ( name = `TRAVELID` type_kind = `CHAR` )
+                        ( name = `STATUS`   type_kind = `CHAR` )
+                        ( name = `PRIORITY` type_kind = `INT` )
+                        ( name = `AGENCYID` type_kind = `CHAR` ) ) ).
+  ENDMETHOD.
+
+
+  METHOD sort_order_default_variant.
+
+    " the qualified variant comes first - the unqualified one is the default
+    z2ui5_cl_rap_util=>apply_annotations(
+      EXPORTING it_entity   = VALUE #(
+                  ( key = `UI.PRESENTATIONVARIANT$1$.QUALIFIER`            value = `'Other'` )
+                  ( key = `UI.PRESENTATIONVARIANT$1$.SORTORDER$1$.BY`      value = `'AgencyID'` )
+                  ( key = `UI.PRESENTATIONVARIANT$2$.SORTORDER$1$.BY`      value = `'TravelID'` )
+                  ( key = `UI.PRESENTATIONVARIANT$2$.SORTORDER$1$.DIRECTION` value = `#DESC` )
+                  ( key = `UI.PRESENTATIONVARIANT$2$.SORTORDER$2$.BY`      value = `'Status'` ) )
+                it_elements = VALUE #( )
+      CHANGING  cs_entity   = ms_entity ).
+
+    cl_abap_unit_assert=>assert_equals( exp = 2          act = lines( ms_entity-sort_order ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `TRAVELID` act = ms_entity-sort_order[ 1 ]-field ).
+    cl_abap_unit_assert=>assert_true( ms_entity-sort_order[ 1 ]-descending ).
+    cl_abap_unit_assert=>assert_equals( exp = `STATUS`   act = ms_entity-sort_order[ 2 ]-field ).
+    cl_abap_unit_assert=>assert_false( ms_entity-sort_order[ 2 ]-descending ).
+
+  ENDMETHOD.
+
+
+  METHOD selection_variants.
+
+    z2ui5_cl_rap_util=>apply_annotations(
+      EXPORTING it_entity   = VALUE #(
+                  ( key = `UI.SELECTIONVARIANT$1$.QUALIFIER` value = `'Open'` )
+                  ( key = `UI.SELECTIONVARIANT$1$.TEXT`      value = `'Open travels'` )
+                  ( key = `UI.SELECTIONVARIANT$1$.FILTER`    value = `'Status EQ O'` )
+                  ( key = `UI.SELECTIONVARIANT$2$.QUALIFIER` value = `'NoFilter'` )
+                  ( key = `UI.SELECTIONVARIANT$3$.QUALIFIER` value = `'Urgent'` )
+                  ( key = `UI.SELECTIONVARIANT$3$.FILTER`    value = `'Priority GE 3'` ) )
+                it_elements = VALUE #( )
+      CHANGING  cs_entity   = ms_entity ).
+
+    " a variant without a filter is no tab
+    cl_abap_unit_assert=>assert_equals( exp = 2              act = lines( ms_entity-selection_variants ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `Open travels` act = ms_entity-selection_variants[ 1 ]-text ).
+    cl_abap_unit_assert=>assert_equals( exp = `Status EQ O`  act = ms_entity-selection_variants[ 1 ]-filter ).
+    " no text - the qualifier stands in
+    cl_abap_unit_assert=>assert_equals( exp = `Urgent`       act = ms_entity-selection_variants[ 2 ]-text ).
+
+  ENDMETHOD.
+
+
+  METHOD selection_filter_where.
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = `STATUS = 'O' AND PRIORITY >= '3'`
+      act = z2ui5_cl_rap_util=>selection_filter_to_where( filter    = `Status EQ O and Priority GE 3`
+                                                          it_fields = ms_entity-fields ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `STATUS <> 'X''Y'`
+      act = z2ui5_cl_rap_util=>selection_filter_to_where( filter    = `Status NE 'X'Y'`
+                                                          it_fields = ms_entity-fields ) ).
+
+  ENDMETHOD.
+
+
+  METHOD selection_filter_unreadable.
+
+    " an unknown field or operator restricts nothing wrongly - it is no filter
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>selection_filter_to_where(
+      filter = `Unknown EQ 1` it_fields = ms_entity-fields ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>selection_filter_to_where(
+      filter = `Status CP O*` it_fields = ms_entity-fields ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>selection_filter_to_where(
+      filter = `Status EQ` it_fields = ms_entity-fields ) ).
+
+  ENDMETHOD.
+
+
+  METHOD text_arrangement.
+
+    z2ui5_cl_rap_util=>apply_annotations(
+      EXPORTING it_entity   = VALUE #( )
+                it_elements = VALUE #( ( element = `AGENCYID` key = `UI.TEXTARRANGEMENT` value = `#TEXT_ONLY` ) )
+      CHANGING  cs_entity   = ms_entity ).
+
+    cl_abap_unit_assert=>assert_equals( exp = `TEXT_ONLY`
+                                        act = ms_entity-fields[ name = `AGENCYID` ]-text_arrangement ).
+
+  ENDMETHOD.
+
+
+  METHOD criticality_maximize.
+
+    DATA(ls_calc) = VALUE z2ui5_cl_rap_util=>ty_s_crit_calc( improvement_direction = `MAXIMIZE`
+                                                             deviation_low         = `50`
+                                                             tolerance_low         = `80` ).
+    cl_abap_unit_assert=>assert_equals( exp = 3 act = z2ui5_cl_rap_util=>criticality_by_calculation( value = 90 is_calc = ls_calc ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 3 act = z2ui5_cl_rap_util=>criticality_by_calculation( value = 80 is_calc = ls_calc ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = z2ui5_cl_rap_util=>criticality_by_calculation( value = 60 is_calc = ls_calc ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = z2ui5_cl_rap_util=>criticality_by_calculation( value = 10 is_calc = ls_calc ) ).
+
+  ENDMETHOD.
+
+
+  METHOD criticality_minimize.
+
+    DATA(ls_calc) = VALUE z2ui5_cl_rap_util=>ty_s_crit_calc( improvement_direction = `MINIMIZE`
+                                                             tolerance_high        = `10`
+                                                             deviation_high        = `20` ).
+    cl_abap_unit_assert=>assert_equals( exp = 3 act = z2ui5_cl_rap_util=>criticality_by_calculation( value = 5  is_calc = ls_calc ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = z2ui5_cl_rap_util=>criticality_by_calculation( value = 15 is_calc = ls_calc ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = z2ui5_cl_rap_util=>criticality_by_calculation( value = 25 is_calc = ls_calc ) ).
+
+  ENDMETHOD.
+
+
+  METHOD criticality_target.
+
+    DATA(ls_calc) = VALUE z2ui5_cl_rap_util=>ty_s_crit_calc( improvement_direction = `TARGET`
+                                                             deviation_low         = `0`
+                                                             tolerance_low         = `40`
+                                                             tolerance_high        = `60`
+                                                             deviation_high        = `100` ).
+    cl_abap_unit_assert=>assert_equals( exp = 3 act = z2ui5_cl_rap_util=>criticality_by_calculation( value = 50  is_calc = ls_calc ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = z2ui5_cl_rap_util=>criticality_by_calculation( value = 70  is_calc = ls_calc ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = z2ui5_cl_rap_util=>criticality_by_calculation( value = 120 is_calc = ls_calc ) ).
+
+  ENDMETHOD.
+
+
+  METHOD criticality_incomplete.
+
+    " no thresholds, a path instead of a number, no direction - neutral
+    cl_abap_unit_assert=>assert_equals( exp = 0 act = z2ui5_cl_rap_util=>criticality_by_calculation(
+      value = 1 is_calc = VALUE #( improvement_direction = `MAXIMIZE` ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 0 act = z2ui5_cl_rap_util=>criticality_by_calculation(
+      value = 1 is_calc = VALUE #( improvement_direction = `MAXIMIZE` tolerance_low = `TargetField` ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 0 act = z2ui5_cl_rap_util=>criticality_by_calculation(
+      value = 1 is_calc = VALUE #( tolerance_low = `1` ) ) ).
 
   ENDMETHOD.
 

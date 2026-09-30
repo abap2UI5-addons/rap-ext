@@ -252,6 +252,22 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
       IMPORTING
         client TYPE REF TO z2ui5_if_client.
 
+    "! the header content from the @UI.facet entries with purpose #HEADER:
+    "! a #DATAPOINT_REFERENCE is a status, a #FIELDGROUP_REFERENCE a block of
+    "! label/value pairs
+    METHODS render_header_facets
+      IMPORTING
+        io_container TYPE REF TO z2ui5_cl_ui5_view_builder
+        client       TYPE REF TO z2ui5_if_client.
+
+    "! the value of a field as the page displays it - with its text by
+    "! @ObjectModel.text.element and @UI.textArrangement
+    METHODS get_display_text
+      IMPORTING
+        is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
+      RETURNING
+        VALUE(result) TYPE string.
+
     "! the labels of the mandatory fields that are still empty
     METHODS get_missing_fields
       RETURNING
@@ -812,7 +828,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         IF NOT line_exists( result[ field_group = ls_group-qualifier ] ).
           APPEND VALUE ty_s_section(
             id          = ls_group-qualifier
-            title       = COND #( WHEN ls_group-label IS NOT INITIAL THEN ls_group-label ELSE ls_group-qualifier )
+            title       = COND #( WHEN ls_group-group_label IS NOT INITIAL THEN ls_group-group_label ELSE ls_group-qualifier )
             field_group = ls_group-qualifier
             type        = `FIELDGROUP` ) TO result.
         ENDIF.
@@ -1031,6 +1047,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
   METHOD render_actions.
 
     IF mv_editable = abap_false.
+      render_extension( spot         = cs_spot-header_actions
+                        io_container = io_actions
+                        client       = client ).
       "@UI.identification actions of type #FOR_ACTION
       IF ms_caps-is_rap_bo = abap_true.
         LOOP AT ms_entity-actions INTO DATA(ls_action) WHERE source = `IDENTIFICATION`.
@@ -1086,6 +1105,103 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD render_header_facets.
+
+    DATA lt_facets TYPE z2ui5_cl_rap_util=>ty_t_facet.
+    LOOP AT ms_entity-facets INTO DATA(ls_facet) WHERE purpose CS `HEADER`.
+      APPEND ls_facet TO lt_facets.
+    ENDLOOP.
+    SORT lt_facets BY position.
+
+    LOOP AT lt_facets INTO ls_facet.
+
+      "a data point facet names its data point - without a qualifier it
+      "would match the first field that has none
+      IF ls_facet-type CS `DATAPOINT` AND ls_facet-target_qualifier IS NOT INITIAL.
+        "the target qualifier names the data point
+        LOOP AT ms_entity-fields INTO DATA(ls_dp)
+          WHERE datapoint_qualifier = ls_facet-target_qualifier AND is_hidden = abap_false.
+          DATA(lv_state) = `None`.
+          IF ls_dp-datapoint_crit_field IS NOT INITIAL.
+            lv_state = get_criticality_state( get_crit_value( ls_dp-datapoint_crit_field ) ).
+          ENDIF.
+          io_container->ele( `VBox`
+              )->a( n = `class`
+                    v = `sapUiMediumMarginEnd sapUiSmallMarginBottom`
+              )->tag( `Label`
+                  )->a( n = `text`
+                        t = COND #( WHEN ls_facet-label IS NOT INITIAL THEN ls_facet-label ELSE ls_dp-label )
+              )->tag( `ObjectStatus`
+                  )->a( n = `text`
+                        t = get_display_text( ls_dp )
+                  )->a( n = `state`
+                        t = lv_state
+                  )->a( n = `class`
+                        v = `sapMObjectStatusLarge` ).
+          EXIT.
+        ENDLOOP.
+
+      ELSEIF ls_facet-type CS `FIELDGROUP` AND ls_facet-target_qualifier IS NOT INITIAL.
+        DATA(lo_block) = io_container->ele( `VBox`
+            )->a( n = `class`
+                  v = `sapUiMediumMarginEnd sapUiSmallMarginBottom` ).
+        IF ls_facet-label IS NOT INITIAL.
+          lo_block->tag( `Title`
+              )->a( n = `text`
+                    t = ls_facet-label
+              )->a( n = `level`
+                    v = `H5` ).
+        ENDIF.
+        DATA lt_group TYPE z2ui5_cl_rap_util=>ty_t_field_info.
+        CLEAR lt_group.
+        LOOP AT ms_entity-fields INTO DATA(ls_field) WHERE is_hidden = abap_false.
+          READ TABLE ls_field-field_groups INTO DATA(ls_group) WITH KEY qualifier = ls_facet-target_qualifier.
+          IF sy-subrc = 0.
+            ls_field-field_group_pos = ls_group-position.
+            APPEND ls_field TO lt_group.
+          ENDIF.
+        ENDLOOP.
+        SORT lt_group BY field_group_pos.
+        LOOP AT lt_group INTO ls_field.
+          lo_block->ele( `HBox`
+              )->tag( `Label`
+                  )->a( n = `text`
+                        t = |{ ls_field-label }:|
+                  )->a( n = `class`
+                        v = `sapUiTinyMarginEnd`
+              )->tag( `Text`
+                  )->a( n = `text`
+                        t = get_display_text( ls_field ) ).
+        ENDLOOP.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_display_text.
+
+    FIELD-SYMBOLS <lv_text> TYPE any.
+
+    result = get_field_value( is_field ).
+    IF is_field-text_element IS INITIAL.
+      RETURN.
+    ENDIF.
+    ASSIGN COMPONENT is_field-text_element OF STRUCTURE ms_data->* TO <lv_text>.
+    IF sy-subrc <> 0 OR <lv_text> IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA(lv_text) = |{ <lv_text> }|.
+    result = SWITCH #( is_field-text_arrangement
+      WHEN `TEXT_LAST`     THEN |{ result } ({ lv_text })|
+      WHEN `TEXT_ONLY`     THEN lv_text
+      WHEN `TEXT_SEPARATE` THEN result
+      ELSE |{ lv_text } ({ result })| ).
+
+  ENDMETHOD.
+
+
   METHOD render_header_content.
 
     DATA(lo_hc) = io_op->ele( n  = `headerContent`
@@ -1095,6 +1211,13 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
               v = `Wrap`
         )->a( n = `fitContainer`
               v = `true` ).
+
+    "@UI.facet with purpose #HEADER decides the header when there is one
+    IF line_exists( ms_entity-facets[ purpose = `#HEADER` ] ) OR line_exists( ms_entity-facets[ purpose = `HEADER` ] ).
+      render_header_facets( io_container = lo_hbox
+                            client       = client ).
+      RETURN.
+    ENDIF.
 
     "identification fields as header attributes
     LOOP AT get_identification_fields( ) INTO DATA(ls_id).
@@ -1195,6 +1318,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                               is_section = ls_section
                               client     = client ).
     ENDLOOP.
+
+    render_extension( spot         = cs_spot-sections
+                      io_container = lo_sections
+                      client       = client ).
 
   ENDMETHOD.
 
@@ -1331,7 +1458,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         ELSE.
           lo_form->tag( `Text`
               )->a( n = `text`
-                    t = lv_display_val ).
+                    t = get_display_text( ls_field ) ).
         ENDIF.
 
       ENDIF.

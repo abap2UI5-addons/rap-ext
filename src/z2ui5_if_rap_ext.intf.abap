@@ -11,8 +11,9 @@
 "! attributes serializable (no references to non-serializable objects).
 "!
 "! Subclassing a floorplan is the other escape hatch (README, "The Escape
-"! Hatch") - rendering changes belong there; this interface changes data,
-"! metadata, texts and events.
+"! Hatch") - a changed rendering belongs there; this interface changes
+"! data, metadata, texts and events, and adds controls at fixed places
+"! (extend_view).
 INTERFACE z2ui5_if_rap_ext
   PUBLIC.
 
@@ -74,6 +75,19 @@ INTERFACE z2ui5_if_rap_ext
       key  TYPE string
     CHANGING
       text TYPE string.
+
+  "! add controls to a view the floorplan builds - spot is one of
+  "! z2ui5_cl_rap_floorplan=>cs_spot, container the builder node there. An
+  "! event of an added control arrives in on_event first. Two limits: a
+  "! binding reaches only PUBLIC attributes of the floorplan (the app), not
+  "! the extension's own - use events and constant values; and a control
+  "! from another library declares its own xmlns (a( n = `xmlns:core` ... ))
+  METHODS extend_view DEFAULT IGNORE
+    IMPORTING
+      floorplan TYPE string
+      spot      TYPE string
+      container TYPE REF TO z2ui5_cl_ui5_view_builder
+      client    TYPE REF TO z2ui5_if_client.
 
   "! the CDS entity an association of entity_name leads to - needed for a
   "! #LINEITEM_REFERENCE facet, whose target the annotations do not name

@@ -1,7 +1,9 @@
 "! Worklist of a CDS view: the items to work through, with a search field
-"! instead of a filter bar, optional segments (an IconTabBar with one tab
-"! per value of segment_field and the count of each), row navigation to
-"! the object page and the @UI.lineItem actions.
+"! instead of a filter bar, optional segments (an IconTabBar with the count
+"! of each tab), row navigation to the object page and the @UI.lineItem
+"! actions. The tabs are one per value of segment_field when it is given,
+"! else one per @UI.selectionVariant of the entity (its filter string, see
+"! z2ui5_cl_rap_util=>selection_filter_to_where).
 "!
 "! Since 2026-09 a subclass of z2ui5_cl_rap_list_report - it used to be a
 "! copy of it with fewer features. Its steps (render_page, load_data,
@@ -101,9 +103,23 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
   METHOD get_where_clause.
 
     result = super->get_where_clause( ).
-    IF mv_segment_field IS INITIAL OR mv_segment IS INITIAL OR mv_segment = cv_segment_all.
+    IF mv_segment IS INITIAL OR mv_segment = cv_segment_all.
       RETURN.
     ENDIF.
+
+    "a tab of a selection variant: its filter
+    IF mv_segment_field IS INITIAL.
+      READ TABLE ms_entity-selection_variants INTO DATA(ls_variant) WITH KEY qualifier = mv_segment.
+      IF sy-subrc = 0.
+        DATA(lv_variant_where) = z2ui5_cl_rap_util=>selection_filter_to_where( filter    = ls_variant-filter
+                                                                              it_fields = ms_entity-fields ).
+        IF lv_variant_where IS NOT INITIAL.
+          result = COND #( WHEN result IS INITIAL THEN lv_variant_where ELSE |{ result } AND { lv_variant_where }| ).
+        ENDIF.
+      ENDIF.
+      RETURN.
+    ENDIF.
+
     READ TABLE ms_entity-fields INTO DATA(ls_field) WITH KEY name = mv_segment_field.
     IF sy-subrc <> 0.
       RETURN.
@@ -120,10 +136,8 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
   METHOD load_data.
 
     super->load_data( ).
-    IF mv_segment_field IS NOT INITIAL.
-      "the counts of every tab, whatever tab is selected
-      load_segments( super->get_where_clause( ) ).
-    ENDIF.
+    "the counts of every tab, whatever tab is selected
+    load_segments( super->get_where_clause( ) ).
 
   ENDMETHOD.
 
@@ -138,6 +152,33 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     DATA lt_group TYPE STANDARD TABLE OF ty_s_group WITH DEFAULT KEY.
 
     CLEAR mt_segment.
+
+    "no segment field: the selection variants that can be read
+    IF mv_segment_field IS INITIAL.
+      DATA lt_variant_tab TYPE ty_t_segment.
+      LOOP AT ms_entity-selection_variants INTO DATA(ls_variant) WHERE qualifier IS NOT INITIAL.
+        DATA(lv_variant_where) = z2ui5_cl_rap_util=>selection_filter_to_where( filter    = ls_variant-filter
+                                                                              it_fields = ms_entity-fields ).
+        IF lv_variant_where IS INITIAL.
+          CONTINUE.
+        ENDIF.
+        APPEND VALUE #( key   = ls_variant-qualifier
+                        text  = ls_variant-text
+                        count = count_rows( entity_name = mv_cds_view
+                                            where       = COND #( WHEN where IS INITIAL THEN lv_variant_where
+                                                                  ELSE |{ where } AND { lv_variant_where }| ) ) )
+          TO lt_variant_tab.
+      ENDLOOP.
+      IF lt_variant_tab IS NOT INITIAL.
+        APPEND VALUE #( key   = cv_segment_all
+                        text  = get_text( cs_text-all )
+                        count = count_rows( entity_name = mv_cds_view
+                                            where       = where ) ) TO mt_segment.
+        APPEND LINES OF lt_variant_tab TO mt_segment.
+      ENDIF.
+      RETURN.
+    ENDIF.
+
     IF NOT line_exists( ms_entity-fields[ name = mv_segment_field ] ).
       RETURN.
     ENDIF.
@@ -266,6 +307,9 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
         )->a( n = `width`
               v = `15rem` ).
 
+    render_sort_controls( io_toolbar = lo_toolbar
+                          client     = client ).
+
     "@UI.lineItem actions of type #FOR_ACTION - on the selected rows
     LOOP AT get_line_item_actions( abap_false ) INTO DATA(ls_action).
       lo_toolbar->tag( `Button`
@@ -275,6 +319,10 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
                 v = client->_event( val = ls_event-action
                                     arg = ls_action-name ) ).
     ENDLOOP.
+
+    render_extension( spot         = cs_spot-toolbar
+                      io_container = lo_toolbar
+                      client       = client ).
 
     lo_toolbar->tag( `Button`
         )->a( n = `icon`

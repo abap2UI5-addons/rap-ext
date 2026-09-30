@@ -103,7 +103,14 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   system that cannot activate it still runs every floorplan read-only. Keep
   EML out of every other class. BDEF derived types are created from their
   absolute names (`\BDEF=...\ENTITY=...\TYPE=...`); whether an operation
-  exists is whether its type can be created (`get_capabilities`).
+  exists is whether its type can be created (`get_capabilities`). A
+  draft-enabled BO (the draft action `EDIT` has a type) is written through
+  its draft - Edit (with `preserve_changes`, so an existing draft is an
+  error, never discarded), update with `%is_draft`, Activate; or create a
+  draft and Activate it by the key the create `MAPPED` (not by `%cid_ref`,
+  which a draft action's type may not carry) - each step its own `MODIFY
+  ENTITIES OPERATIONS`, one `COMMIT ENTITIES`, `ROLLBACK ENTITIES` on the
+  first failure (`run_steps`).
 - `z2ui5_cl_rap_util` reads types via **classic RTTI** (`cl_abap_typedescr`),
   not the XCO library. Do not rewrite RTTI to XCO or swap the annotation API
   "for cloud readiness" — that changes the supported platform and is a
@@ -185,7 +192,11 @@ classes, so those method names and signatures are a **public contract**:
   `z2ui5_cl_rap_util` (`ty_s_field_info`, `ty_s_entity_info`, ...):
   components are appended, never removed or reordered.
 - `z2ui5_if_rap_ext` is implemented downstream: a new method must be
-  `DEFAULT IGNORE`, or every implementation stops compiling. It includes
+  `DEFAULT IGNORE`, or every implementation stops compiling. `extend_view`
+  adds controls at the `cs_spot` places; call `render_extension( )` at a
+  place where the next builder call opens a new element (never a bare
+  `a( )` on the container right after it - it would land on the
+  extension's last control). It includes
   `if_serializable_object` because the extension travels through the draft.
 - **`check_app_prev_stack( )` means "this app has a caller", not "something
   came back".** A floorplan that is the root app (started directly, reached

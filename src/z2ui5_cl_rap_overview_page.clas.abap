@@ -66,6 +66,9 @@ CLASS z2ui5_cl_rap_overview_page DEFINITION
         chart_measure   TYPE string,
         "the largest measure - the 100 % of the chart's bars
         chart_max       TYPE decfloat34,
+        "added 2026-10: the KPI's sap.m.ValueColor (Good, Critical, Error,
+        "Neutral) by @UI.dataPoint.criticalityCalculation
+        kpi_state       TYPE string,
       END OF ty_s_card_data.
 
     TYPES ty_t_card_data TYPE STANDARD TABLE OF ty_s_card_data WITH DEFAULT KEY.
@@ -382,6 +385,14 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
     TRY.
         SELECT SINGLE (lv_select) FROM (lv_view) WHERE (lv_where) INTO @lv_value.
         cs_card_data-kpi_value = |{ lv_value NUMBER = USER }|.
+        "the KPI's color by the field's @UI.dataPoint.criticalityCalculation
+        cs_card_data-kpi_state = SWITCH #( z2ui5_cl_rap_util=>criticality_by_calculation(
+                                             value   = lv_value
+                                             is_calc = cs_card_data-entity-fields[ name = lv_field ]-crit_calc )
+                                           WHEN 3 THEN `Good`
+                                           WHEN 2 THEN `Critical`
+                                           WHEN 1 THEN `Error`
+                                           ELSE `Neutral` ).
       CATCH cx_root.
         cs_card_data-kpi_value = |{ cs_card_data-count }|.
     ENDTRY.
@@ -573,6 +584,10 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
       ENDCASE.
     ENDLOOP.
 
+    render_extension( spot         = cs_spot-cards
+                      io_container = lo_grid
+                      client       = client ).
+
     client->view_display( lo_view->stringify( ) ).
 
   ENDMETHOD.
@@ -693,6 +708,11 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
   METHOD render_kpi_card.
 
     DATA(lv_kpi_value) = is_card-kpi_value.
+    "a sap.m.ValueColor - never empty, the enum has no empty value
+    DATA(lv_state) = `Neutral`.
+    IF is_card-kpi_state = `Good` OR is_card-kpi_state = `Critical` OR is_card-kpi_state = `Error`.
+      lv_state = is_card-kpi_state.
+    ENDIF.
     IF lv_kpi_value IS INITIAL.
       lv_kpi_value = CONV string( is_card-count ).
     ENDIF.
@@ -718,7 +738,9 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
             )->a( n = `number`
                   t = lv_kpi_value
             )->a( n = `unitOfMeasurement`
-                  t = ls_card-kpi_unit ).
+                  t = ls_card-kpi_unit
+            )->a( n = `state`
+                  t = lv_state ).
 
     DATA(lo_content) = lo_card->ele( n  = `content`
                                      ns = `f` ).

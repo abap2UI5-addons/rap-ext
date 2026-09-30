@@ -92,6 +92,13 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
       RETURNING
         VALUE(result) TYPE REF TO data.
 
+    "! the label and the control of one field
+    METHODS render_dialog_field
+      IMPORTING
+        io_form  TYPE REF TO z2ui5_cl_ui5_view_builder
+        is_field TYPE z2ui5_cl_rap_util=>ty_s_field_info
+        client   TYPE REF TO z2ui5_if_client.
+
     "! the labels of the mandatory fields that are still empty
     METHODS get_missing_fields
       RETURNING
@@ -259,17 +266,49 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
         )->ele( n  = `content`
                  ns = `form` ).
 
+    "@UI.fieldGroup: one titled group per qualifier, in the order the
+    "groups first appear; fields without a group come first, untitled
+    DATA lt_groups TYPE z2ui5_cl_rap_util=>ty_t_field_group.
     LOOP AT ms_entity-fields INTO DATA(ls_field) WHERE is_hidden = abap_false.
-      lo_form->tag( `Label`
-          )->a( n = `text`
-                t = ls_field-label
-          )->a( n = `required`
-                b = ls_field-is_mandatory ).
-      get_control_for_field(
-        io_container = lo_form
-        is_field     = ls_field
-        client       = client ).
+      LOOP AT ls_field-field_groups INTO DATA(ls_group).
+        IF NOT line_exists( lt_groups[ qualifier = ls_group-qualifier ] ).
+          APPEND ls_group TO lt_groups.
+        ENDIF.
+      ENDLOOP.
     ENDLOOP.
+
+    LOOP AT ms_entity-fields INTO ls_field
+      WHERE is_hidden = abap_false AND field_groups IS INITIAL.
+      render_dialog_field( io_form  = lo_form
+                           is_field = ls_field
+                           client   = client ).
+    ENDLOOP.
+
+    LOOP AT lt_groups INTO ls_group.
+      lo_form->tag( n  = `Title`
+                    ns = `core`
+          )->a( n = `text`
+                t = COND #( WHEN ls_group-group_label IS NOT INITIAL THEN ls_group-group_label ELSE ls_group-qualifier ) ).
+      DATA lt_in_group TYPE z2ui5_cl_rap_util=>ty_t_field_info.
+      CLEAR lt_in_group.
+      LOOP AT ms_entity-fields INTO ls_field WHERE is_hidden = abap_false.
+        READ TABLE ls_field-field_groups INTO DATA(ls_membership) WITH KEY qualifier = ls_group-qualifier.
+        IF sy-subrc = 0.
+          ls_field-field_group_pos = ls_membership-position.
+          APPEND ls_field TO lt_in_group.
+        ENDIF.
+      ENDLOOP.
+      SORT lt_in_group BY field_group_pos.
+      LOOP AT lt_in_group INTO ls_field.
+        render_dialog_field( io_form  = lo_form
+                             is_field = ls_field
+                             client   = client ).
+      ENDLOOP.
+    ENDLOOP.
+
+    render_extension( spot         = cs_spot-dialog_content
+                      io_container = lo_content
+                      client       = client ).
 
     lo_dialog->ele( `beginButton`
         )->tag( `Button`
@@ -288,6 +327,21 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
                   v = client->_event( cs_event-cancel ) ).
 
     client->popup_display( lo_popup->stringify( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD render_dialog_field.
+
+    io_form->tag( `Label`
+        )->a( n = `text`
+              t = is_field-label
+        )->a( n = `required`
+              b = is_field-is_mandatory ).
+    get_control_for_field(
+      io_container = io_form
+      is_field     = is_field
+      client       = client ).
 
   ENDMETHOD.
 

@@ -15,6 +15,12 @@
 "! without loading this class - so a system that cannot activate it still
 "! runs every floorplan read-only.
 "!
+"! A draft-enabled business object (its BDEF has the draft action Edit) is
+"! written the way its own UI would: update = Edit (a draft of the active
+"! instance), update the draft, Activate; create = create a draft, Activate
+"! it. Everything runs before the one COMMIT ENTITIES, and a failed step
+"! rolls the whole request back - no draft is left behind.
+"!
 "! Not verified in a system by an automated gate - see AGENTS.md.
 CLASS z2ui5_cl_rap_eml DEFINITION
   PUBLIC
@@ -49,6 +55,13 @@ CLASS z2ui5_cl_rap_eml DEFINITION
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
+    "! the business object has a draft (the draft action Edit exists)
+    CLASS-METHODS is_draft_enabled
+      IMPORTING
+        entity_name   TYPE clike
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
     "! execute an action for every row of rows (a table of the entity);
     "! param is the action's parameter structure, if it has one
     CLASS-METHODS execute_action
@@ -61,6 +74,48 @@ CLASS z2ui5_cl_rap_eml DEFINITION
         VALUE(result) TYPE ty_s_result.
 
   PRIVATE SECTION.
+
+    "! one MODIFY ENTITIES OPERATIONS of a request. keys_from_mapped: the
+    "! key fields of its instances are set from what the previous step
+    "! MAPPED - the draft a create just made, for its Activate
+    TYPES:
+      BEGIN OF ty_s_step,
+        ops              TYPE abp_behv_changes_tab,
+        keys_from_mapped TYPE abap_bool,
+      END OF ty_s_step.
+
+    "! the steps of one request - in order, before one COMMIT ENTITIES
+    TYPES ty_t_steps TYPE STANDARD TABLE OF ty_s_step WITH DEFAULT KEY.
+
+    CLASS-METHODS run_steps
+      IMPORTING
+        steps         TYPE ty_t_steps
+        read_keys     TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(result) TYPE ty_s_result.
+
+    "! an action table of the entity, one instance of row - is_draft marks
+    "! the draft instance
+    CLASS-METHODS create_action_instances
+      IMPORTING
+        entity_name   TYPE string
+        action        TYPE string
+        row           TYPE data
+        is_draft      TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(result) TYPE REF TO data
+      RAISING
+        cx_sy_create_data_error.
+
+    "! set the key fields of every instance of every operation
+    CLASS-METHODS set_keys
+      IMPORTING
+        instances TYPE abp_behv_changes_tab
+        keys      TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value.
+
+    CLASS-METHODS set_draft
+      CHANGING
+        instance TYPE data.
 
     CLASS-METHODS run
       IMPORTING
@@ -129,9 +184,33 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
                            mode     = `NOT_INITIAL`
                  CHANGING  instance = <ls_inst> ).
 
-    result = run( entity_name = lv_entity
-                  op          = if_abap_behv=>op-m-create
-                  instances   = lr_inst ).
+    IF is_draft_enabled( lv_entity ) = abap_false.
+      result = run( entity_name = lv_entity
+                    op          = if_abap_behv=>op-m-create
+                    instances   = lr_inst ).
+      RETURN.
+    ENDIF.
+
+    "draft: create the draft, then activate it by the key the create
+    "MAPPED - not by %cid_ref, which a draft action's type may not carry
+    set_draft( CHANGING instance = <ls_inst> ).
+    TRY.
+        DATA(lr_activate) = create_action_instances( entity_name = lv_entity
+                                                     action      = `ACTIVATE`
+                                                     row         = row
+                                                     is_draft    = abap_true ).
+      CATCH cx_sy_create_data_error.
+        result-messages = VALUE #( ( |{ lv_entity }: no draft action Activate| ) ).
+        RETURN.
+    ENDTRY.
+    result = run_steps( read_keys = abap_true
+                        steps     = VALUE #(
+      ( ops = VALUE #( ( op = if_abap_behv=>op-m-create entity_name = lv_entity instances = lr_inst ) ) )
+      ( ops              = VALUE #( ( op          = if_abap_behv=>op-m-action
+                                      entity_name = lv_entity
+                                      sub_name    = `ACTIVATE`
+                                      instances   = lr_activate ) )
+        keys_from_mapped = abap_true ) ) ).
 
   ENDMETHOD.
 
@@ -154,9 +233,32 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
                            mode     = `CHANGED`
                  CHANGING  instance = <ls_inst> ).
 
-    result = run( entity_name = lv_entity
-                  op          = if_abap_behv=>op-m-update
-                  instances   = lr_inst ).
+    IF is_draft_enabled( lv_entity ) = abap_false.
+      result = run( entity_name = lv_entity
+                    op          = if_abap_behv=>op-m-update
+                    instances   = lr_inst ).
+      RETURN.
+    ENDIF.
+
+    "draft: Edit the active instance (a draft appears), change the draft,
+    "Activate it - an active instance of a draft BO is not changed directly
+    set_draft( CHANGING instance = <ls_inst> ).
+    TRY.
+        DATA(lr_edit) = create_action_instances( entity_name = lv_entity
+                                                 action      = `EDIT`
+                                                 row         = row ).
+        DATA(lr_activate) = create_action_instances( entity_name = lv_entity
+                                                     action      = `ACTIVATE`
+                                                     row         = row
+                                                     is_draft    = abap_true ).
+      CATCH cx_sy_create_data_error.
+        result-messages = VALUE #( ( |{ lv_entity }: no draft actions Edit and Activate| ) ).
+        RETURN.
+    ENDTRY.
+    result = run_steps( VALUE #(
+      ( ops = VALUE #( ( op = if_abap_behv=>op-m-action entity_name = lv_entity sub_name = `EDIT`     instances = lr_edit ) ) )
+      ( ops = VALUE #( ( op = if_abap_behv=>op-m-update entity_name = lv_entity                       instances = lr_inst ) ) )
+      ( ops = VALUE #( ( op = if_abap_behv=>op-m-action entity_name = lv_entity sub_name = `ACTIVATE` instances = lr_activate ) ) ) ) ).
 
   ENDMETHOD.
 
@@ -230,32 +332,60 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
   METHOD run.
 
     DATA lt_op TYPE abp_behv_changes_tab.
-    DATA lt_commit_failed TYPE abp_behv_response_tab.
-    DATA lt_commit_reported TYPE abp_behv_response_tab.
-
     APPEND VALUE #( op          = op
                     entity_name = entity_name
                     sub_name    = sub_name
                     instances   = instances ) TO lt_op.
+    result = run_steps( steps     = VALUE #( ( ops = lt_op ) )
+                        read_keys = xsdbool( op = if_abap_behv=>op-m-create ) ).
+
+  ENDMETHOD.
+
+
+  METHOD run_steps.
+
+    DATA lt_commit_failed TYPE abp_behv_response_tab.
+    DATA lt_commit_reported TYPE abp_behv_response_tab.
 
     TRY.
-        MODIFY ENTITIES OPERATIONS lt_op
-          MAPPED DATA(lt_mapped)
-          FAILED DATA(lt_failed)
-          REPORTED DATA(lt_reported).
-
-        collect_messages( EXPORTING responses = lt_reported
-                          CHANGING  messages  = result-messages ).
-
-        IF lt_failed IS NOT INITIAL.
-          collect_messages( EXPORTING responses = lt_failed
-                            CHANGING  messages  = result-messages ).
-          ROLLBACK ENTITIES.
-          IF result-messages IS INITIAL.
-            APPEND `The operation was rejected` TO result-messages.
+        DATA lt_previous_keys TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value.
+        LOOP AT steps INTO DATA(ls_step).
+          DATA(lv_step) = sy-tabix.
+          DATA(lt_op) = ls_step-ops.
+          IF ls_step-keys_from_mapped = abap_true.
+            IF lt_previous_keys IS INITIAL.
+              APPEND `The new instance's key is unknown` TO result-messages.
+              ROLLBACK ENTITIES.
+              RETURN.
+            ENDIF.
+            set_keys( instances = lt_op
+                      keys      = lt_previous_keys ).
           ENDIF.
-          RETURN.
-        ENDIF.
+          MODIFY ENTITIES OPERATIONS lt_op
+            MAPPED DATA(lt_mapped)
+            FAILED DATA(lt_failed)
+            REPORTED DATA(lt_reported).
+
+          collect_messages( EXPORTING responses = lt_reported
+                            CHANGING  messages  = result-messages ).
+
+          "an unevaluated failure poisons the whole LUW - evaluate it, and
+          "roll back before anything else runs
+          IF lt_failed IS NOT INITIAL.
+            collect_messages( EXPORTING responses = lt_failed
+                              CHANGING  messages  = result-messages ).
+            ROLLBACK ENTITIES.
+            IF result-messages IS INITIAL.
+              APPEND `The operation was rejected` TO result-messages.
+            ENDIF.
+            RETURN.
+          ENDIF.
+
+          lt_previous_keys = get_mapped_keys( lt_mapped ).
+          IF read_keys = abap_true AND lv_step = 1.
+            result-keys = lt_previous_keys.
+          ENDIF.
+        ENDLOOP.
 
         COMMIT ENTITIES RESPONSES FAILED lt_commit_failed REPORTED lt_commit_reported.
         IF sy-subrc <> 0.
@@ -264,6 +394,7 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
           collect_messages( EXPORTING responses = lt_commit_failed
                             CHANGING  messages  = result-messages ).
           ROLLBACK ENTITIES.
+          CLEAR result-keys.
           IF result-messages IS INITIAL.
             APPEND `Saving was rejected` TO result-messages.
           ENDIF.
@@ -271,15 +402,84 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
         ENDIF.
 
         result-success = abap_true.
-        IF op = if_abap_behv=>op-m-create.
-          result-keys = get_mapped_keys( lt_mapped ).
-        ENDIF.
 
       CATCH cx_root INTO DATA(lx).
         ROLLBACK ENTITIES.
+        CLEAR result-keys.
         APPEND lx->get_text( ) TO result-messages.
     ENDTRY.
 
+  ENDMETHOD.
+
+
+  METHOD is_draft_enabled.
+    DATA(lv_entity) = to_upper( entity_name ).
+    TRY.
+        DATA(lr_edit) = create_instances( entity_name = lv_entity
+                                          type_suffix = `\ACTION=EDIT\TYPE=IMPORTING` ).
+        result = xsdbool( lr_edit IS BOUND ).
+      CATCH cx_sy_create_data_error.
+        result = abap_false.
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD create_action_instances.
+
+    FIELD-SYMBOLS <lt_inst> TYPE STANDARD TABLE.
+
+    result = create_instances( entity_name = entity_name
+                               type_suffix = |\\ACTION={ action }\\TYPE=IMPORTING| ).
+    ASSIGN result->* TO <lt_inst>.
+    APPEND INITIAL LINE TO <lt_inst> ASSIGNING FIELD-SYMBOL(<ls_inst>).
+    MOVE-CORRESPONDING row TO <ls_inst>.
+    IF is_draft = abap_true.
+      set_draft( CHANGING instance = <ls_inst> ).
+    ENDIF.
+    "Edit keeps an existing draft instead of discarding it - with it, a
+    "draft of the same user (or a lock of another) is an error message,
+    "never lost work
+    IF action = `EDIT`.
+      ASSIGN COMPONENT `%PARAM` OF STRUCTURE <ls_inst> TO FIELD-SYMBOL(<ls_param>).
+      IF sy-subrc = 0.
+        ASSIGN COMPONENT `PRESERVE_CHANGES` OF STRUCTURE <ls_param> TO FIELD-SYMBOL(<lv_preserve>).
+        IF sy-subrc = 0.
+          <lv_preserve> = abap_true.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD set_keys.
+
+    FIELD-SYMBOLS <lt_inst> TYPE ANY TABLE.
+    FIELD-SYMBOLS <lv_key> TYPE any.
+
+    LOOP AT instances INTO DATA(ls_op).
+      IF ls_op-instances IS NOT BOUND.
+        CONTINUE.
+      ENDIF.
+      ASSIGN ls_op-instances->* TO <lt_inst>.
+      LOOP AT <lt_inst> ASSIGNING FIELD-SYMBOL(<ls_inst>).
+        LOOP AT keys INTO DATA(ls_key).
+          ASSIGN COMPONENT ls_key-name OF STRUCTURE <ls_inst> TO <lv_key>.
+          IF sy-subrc = 0.
+            <lv_key> = ls_key-value.
+          ENDIF.
+        ENDLOOP.
+      ENDLOOP.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD set_draft.
+    ASSIGN COMPONENT `%IS_DRAFT` OF STRUCTURE instance TO FIELD-SYMBOL(<lv_is_draft>).
+    IF sy-subrc = 0.
+      <lv_is_draft> = if_abap_behv=>mk-on.
+    ENDIF.
   ENDMETHOD.
 
 
