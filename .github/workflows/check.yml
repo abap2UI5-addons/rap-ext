@@ -12,11 +12,11 @@ on:
   push:
     branches: [ main ]
   pull_request:
-  # The core is resolved from its main branch with no version pin, so a rename
-  # there breaks this repository silently. That is not hypothetical: every
-  # floorplan named a class the core does not ship, abaplint reported 55
-  # errors, and the badge stayed green for ten days because no pull request
-  # was opened in between.
+  # The core is pinned to a release tag (abaplint.jsonc, scripts/core-pin.mjs).
+  # The weekly run is the canary against the core's main branch: a rename
+  # there used to break this repository silently - every floorplan named a
+  # class the core does not ship, abaplint reported 55 errors, and the badge
+  # stayed green for ten days because no pull request was opened in between.
   schedule:
     - cron: '0 5 * * 1'
   workflow_dispatch:
@@ -40,6 +40,11 @@ jobs:
       # pinned through package-lock.json, so CI and `npm run lint` are the
       # same version - @latest made every run a different check
       - run: npm ci
+      # the scheduled run lints against main tip instead of the pinned tag -
+      # in this checkout only, it is never committed
+      - name: Canary - resolve the core from main
+        if: github.event_name == 'schedule'
+        run: node scripts/core-pin.mjs set main
       - name: abaplint (expect 0 issues)
         run: npm run lint
 

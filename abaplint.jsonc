@@ -9,7 +9,12 @@
       "files": "/src/**/*.*"
     },
     {
+      // A release tag, not main: users install a release next to this addon
+      // (abap2UI5 CONVENTIONS §9). scripts/core-pin.mjs reads and moves it,
+      // bump-core.yml moves it weekly after the gates passed on the new tag,
+      // and the weekly canary in check.yml runs once against main.
       "url": "https://github.com/abap2UI5/abap2UI5",
+      "branch": "1.146.0",
       "folder": "/abap2UI5",
       "files": "/src/**/*.*"
     }

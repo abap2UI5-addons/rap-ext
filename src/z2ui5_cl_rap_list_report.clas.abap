@@ -8,9 +8,8 @@
 "! floorplan does not know are routed to on_event, so a subclass adds its
 "! own actions the same way any abap2UI5 app handles them.
 "!
-"! Related: z2ui5_cl_fp_list_report in the abap2UI5 core generates the
-"! same UX from any flat internal table via RTTI - use it when the data
-"! source is not a CDS view with UI annotations.
+"! The data source is always a CDS view with UI annotations - the abap2UI5
+"! core ships no list report over a plain internal table (see README).
 CLASS z2ui5_cl_rap_list_report DEFINITION
   PUBLIC
   CREATE PUBLIC.
