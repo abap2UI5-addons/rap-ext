@@ -49,6 +49,18 @@ CLASS z2ui5_cl_rap_util DEFINITION
 
     TYPES ty_t_field_group TYPE STANDARD TABLE OF ty_s_field_group WITH DEFAULT KEY.
 
+    " @UI.dataPoint.criticalityCalculation - the thresholds that turn a
+    " value into a criticality (criticality_by_calculation)
+    TYPES:
+      BEGIN OF ty_s_crit_calc,
+        "MAXIMIZE, MINIMIZE or TARGET
+        improvement_direction TYPE string,
+        deviation_low         TYPE string,
+        tolerance_low         TYPE string,
+        tolerance_high        TYPE string,
+        deviation_high        TYPE string,
+      END OF ty_s_crit_calc.
+
     TYPES:
       BEGIN OF ty_s_field_info,
         "identification
@@ -113,6 +125,9 @@ CLASS z2ui5_cl_rap_util DEFINITION
         field_groups              TYPE ty_t_field_group,
         is_readonly               TYPE abap_bool,
         filter_default            TYPE string,
+        "@UI.textArrangement: TEXT_FIRST, TEXT_LAST, TEXT_ONLY, TEXT_SEPARATE
+        text_arrangement          TYPE string,
+        crit_calc                 TYPE ty_s_crit_calc,
       END OF ty_s_field_info.
 
     TYPES ty_t_field_info TYPE STANDARD TABLE OF ty_s_field_info WITH DEFAULT KEY.
@@ -195,6 +210,26 @@ CLASS z2ui5_cl_rap_util DEFINITION
 
     TYPES ty_t_chart TYPE STANDARD TABLE OF ty_s_chart WITH DEFAULT KEY.
 
+    " one sort criterion of @UI.presentationVariant
+    TYPES:
+      BEGIN OF ty_s_sort,
+        field      TYPE string,
+        descending TYPE abap_bool,
+      END OF ty_s_sort.
+
+    TYPES ty_t_sort TYPE STANDARD TABLE OF ty_s_sort WITH DEFAULT KEY.
+
+    " one @UI.selectionVariant - filter is its filter string
+    " ('Status EQ O AND Priority GT 2'), see selection_filter_to_where
+    TYPES:
+      BEGIN OF ty_s_selection_variant,
+        qualifier TYPE string,
+        text      TYPE string,
+        filter    TYPE string,
+      END OF ty_s_selection_variant.
+
+    TYPES ty_t_selection_variant TYPE STANDARD TABLE OF ty_s_selection_variant WITH DEFAULT KEY.
+
     TYPES:
       BEGIN OF ty_s_entity_info,
         "identification
@@ -220,6 +255,10 @@ CLASS z2ui5_cl_rap_util DEFINITION
         keys            TYPE string_table,
         actions         TYPE ty_t_action,
         charts          TYPE ty_t_chart,
+        "added 2026-10
+        "the sort order of the default @UI.presentationVariant
+        sort_order         TYPE ty_t_sort,
+        selection_variants TYPE ty_t_selection_variant,
       END OF ty_s_entity_info.
 
     "======= PUBLIC METHODS =======
@@ -315,6 +354,27 @@ CLASS z2ui5_cl_rap_util DEFINITION
 
     "! align ABAP and JSON model representations of a key value: dates
     "! (2024-01-15), times (12:30:00), padding
+    "! The WHERE condition (ABAP SQL) of a @UI.selectionVariant filter
+    "! string: conditions "Field OP Value" joined with AND, OP one of EQ NE
+    "! GT GE LT LE, the value optionally in quotes. Empty when the string
+    "! names a field that it_fields does not have or an operator it does
+    "! not know - a variant that cannot be read restricts nothing wrongly
+    CLASS-METHODS selection_filter_to_where
+      IMPORTING
+        filter        TYPE string
+        it_fields     TYPE ty_t_field_info
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! The criticality (1 negative, 2 critical, 3 positive, 0 neutral) of a
+    "! value by @UI.dataPoint.criticalityCalculation
+    CLASS-METHODS criticality_by_calculation
+      IMPORTING
+        value         TYPE decfloat34
+        is_calc       TYPE ty_s_crit_calc
+      RETURNING
+        VALUE(result) TYPE i.
+
     CLASS-METHODS normalize_value
       IMPORTING
         val           TYPE string
@@ -412,6 +472,12 @@ CLASS z2ui5_cl_rap_util DEFINITION
         source    TYPE string
       CHANGING
         ct_action TYPE ty_t_action.
+
+    CLASS-METHODS parse_variants
+      IMPORTING
+        it_annos  TYPE ty_t_annotation
+      CHANGING
+        cs_entity TYPE ty_s_entity_info.
 
     CLASS-METHODS parse_charts
       IMPORTING
@@ -607,6 +673,8 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
                   CHANGING  ct_facet = cs_entity-facets ).
     parse_charts( EXPORTING it_annos = cs_entity-entity_annotations
                   CHANGING  ct_chart = cs_entity-charts ).
+    parse_variants( EXPORTING it_annos  = cs_entity-entity_annotations
+                    CHANGING  cs_entity = cs_entity ).
 
     "======= ELEMENT LEVEL =======
     DATA(lt_elements) = it_elements.
@@ -698,6 +766,18 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           IF is_true( lv_val ).
             cs_field-is_boolean = abap_true.
           ENDIF.
+        WHEN `UI.TEXTARRANGEMENT`.
+          cs_field-text_arrangement = replace( val = strip_quotes( lv_val ) sub = `#` with = `` ).
+        WHEN `UI.DATAPOINT.CRITICALITYCALCULATION.IMPROVEMENTDIRECTION`.
+          cs_field-crit_calc-improvement_direction = replace( val = strip_quotes( lv_val ) sub = `#` with = `` ).
+        WHEN `UI.DATAPOINT.CRITICALITYCALCULATION.DEVIATIONRANGELOWVALUE`.
+          cs_field-crit_calc-deviation_low = strip_quotes( lv_val ).
+        WHEN `UI.DATAPOINT.CRITICALITYCALCULATION.TOLERANCERANGELOWVALUE`.
+          cs_field-crit_calc-tolerance_low = strip_quotes( lv_val ).
+        WHEN `UI.DATAPOINT.CRITICALITYCALCULATION.TOLERANCERANGEHIGHVALUE`.
+          cs_field-crit_calc-tolerance_high = strip_quotes( lv_val ).
+        WHEN `UI.DATAPOINT.CRITICALITYCALCULATION.DEVIATIONRANGEHIGHVALUE`.
+          cs_field-crit_calc-deviation_high = strip_quotes( lv_val ).
         WHEN `CONSUMPTION.FILTER.DEFAULTVALUE`.
           cs_field-filter_default = strip_quotes( lv_val ).
         WHEN `UI.DATAPOINT.QUALIFIER`.
@@ -895,6 +975,70 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         ls_action-label = ls_action-name.
       ENDIF.
       APPEND ls_action TO ct_action.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD parse_variants.
+
+    "@UI.presentationVariant - the unqualified one, else the first
+    DATA(lt_entries) = get_entries( it_annos = it_annos prefix = `UI.PRESENTATIONVARIANT` ).
+    DATA lv_idx TYPE i.
+    LOOP AT lt_entries INTO DATA(ls_entry).
+      IF get_entry_value( it_entries = lt_entries idx = ls_entry-idx prop = `QUALIFIER` ) IS INITIAL.
+        lv_idx = ls_entry-idx.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+    IF lv_idx = 0 AND lt_entries IS NOT INITIAL.
+      lv_idx = lt_entries[ 1 ]-idx.
+    ENDIF.
+    IF lv_idx > 0 AND cs_entity-sort_order IS INITIAL.
+      "SORTORDER$n$.BY / .DIRECTION
+      DATA lt_sort_annos TYPE ty_t_annotation.
+      LOOP AT lt_entries INTO ls_entry WHERE idx = lv_idx AND prop CP `SORTORDER*`.
+        APPEND VALUE #( key = ls_entry-prop value = ls_entry-value ) TO lt_sort_annos.
+      ENDLOOP.
+      DATA(lt_sort) = get_entries( it_annos = lt_sort_annos prefix = `SORTORDER` ).
+      DATA lv_sidx TYPE i.
+      LOOP AT lt_sort INTO DATA(ls_sort).
+        IF ls_sort-idx = lv_sidx.
+          CONTINUE.
+        ENDIF.
+        lv_sidx = ls_sort-idx.
+        DATA(lv_by) = to_upper( strip_quotes( get_entry_value( it_entries = lt_sort idx = lv_sidx prop = `BY` ) ) ).
+        IF lv_by IS INITIAL.
+          CONTINUE.
+        ENDIF.
+        APPEND VALUE ty_s_sort(
+          field      = lv_by
+          descending = xsdbool( get_entry_value( it_entries = lt_sort idx = lv_sidx prop = `DIRECTION` ) CS `DESC` ) )
+          TO cs_entity-sort_order.
+      ENDLOOP.
+    ENDIF.
+
+    "@UI.selectionVariant - every entry with a filter
+    lt_entries = get_entries( it_annos = it_annos prefix = `UI.SELECTIONVARIANT` ).
+    CLEAR lv_idx.
+    LOOP AT lt_entries INTO ls_entry.
+      IF ls_entry-idx = lv_idx.
+        CONTINUE.
+      ENDIF.
+      lv_idx = ls_entry-idx.
+      DATA(ls_variant) = VALUE ty_s_selection_variant(
+        qualifier = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) )
+        text      = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `TEXT` ) )
+        filter    = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `FILTER` ) ) ).
+      IF ls_variant-filter IS INITIAL
+        OR line_exists( cs_entity-selection_variants[ qualifier = ls_variant-qualifier ] ).
+        CONTINUE.
+      ENDIF.
+      IF ls_variant-text IS INITIAL.
+        ls_variant-text = COND #( WHEN ls_variant-qualifier IS NOT INITIAL THEN ls_variant-qualifier
+                                  ELSE ls_variant-filter ).
+      ENDIF.
+      APPEND ls_variant TO cs_entity-selection_variants.
     ENDLOOP.
 
   ENDMETHOD.
@@ -1364,6 +1508,114 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     IF lt_or IS NOT INITIAL.
       result = |( { concat_lines_of( table = lt_or sep = ` OR ` ) } )|.
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD selection_filter_to_where.
+
+    DATA lt_and TYPE string_table.
+
+    "split at AND as a word, outside of quotes - the values are simple
+    "tokens in practice, a quoted AND is not supported
+    DATA(lv_filter) = condense( filter ).
+    REPLACE ALL OCCURRENCES OF ` and ` IN lv_filter WITH ` AND ` IGNORING CASE.
+    SPLIT lv_filter AT ` AND ` INTO TABLE DATA(lt_parts).
+
+    LOOP AT lt_parts INTO DATA(lv_part).
+      CONDENSE lv_part.
+      SPLIT lv_part AT ` ` INTO DATA(lv_field) DATA(lv_op) DATA(lv_value).
+      lv_field = to_upper( lv_field ).
+      lv_op = to_upper( lv_op ).
+      READ TABLE it_fields INTO DATA(ls_field) WITH KEY name = lv_field.
+      IF sy-subrc <> 0 OR lv_value IS INITIAL.
+        CLEAR result.
+        RETURN.
+      ENDIF.
+      DATA(lv_sql_op) = SWITCH string( lv_op
+        WHEN `EQ` THEN `=`
+        WHEN `NE` THEN `<>`
+        WHEN `GT` THEN `>`
+        WHEN `GE` THEN `>=`
+        WHEN `LT` THEN `<`
+        WHEN `LE` THEN `<=` ).
+      IF lv_sql_op IS INITIAL.
+        CLEAR result.
+        RETURN.
+      ENDIF.
+      APPEND |{ ls_field-name } { lv_sql_op } { literal( is_field = ls_field value = strip_quotes( condense( lv_value ) ) ) }|
+        TO lt_and.
+    ENDLOOP.
+
+    result = concat_lines_of( table = lt_and sep = ` AND ` ).
+
+  ENDMETHOD.
+
+
+  METHOD criticality_by_calculation.
+
+    DATA lv_dev_low TYPE decfloat34.
+    DATA lv_tol_low TYPE decfloat34.
+    DATA lv_tol_high TYPE decfloat34.
+    DATA lv_dev_high TYPE decfloat34.
+
+    "a threshold given as a path to another field is not supported - and a
+    "failed conversion is not something to rely on (the JS runtime answers
+    "one without raising), so the text is checked first
+    LOOP AT VALUE string_table( ( is_calc-deviation_low ) ( is_calc-tolerance_low )
+                                ( is_calc-tolerance_high ) ( is_calc-deviation_high ) ) INTO DATA(lv_threshold).
+      IF condense( lv_threshold ) CN `0123456789.-+eE`.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+
+    TRY.
+        IF is_calc-deviation_low IS NOT INITIAL.
+          lv_dev_low = is_calc-deviation_low.
+        ENDIF.
+        IF is_calc-tolerance_low IS NOT INITIAL.
+          lv_tol_low = is_calc-tolerance_low.
+        ENDIF.
+        IF is_calc-tolerance_high IS NOT INITIAL.
+          lv_tol_high = is_calc-tolerance_high.
+        ENDIF.
+        IF is_calc-deviation_high IS NOT INITIAL.
+          lv_dev_high = is_calc-deviation_high.
+        ENDIF.
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+
+    CASE to_upper( is_calc-improvement_direction ).
+      WHEN `MAXIMIZE`.
+        IF is_calc-tolerance_low IS INITIAL.
+          RETURN.
+        ENDIF.
+        result = COND #( WHEN value >= lv_tol_low THEN 3
+                         WHEN is_calc-deviation_low IS NOT INITIAL AND value >= lv_dev_low THEN 2
+                         WHEN is_calc-deviation_low IS INITIAL THEN 2
+                         ELSE 1 ).
+      WHEN `MINIMIZE`.
+        IF is_calc-tolerance_high IS INITIAL.
+          RETURN.
+        ENDIF.
+        result = COND #( WHEN value <= lv_tol_high THEN 3
+                         WHEN is_calc-deviation_high IS NOT INITIAL AND value <= lv_dev_high THEN 2
+                         WHEN is_calc-deviation_high IS INITIAL THEN 2
+                         ELSE 1 ).
+      WHEN `TARGET`.
+        IF is_calc-tolerance_low IS INITIAL OR is_calc-tolerance_high IS INITIAL.
+          RETURN.
+        ENDIF.
+        IF value >= lv_tol_low AND value <= lv_tol_high.
+          result = 3.
+        ELSEIF is_calc-deviation_low IS NOT INITIAL AND is_calc-deviation_high IS NOT INITIAL
+          AND ( value < lv_dev_low OR value > lv_dev_high ).
+          result = 1.
+        ELSE.
+          result = 2.
+        ENDIF.
+    ENDCASE.
 
   ENDMETHOD.
 

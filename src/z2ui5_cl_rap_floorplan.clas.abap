@@ -50,6 +50,8 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         no_selection   TYPE string VALUE `NO_SELECTION`,
         filter_hint    TYPE string VALUE `FILTER_HINT`,
         create_title   TYPE string VALUE `CREATE_TITLE`,
+        sort           TYPE string VALUE `SORT`,
+        more           TYPE string VALUE `MORE`,
       END OF cs_text.
 
     "! The selection column added to rows a table or dialog lets the user
@@ -145,6 +147,8 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         where          TYPE string OPTIONAL
         max_rows       TYPE i DEFAULT 500
         with_selection TYPE abap_bool DEFAULT abap_false
+        "an ABAP SQL ORDER BY list, e.g. `TRAVELID DESCENDING, STATUS`
+        order_by       TYPE string OPTIONAL
       RETURNING
         VALUE(result)  TYPE REF TO data.
 
@@ -445,6 +449,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       WHEN cs_text-no_selection THEN `Select at least one row`
       WHEN cs_text-filter_hint  THEN `abc, a*c, =abc, !abc, a..z, >x - separate several with ;`
       WHEN cs_text-create_title THEN `Create`
+      WHEN cs_text-sort         THEN `Sort`
+      WHEN cs_text-more         THEN `More`
       ELSE key ).
 
     IF mo_ext IS BOUND.
@@ -492,10 +498,24 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         CREATE DATA result TYPE HANDLE lo_table.
         ASSIGN result->* TO <lt_data>.
 
-        IF with_selection = abap_true.
+        "sorted in the database - UP TO n ROWS without an ORDER BY is n
+        "arbitrary rows, and sorting them afterwards sorts the wrong ones
+        IF with_selection = abap_true AND order_by IS NOT INITIAL.
+          SELECT * FROM (entity_name)
+            WHERE (lv_where)
+            ORDER BY (order_by)
+            INTO CORRESPONDING FIELDS OF TABLE @<lt_data>
+            UP TO @max_rows ROWS.
+        ELSEIF with_selection = abap_true.
           SELECT * FROM (entity_name)
             WHERE (lv_where)
             INTO CORRESPONDING FIELDS OF TABLE @<lt_data>
+            UP TO @max_rows ROWS.
+        ELSEIF order_by IS NOT INITIAL.
+          SELECT * FROM (entity_name)
+            WHERE (lv_where)
+            ORDER BY (order_by)
+            INTO TABLE @<lt_data>
             UP TO @max_rows ROWS.
         ELSE.
           SELECT * FROM (entity_name)

@@ -40,6 +40,9 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         value_help TYPE string VALUE `FILTER_VALUE_HELP`,
         action     TYPE string VALUE `ACTION`,
         search     TYPE string VALUE `SEARCH`,
+        sort       TYPE string VALUE `SORT`,
+        sort_dir   TYPE string VALUE `SORT_DIRECTION`,
+        more       TYPE string VALUE `MORE`,
       END OF cs_event.
 
     METHODS constructor
@@ -56,6 +59,22 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     "! the free-text search (the worklist renders a field for it)
     DATA mv_search   TYPE string.
 
+    TYPES:
+      BEGIN OF ty_s_sort_field,
+        name  TYPE string,
+        label TYPE string,
+      END OF ty_s_sort_field.
+
+    TYPES ty_t_sort_field TYPE STANDARD TABLE OF ty_s_sort_field WITH DEFAULT KEY.
+
+    "! the field the rows are sorted by (in the database) - the first of
+    "! @UI.presentationVariant's sortOrder until the user picks another
+    DATA mv_sort_field TYPE string.
+    "! the fields the sort select offers - the columns
+    DATA mt_sort_field TYPE ty_t_sort_field.
+    "! more rows match than are loaded - the "more" button shows
+    DATA mv_more       TYPE abap_bool.
+
   PROTECTED SECTION.
     DATA mv_cds_view TYPE string.
     DATA mv_title    TYPE string.
@@ -63,6 +82,10 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     DATA ms_entity   TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
 
     DATA mt_row_key TYPE string_table.
+    "! the sort direction - shown by the icon of the direction button
+    DATA mv_sort_desc TYPE abap_bool.
+    "! the rows one "more" adds - the max_rows the list report started with
+    DATA mv_page_size TYPE i.
 
     "! what the entity lets the user write (create button, actions)
     DATA ms_caps TYPE ty_s_capabilities.
@@ -84,6 +107,18 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     METHODS get_where_clause
       RETURNING
         VALUE(result) TYPE string.
+
+    "! the ORDER BY of load_data: the sort field, then the keys, so that a
+    "! page of rows is the same page on every load
+    METHODS get_order_by
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the sort select and direction button - in the table's toolbar
+    METHODS render_sort_controls
+      IMPORTING
+        io_toolbar TYPE REF TO z2ui5_cl_ui5_view_builder
+        client     TYPE REF TO z2ui5_if_client.
 
     "! page skeleton - delegates to render_filter_bar and render_table
     METHODS render_page
@@ -179,6 +214,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     mv_cds_view = to_upper( cds_view_name ).
     mv_title = title.
     mv_max_rows = max_rows.
+    mv_page_size = max_rows.
   ENDMETHOD.
 
 
@@ -207,6 +243,18 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       mt_row_key = get_row_key_fields( ).
       ms_caps = get_capabilities( mv_cds_view ).
 
+      "sortable: the columns that are text, numbers or dates
+      LOOP AT get_line_item_fields( ) INTO DATA(ls_col)
+        WHERE type_kind <> `STRING` AND type_kind <> `RAW`.
+        APPEND VALUE #( name  = ls_col-name
+                        label = COND #( WHEN ls_col-line_item_label IS NOT INITIAL THEN ls_col-line_item_label
+                                        ELSE ls_col-label ) ) TO mt_sort_field.
+      ENDLOOP.
+      IF ms_entity-sort_order IS NOT INITIAL.
+        mv_sort_field = ms_entity-sort_order[ 1 ]-field.
+        mv_sort_desc = ms_entity-sort_order[ 1 ]-descending.
+      ENDIF.
+
       load_data( ).
       render_page( client ).
       RETURN.
@@ -218,7 +266,23 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     IF client->check_on_event( cs_event-refresh )
       OR client->check_on_event( cs_event-go )
-      OR client->check_on_event( cs_event-search ).
+      OR client->check_on_event( cs_event-search )
+      OR client->check_on_event( cs_event-sort ).
+      load_data( ).
+      RETURN.
+    ENDIF.
+
+    IF client->check_on_event( cs_event-sort_dir ).
+      mv_sort_desc = xsdbool( mv_sort_desc = abap_false ).
+      load_data( ).
+      "the button's icon shows the direction - built into the view
+      render_page( client ).
+      RETURN.
+    ENDIF.
+
+    IF client->check_on_event( cs_event-more ).
+      "the next rows - loaded from the database, not only shown
+      mv_max_rows = mv_max_rows + mv_page_size.
       load_data( ).
       RETURN.
     ENDIF.
@@ -331,12 +395,18 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       entity_name    = mv_cds_view
       where          = lv_where
       max_rows       = mv_max_rows
-      with_selection = xsdbool( get_line_item_actions( abap_false ) IS NOT INITIAL ) ).
+      with_selection = xsdbool( get_line_item_actions( abap_false ) IS NOT INITIAL )
+      order_by       = get_order_by( ) ).
     IF mr_data IS BOUND.
-      mv_count = count_rows( entity_name = mv_cds_view
-                             where       = lv_where ).
+      DATA(lv_count) = count_rows( entity_name = mv_cds_view
+                                   where       = lv_where ).
+      mv_count = |{ lv_count }|.
+      FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
+      ASSIGN mr_data->* TO <lt_data>.
+      mv_more = xsdbool( lv_count > lines( <lt_data> ) ).
     ELSE.
       mv_count = `0`.
+      mv_more = abap_false.
     ENDIF.
 
   ENDMETHOD.
@@ -366,6 +436,72 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     ENDIF.
 
     result = concat_lines_of( table = lt_and sep = ` AND ` ).
+
+  ENDMETHOD.
+
+
+  METHOD get_order_by.
+
+    DATA lt_order TYPE string_table.
+
+    IF mv_sort_field IS NOT INITIAL AND line_exists( ms_entity-fields[ name = mv_sort_field ] ).
+      APPEND |{ mv_sort_field }{ COND #( WHEN mv_sort_desc = abap_true THEN ` DESCENDING` ELSE `` ) }| TO lt_order.
+    ENDIF.
+    "then by the rest of @UI.presentationVariant, then by the keys
+    LOOP AT ms_entity-sort_order INTO DATA(ls_sort) FROM 2.
+      IF ls_sort-field <> mv_sort_field AND line_exists( ms_entity-fields[ name = ls_sort-field ] ).
+        APPEND |{ ls_sort-field }{ COND #( WHEN ls_sort-descending = abap_true THEN ` DESCENDING` ELSE `` ) }| TO lt_order.
+      ENDIF.
+    ENDLOOP.
+    LOOP AT ms_entity-keys INTO DATA(lv_key).
+      IF lv_key <> mv_sort_field AND NOT line_exists( ms_entity-sort_order[ field = lv_key ] ).
+        APPEND lv_key TO lt_order.
+      ENDIF.
+    ENDLOOP.
+
+    result = concat_lines_of( table = lt_order sep = `, ` ).
+
+  ENDMETHOD.
+
+
+  METHOD render_sort_controls.
+
+    IF mt_sort_field IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    "the core prefix is declared here, so no view has to carry it
+    io_toolbar->ele( `Select`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+        )->a( n = `selectedKey`
+              v = client->_bind( mv_sort_field )
+        )->a( n = `items`
+              v = client->_bind( mt_sort_field )
+        )->a( n = `change`
+              v = client->_event( cs_event-sort )
+        )->a( n = `forceSelection`
+              v = `false`
+        )->a( n = `tooltip`
+              t = get_text( cs_text-sort )
+        )->tag( n  = `Item`
+                ns = `core`
+            )->a( n = `key`
+                  v = `{NAME}`
+            )->a( n = `text`
+                  v = `{LABEL}` ).
+
+    DATA(lv_icon) = `sap-icon://sort-ascending`.
+    IF mv_sort_desc = abap_true.
+      lv_icon = `sap-icon://sort-descending`.
+    ENDIF.
+    io_toolbar->tag( `Button`
+        )->a( n = `icon`
+              v = lv_icon
+        )->a( n = `tooltip`
+              t = get_text( cs_text-sort )
+        )->a( n = `press`
+              v = client->_event( cs_event-sort_dir ) ).
 
   ENDMETHOD.
 
@@ -748,6 +884,19 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                                     t_arg = lt_action_arg ) ).
     ENDLOOP.
 
+    "more rows than loaded - the next page comes from the database
+    io_page->tag( `Button`
+        )->a( n = `text`
+              t = get_text( cs_text-more )
+        )->a( n = `width`
+              v = `100%`
+        )->a( n = `type`
+              v = `Transparent`
+        )->a( n = `visible`
+              v = client->_bind( mv_more )
+        )->a( n = `press`
+              v = client->_event( cs_event-more ) ).
+
   ENDMETHOD.
 
 
@@ -771,6 +920,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                 v = client->_event( val = cs_event-action
                                     arg = ls_action-name ) ).
     ENDLOOP.
+
+    render_sort_controls( io_toolbar = lo_toolbar
+                          client     = client ).
 
     IF ms_caps-can_create = abap_true.
       lo_toolbar->tag( `Button`
@@ -866,12 +1018,28 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           )->a( n = `unit`
                 v = |\{{ is_col-semantics_unit_of_measure }\}| ).
 
-    "@ObjectModel.text.element - "Text (Value)", the Fiori default
+    "@ObjectModel.text.element, arranged by @UI.textArrangement - "Text
+    "(Value)" is the Fiori default
     ELSEIF is_col-text_element IS NOT INITIAL
       AND line_exists( ms_entity-fields[ name = is_col-text_element ] ).
-      io_cells->tag( `Text`
-          )->a( n = `text`
-                v = |\{{ is_col-text_element }\} ({ lv_path })| ).
+      CASE is_col-text_arrangement.
+        WHEN `TEXT_LAST`.
+          io_cells->tag( `Text`
+              )->a( n = `text`
+                    v = |{ lv_path } (\{{ is_col-text_element }\})| ).
+        WHEN `TEXT_ONLY`.
+          io_cells->tag( `Text`
+              )->a( n = `text`
+                    v = |\{{ is_col-text_element }\}| ).
+        WHEN `TEXT_SEPARATE`.
+          io_cells->tag( `Text`
+              )->a( n = `text`
+                    v = lv_path ).
+        WHEN OTHERS.
+          io_cells->tag( `Text`
+              )->a( n = `text`
+                    v = |\{{ is_col-text_element }\} ({ lv_path })| ).
+      ENDCASE.
 
     ELSE.
       io_cells->tag( `Text`
