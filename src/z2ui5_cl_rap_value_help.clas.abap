@@ -69,6 +69,12 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
+    "! why the value help closed without showing anything - the caller
+    "! shows it (z2ui5_cl_rap_floorplan->get_value_help_result)
+    METHODS load_error
+      RETURNING
+        VALUE(result) TYPE string.
+
     "! the rows the dialog shows - with the selection column
     DATA mr_data TYPE REF TO data.
 
@@ -90,6 +96,7 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
     DATA mt_filters    TYPE ty_t_name_value.
     DATA mv_search     TYPE string.
     DATA mt_result_values TYPE string_table.
+    DATA mv_load_error TYPE string.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app
@@ -275,9 +282,9 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
     FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
 
     IF mr_data IS NOT BOUND.
-      client->message_box_display(
-        text = |{ get_text( cs_text-load_error ) }: { mv_cds_view }|
-        type = `error` ).
+      "a message queued before nav_app_leave( ) never reaches the browser -
+      "the caller reads load_error( ) and shows it
+      mv_load_error = |{ get_text( cs_text-load_error ) }: { mv_cds_view }|.
       client->nav_app_leave( ).
       RETURN.
     ENDIF.
@@ -382,6 +389,11 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
 
   METHOD is_dropdown.
     result = ms_entity-is_dropdown.
+  ENDMETHOD.
+
+
+  METHOD load_error.
+    result = mv_load_error.
   ENDMETHOD.
 
 ENDCLASS.

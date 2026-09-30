@@ -363,6 +363,7 @@ CLASS ltcl_filter DEFINITION FINAL
     METHODS like_chars_escaped  FOR TESTING RAISING cx_static_check.
     METHODS empty_is_nothing    FOR TESTING RAISING cx_static_check.
     METHODS search_fields       FOR TESTING RAISING cx_static_check.
+    METHODS raw_is_no_text      FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -468,6 +469,18 @@ CLASS ltcl_filter IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_initial(
       z2ui5_cl_rap_util=>build_search_condition( it_fields = lt_fields search = `  ` ) ).
+
+  ENDMETHOD.
+
+  METHOD raw_is_no_text.
+
+    " a UUID is compared, never LIKEd - LIKE on a RAW column is invalid SQL
+    " and emptied the whole list
+    cl_abap_unit_assert=>assert_equals( exp = `F = '0A1B'`
+                                        act = cond( type_kind = `RAW` value = `0A1B` ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>build_search_condition(
+      it_fields = VALUE #( ( name = `UUID` type_kind = `RAW` ) ( name = `RATE` type_kind = `FLTP` ) )
+      search    = `x` ) ).
 
   ENDMETHOD.
 

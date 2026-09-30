@@ -22,6 +22,9 @@ CLASS z2ui5_cl_rap_worklist DEFINITION
 
     CONSTANTS cv_event_segment TYPE string VALUE `SEGMENT`.
     CONSTANTS cv_segment_all TYPE string VALUE `ALL`.
+    "! the tab of the items without a value - an empty key is no key to
+    "! the IconTabBar, which answers the tab's control id instead
+    CONSTANTS cv_segment_empty TYPE string VALUE `#EMPTY#`.
 
     TYPES:
       BEGIN OF ty_s_segment,
@@ -105,8 +108,10 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     IF sy-subrc <> 0.
       RETURN.
     ENDIF.
-    DATA(lv_cond) = build_filter_condition( is_field = ls_field
-                                            value    = |={ mv_segment }| ).
+    DATA(lv_cond) = COND string( WHEN mv_segment = cv_segment_empty
+                                 THEN |{ ls_field-name } IS INITIAL|
+                                 ELSE build_filter_condition( is_field = ls_field
+                                                              value    = |={ mv_segment }| ) ).
     result = COND #( WHEN result IS INITIAL THEN lv_cond ELSE |{ result } AND { lv_cond }| ).
 
   ENDMETHOD.
@@ -138,9 +143,11 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     ENDIF.
 
     DATA(lv_select) = |{ mv_segment_field } AS segment_key, COUNT(*) AS segment_count|.
+    DATA(lv_where) = get_ext_where( entity_name = mv_cds_view
+                                    where       = where ).
     TRY.
         SELECT (lv_select) FROM (mv_cds_view)
-          WHERE (where)
+          WHERE (lv_where)
           GROUP BY (mv_segment_field)
           INTO CORRESPONDING FIELDS OF TABLE @lt_group
           UP TO 20 ROWS.
@@ -148,15 +155,14 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
         RETURN.
     ENDTRY.
 
-    DATA lv_total TYPE i.
-    LOOP AT lt_group INTO DATA(ls_group).
-      lv_total = lv_total + ls_group-segment_count.
-    ENDLOOP.
+    "all items - counted, not summed up from the first 20 groups
     APPEND VALUE #( key   = cv_segment_all
                     text  = get_text( cs_text-all )
-                    count = lv_total ) TO mt_segment.
-    LOOP AT lt_group INTO ls_group.
-      APPEND VALUE #( key   = ls_group-segment_key
+                    count = count_rows( entity_name = mv_cds_view
+                                        where       = where ) ) TO mt_segment.
+    LOOP AT lt_group INTO DATA(ls_group).
+      APPEND VALUE #( key   = COND #( WHEN ls_group-segment_key IS INITIAL THEN cv_segment_empty
+                                      ELSE ls_group-segment_key )
                       text  = COND #( WHEN ls_group-segment_key IS INITIAL THEN `-` ELSE ls_group-segment_key )
                       count = ls_group-segment_count ) TO mt_segment.
     ENDLOOP.

@@ -187,6 +187,17 @@ classes, so those method names and signatures are a **public contract**:
 - `z2ui5_if_rap_ext` is implemented downstream: a new method must be
   `DEFAULT IGNORE`, or every implementation stops compiling. It includes
   `if_serializable_object` because the extension travels through the draft.
+- **`check_app_prev_stack( )` means "this app has a caller", not "something
+  came back".** A floorplan that is the root app (started directly, reached
+  by `nav_app_leave( NEW ... )`, restored from a bookmark) has an empty stack
+  even when its value help or dialog just returned. What came back is decided
+  by what the floorplan called (`mv_vh_target`, `mv_pending_action`) and a
+  `CAST` of `get_app_prev( )` in a `TRY ... CATCH cx_root` (a restored draft
+  may no longer have the previous app). Use `check_app_prev_stack( )` only for
+  the back button.
+- **The core rolls back the LUW after `main( )`** for every non-sticky app, so
+  a database write in a floorplan commits itself (`write_row`'s table
+  branch); `COMMIT ENTITIES` does so for RAP.
 - **A generic `REF TO data` whose target has an RTTI-created type must be a
   PUBLIC attribute.** The core detaches public data references before the
   draft is serialized and re-creates them from S-RTTI; a protected one is

@@ -257,6 +257,11 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
       RETURNING
         VALUE(result) TYPE string_table.
 
+    "! a key field of the record is still initial
+    METHODS has_initial_key
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
   PRIVATE SECTION.
 
 ENDCLASS.
@@ -373,10 +378,17 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
           type = `warning` ).
         RETURN.
       ENDIF.
+      DATA(lv_was_create) = mv_is_create.
       IF save_data( client ).
         mv_saved = abap_true.
         mv_editable = abap_false.
         mv_is_create = abap_false.
+        "a created record whose key the business object assigns and did not
+        "hand back (late numbering) cannot be read again - the list shows it
+        IF lv_was_create = abap_true AND mt_keys IS INITIAL AND has_initial_key( ) = abap_true.
+          client->nav_app_leave( ).
+          RETURN.
+        ENDIF.
         "what the business object determined on save
         reload_data( ).
         ms_data_backup->* = ms_data->*.
@@ -422,14 +434,16 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       apply_value_help( EXPORTING client    = client
                                   it_fields = ms_entity-fields
                         CHANGING  target    = ms_data->* ).
-      IF mv_pending_action IS NOT INITIAL AND client->check_app_prev_stack( ).
+      "decided by what this page called - check_app_prev_stack( ) only says
+      "whether the page has a caller itself
+      IF mv_pending_action IS NOT INITIAL.
         TRY.
             DATA(lo_dialog) = CAST z2ui5_cl_rap_action_dialog( client->get_app_prev( ) ).
             IF lo_dialog->was_confirmed( ).
               execute_action( client = client
                               param  = lo_dialog->result( ) ).
             ENDIF.
-          CATCH cx_sy_move_cast_error ##NO_HANDLER.
+          CATCH cx_root ##NO_HANDLER.
         ENDTRY.
         CLEAR mv_pending_action.
       ENDIF.
@@ -469,6 +483,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                  row         = ms_data->*
                                  original    = ms_data_backup->* ).
     result = ls_result-success.
+    "the keys RAP assigned on create - the record is read again by them
+    IF result = abap_true AND ls_result-keys IS NOT INITIAL.
+      mt_keys = ls_result-keys.
+    ENDIF.
     IF result = abap_false.
       show_messages( client   = client
                      messages = ls_result-messages ).
@@ -491,25 +509,40 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD has_initial_key.
+    FIELD-SYMBOLS <lv_key> TYPE any.
+    LOOP AT ms_entity-keys INTO DATA(lv_key).
+      ASSIGN COMPONENT lv_key OF STRUCTURE ms_data->* TO <lv_key>.
+      IF sy-subrc = 0 AND <lv_key> IS INITIAL.
+        result = abap_true.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+
   METHOD reload_data.
 
     DATA lt_and TYPE string_table.
     FIELD-SYMBOLS <lv_key> TYPE any.
 
-    "the keys: those the page was opened with, else the record's own
-    IF mt_keys IS INITIAL.
+    "the keys: those the page was opened with (or RAP assigned), else the
+    "record's own - read each time, not kept, so an edited record is not
+    "looked up by keys it no longer has
+    DATA(lt_keys) = mt_keys.
+    IF lt_keys IS INITIAL.
       LOOP AT ms_entity-keys INTO DATA(lv_key).
         ASSIGN COMPONENT lv_key OF STRUCTURE ms_data->* TO <lv_key>.
         IF sy-subrc = 0.
-          APPEND VALUE #( name = lv_key value = |{ <lv_key> }| ) TO mt_keys.
+          APPEND VALUE #( name = lv_key value = |{ <lv_key> }| ) TO lt_keys.
         ENDIF.
       ENDLOOP.
     ENDIF.
-    IF mt_keys IS INITIAL.
+    IF lt_keys IS INITIAL.
       RETURN.
     ENDIF.
 
-    LOOP AT mt_keys INTO DATA(ls_key).
+    LOOP AT lt_keys INTO DATA(ls_key).
       READ TABLE ms_entity-fields INTO DATA(ls_field) WITH KEY name = to_upper( ls_key-name ).
       IF sy-subrc <> 0.
         RETURN.

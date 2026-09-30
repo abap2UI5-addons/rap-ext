@@ -291,30 +291,33 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     ENDIF.
     CLEAR mv_vh_target.
 
-    IF client->check_app_prev_stack( ).
-      "back from the parameter dialog of an action
-      IF mv_pending_action IS NOT INITIAL.
-        TRY.
-            DATA(lo_dialog) = CAST z2ui5_cl_rap_action_dialog( client->get_app_prev( ) ).
-            IF lo_dialog->was_confirmed( ).
-              execute_action( client = client
-                              param  = lo_dialog->result( ) ).
-            ENDIF.
-          CATCH cx_sy_move_cast_error ##NO_HANDLER.
-        ENDTRY.
-        CLEAR: mv_pending_action, mt_pending_keys.
-      ENDIF.
+    "what came back is decided by what this app called, not by
+    "check_app_prev_stack( ) - that answers whether this app has a caller,
+    "and a root list report has none
 
-      "back from the object page - refresh if data was saved
+    "back from the parameter dialog of an action
+    IF mv_pending_action IS NOT INITIAL.
       TRY.
-          DATA(lo_prev_op) = CAST z2ui5_cl_rap_object_page( client->get_app_prev( ) ).
-          IF lo_prev_op->was_saved( ).
-            load_data( ).
-            client->message_toast_display( get_text( cs_text-refreshed ) ).
+          DATA(lo_dialog) = CAST z2ui5_cl_rap_action_dialog( client->get_app_prev( ) ).
+          IF lo_dialog->was_confirmed( ).
+            execute_action( client = client
+                            param  = lo_dialog->result( ) ).
           ENDIF.
-        CATCH cx_sy_move_cast_error ##NO_HANDLER.
+        CATCH cx_root ##NO_HANDLER.
       ENDTRY.
+      CLEAR: mv_pending_action, mt_pending_keys.
     ENDIF.
+
+    "back from the object page - refresh if data was saved
+    TRY.
+        DATA(lo_prev_op) = CAST z2ui5_cl_rap_object_page( client->get_app_prev( ) ).
+        IF lo_prev_op->was_saved( ).
+          load_data( ).
+          client->message_toast_display( get_text( cs_text-refreshed ) ).
+        ENDIF.
+      "a cast error, or a previous app the draft no longer has
+      CATCH cx_root ##NO_HANDLER.
+    ENDTRY.
 
     render_page( client ).
 

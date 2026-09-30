@@ -241,9 +241,14 @@ dialog when the action has a parameter). The messages of `REPORTED` and
 `FAILED` are shown. A transparent table is written with ABAP SQL. A CDS view
 that is neither is read-only: no Create, Edit or Delete.
 
+A transparent table is committed right after the write (`COMMIT WORK`) - the
+abap2UI5 core rolls back the LUW of every non-sticky app after `main( )`.
+After a RAP create the page reads the record again by the keys `MAPPED`
+returns; a business object that assigns its key only on save (late
+numbering) hands none back, and the page then returns to the list.
+
 Limits today: child entities are not written (only the root), drafts are not
-handled (a draft-enabled BO is written as active instances), and a key the
-business object assigns on create is not read back from `MAPPED`. See
+handled (a draft-enabled BO is written as active instances). See
 [ROADMAP.md](ROADMAP.md).
 
 ### Filter syntax
@@ -423,7 +428,9 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   declared a method of the same name as one of its new protected methods has
   to rename it.
 - `z2ui5_cl_rap_worklist` is a subclass of `z2ui5_cl_rap_list_report`; its
-  `cs_event` is the list report's (same values for `refresh` and `back`).
+  `cs_event` is the list report's (same values for `refresh` and `back`), and
+  the list report's events (`GO`, `SEARCH`, `CREATE`, `ACTION`, `ROW_PRESS`,
+  `FILTER_VALUE_HELP`) no longer reach a worklist subclass's `on_event`.
 - Create, Edit and Delete appear only where the entity is writable (see
   "Writing").
 - When the list report has actions, `mr_data` rows carry the selection column

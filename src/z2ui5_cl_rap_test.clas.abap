@@ -356,8 +356,14 @@ CLASS z2ui5_cl_rap_test IMPLEMENTATION.
 
     "=== Handle return from sub-apps ===
     IF client->check_on_navigated( ).
-      IF client->check_app_prev_stack( ).
-        DATA(lo_prev) = client->get_app_prev( ).
+      "not check_app_prev_stack( ): that asks whether THIS app has a caller,
+      "and the demo is a root app - its results were never read
+      DATA lo_prev TYPE REF TO z2ui5_if_app.
+      TRY.
+          lo_prev = client->get_app_prev( ).
+        CATCH cx_root ##NO_HANDLER.
+      ENDTRY.
+      IF lo_prev IS BOUND.
 
         TRY.
             DATA(lo_action) = CAST z2ui5_cl_rap_action_dialog( lo_prev ).

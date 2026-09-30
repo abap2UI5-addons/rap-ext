@@ -86,6 +86,14 @@ CLASS z2ui5_cl_rap_eml DEFINITION
       CHANGING
         messages  TYPE string_table.
 
+    "! the key fields of the first mapped instance - the key a business
+    "! object with early numbering assigned on create
+    CLASS-METHODS get_mapped_keys
+      IMPORTING
+        mapped        TYPE ANY TABLE
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value.
+
     CLASS-METHODS set_control
       IMPORTING
         row      TYPE data
@@ -232,6 +240,7 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
 
     TRY.
         MODIFY ENTITIES OPERATIONS lt_op
+          MAPPED DATA(lt_mapped)
           FAILED DATA(lt_failed)
           REPORTED DATA(lt_reported).
 
@@ -262,6 +271,9 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
         ENDIF.
 
         result-success = abap_true.
+        IF op = if_abap_behv=>op-m-create.
+          result-keys = get_mapped_keys( lt_mapped ).
+        ENDIF.
 
       CATCH cx_root INTO DATA(lx).
         ROLLBACK ENTITIES.
@@ -310,6 +322,50 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
               ENDIF.
             CATCH cx_root ##NO_HANDLER.
           ENDTRY.
+        ENDLOOP.
+      ENDDO.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_mapped_keys.
+
+    FIELD-SYMBOLS <lr_entries> TYPE any.
+    FIELD-SYMBOLS <lt_entries> TYPE ANY TABLE.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+    DATA lr_ref TYPE REF TO data.
+
+    LOOP AT mapped ASSIGNING FIELD-SYMBOL(<ls_response>).
+      DO.
+        ASSIGN COMPONENT sy-index OF STRUCTURE <ls_response> TO <lr_entries>.
+        IF sy-subrc <> 0.
+          EXIT.
+        ENDIF.
+        IF cl_abap_typedescr=>describe_by_data( <lr_entries> )->type_kind <> cl_abap_typedescr=>typekind_dref.
+          CONTINUE.
+        ENDIF.
+        lr_ref = <lr_entries>.
+        IF lr_ref IS NOT BOUND.
+          CONTINUE.
+        ENDIF.
+        ASSIGN lr_ref->* TO <lt_entries>.
+        IF sy-subrc <> 0.
+          CONTINUE.
+        ENDIF.
+        LOOP AT <lt_entries> ASSIGNING FIELD-SYMBOL(<ls_entry>).
+          "the flat components - %cid, %pid, %key, %tky are RAP's own
+          DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_entry> ) ).
+          LOOP AT lo_struct->components INTO DATA(ls_comp).
+            IF ls_comp-name(1) = `%`.
+              CONTINUE.
+            ENDIF.
+            ASSIGN COMPONENT ls_comp-name OF STRUCTURE <ls_entry> TO <lv_value>.
+            IF sy-subrc = 0 AND <lv_value> IS NOT INITIAL.
+              APPEND VALUE #( name = ls_comp-name value = |{ <lv_value> }| ) TO result.
+            ENDIF.
+          ENDLOOP.
+          RETURN.
         ENDLOOP.
       ENDDO.
     ENDLOOP.

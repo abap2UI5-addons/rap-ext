@@ -378,8 +378,9 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
     ENDIF.
 
     DATA(lv_select) = |{ lv_aggregation }( { lv_field } )|.
+    DATA(lv_where) = get_ext_where( lv_view ).
     TRY.
-        SELECT SINGLE (lv_select) FROM (lv_view) INTO @lv_value.
+        SELECT SINGLE (lv_select) FROM (lv_view) WHERE (lv_where) INTO @lv_value.
         cs_card_data-kpi_value = |{ lv_value NUMBER = USER }|.
       CATCH cx_root.
         cs_card_data-kpi_value = |{ cs_card_data-count }|.
@@ -412,8 +413,10 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
 
     DATA(lv_select) = |{ cs_card_data-chart_dimension } AS dimension, SUM( { cs_card_data-chart_measure } ) AS measure|.
     DATA(lv_max) = COND i( WHEN is_card-max_rows > 0 THEN is_card-max_rows ELSE 8 ).
+    DATA(lv_where) = get_ext_where( lv_view ).
     TRY.
         SELECT (lv_select) FROM (lv_view)
+          WHERE (lv_where)
           GROUP BY (cs_card_data-chart_dimension)
           ORDER BY (cs_card_data-chart_dimension)
           INTO CORRESPONDING FIELDS OF TABLE @lt_rows

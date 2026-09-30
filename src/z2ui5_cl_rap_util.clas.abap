@@ -503,6 +503,12 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
             ls_field-type_kind = `DEC`.
           WHEN cl_abap_typedescr=>typekind_string.
             ls_field-type_kind = `STRING`.
+          "no LIKE and no UPPER on these - they are not text
+          WHEN cl_abap_typedescr=>typekind_hex
+            OR cl_abap_typedescr=>typekind_xstring.
+            ls_field-type_kind = `RAW`.
+          WHEN cl_abap_typedescr=>typekind_float.
+            ls_field-type_kind = `FLTP`.
           WHEN OTHERS.
             ls_field-type_kind = `CHAR`.
         ENDCASE.
@@ -1255,7 +1261,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     CASE is_field-type_kind.
       WHEN `DATS` OR `TIMS`.
         result = normalize_value( result ).
-      WHEN `DEC` OR `INT`.
+      WHEN `DEC` OR `INT` OR `FLTP`.
         REPLACE ALL OCCURRENCES OF `,` IN result WITH `.`.
         CONDENSE result NO-GAPS.
     ENDCASE.

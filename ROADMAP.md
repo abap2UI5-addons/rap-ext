@@ -64,7 +64,10 @@ Open:
 Open:
 - **draft** (EDIT / ACTIVATE / DISCARD, `%is_draft`) — a draft-enabled BO is written as active instances today
 - child entities (create by association, update of items)
-- the key a BO assigns on create (`MAPPED`) — the page cannot reload such a record yet
+- late numbering: the key a BO assigns only on save is not read back (`CONVERT KEY`) —
+  the page returns to the list instead (early numbering is read from `MAPPED`)
+- RAW (UUID) keys: `reload_data` compares them with a character literal in a dynamic
+  WHERE — verify in a system, a host variable may be needed
 - feature control (`GET PERMISSIONS`: disabled actions, read-only fields per instance)
 
 ## 6 · Worklist — done

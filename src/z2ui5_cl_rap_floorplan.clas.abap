@@ -67,11 +67,6 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         can_delete TYPE abap_bool,
       END OF ty_s_capabilities.
 
-    TYPES:
-      BEGIN OF ty_s_result,
-        success  TYPE abap_bool,
-        messages TYPE string_table,
-      END OF ty_s_result.
 
     TYPES:
       BEGIN OF ty_s_name_value,
@@ -80,6 +75,14 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       END OF ty_s_name_value.
 
     TYPES ty_t_name_value TYPE STANDARD TABLE OF ty_s_name_value WITH DEFAULT KEY.
+
+    TYPES:
+      BEGIN OF ty_s_result,
+        success  TYPE abap_bool,
+        messages TYPE string_table,
+        "the keys of a created instance, as RAP assigned them (MAPPED)
+        keys     TYPE ty_t_name_value,
+      END OF ty_s_result.
 
     "! The dropdown entries of the fields that have a small value help
     "! (sizeCategory #XS) - one component per field, each a table of the
@@ -144,6 +147,15 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         with_selection TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result)  TYPE REF TO data.
+
+    "! where, as the extension adjusts it (z2ui5_if_rap_ext~adjust_where) -
+    "! every read of rows goes through it, aggregates included
+    METHODS get_ext_where
+      IMPORTING
+        entity_name   TYPE string
+        where         TYPE string OPTIONAL
+      RETURNING
+        VALUE(result) TYPE string.
 
     "! the number of rows of entity_name that match where
     METHODS count_rows
@@ -463,12 +475,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
 
-    DATA(lv_where) = where.
-    IF mo_ext IS BOUND.
-      mo_ext->adjust_where( EXPORTING floorplan   = mv_floorplan
-                                      entity_name = entity_name
-                            CHANGING  where       = lv_where ).
-    ENDIF.
+    DATA(lv_where) = get_ext_where( entity_name = entity_name
+                                    where       = where ).
 
     TRY.
         DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( entity_name ) ).
@@ -509,14 +517,20 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD count_rows.
-
-    DATA(lv_where) = where.
+  METHOD get_ext_where.
+    result = where.
     IF mo_ext IS BOUND.
       mo_ext->adjust_where( EXPORTING floorplan   = mv_floorplan
                                       entity_name = entity_name
-                            CHANGING  where       = lv_where ).
+                            CHANGING  where       = result ).
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD count_rows.
+
+    DATA(lv_where) = get_ext_where( entity_name = entity_name
+                                    where       = where ).
     TRY.
         SELECT COUNT(*) FROM (entity_name)
           WHERE (lv_where)
@@ -757,15 +771,25 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD get_value_help_result.
 
-    IF mv_vh_target IS INITIAL OR client->check_app_prev_stack( ) = abap_false.
+    "mv_vh_target says a value help was called - not check_app_prev_stack( ),
+    "which answers whether THIS app has a caller: a floorplan that is the
+    "root app (started directly, restored from a bookmark) has none, and its
+    "value help results were dropped
+    IF mv_vh_target IS INITIAL.
       RETURN.
     ENDIF.
     TRY.
         DATA(lo_vh) = CAST z2ui5_cl_rap_value_help( client->get_app_prev( ) ).
         IF lo_vh->was_confirmed( ) = abap_true.
           result = lo_vh.
+        ELSEIF lo_vh->load_error( ) IS NOT INITIAL.
+          "the value help could not say it itself - a message queued before
+          "nav_app_leave( ) does not reach the browser
+          client->message_box_display( text = lo_vh->load_error( )
+                                       type = `error` ).
         ENDIF.
-      CATCH cx_sy_move_cast_error ##NO_HANDLER.
+      "a cast error, or a previous app the draft no longer has
+      CATCH cx_root ##NO_HANDLER.
     ENDTRY.
 
   ENDMETHOD.
@@ -791,8 +815,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     "additional bindings with usage RESULT (or no usage, which is both)
     READ TABLE it_fields INTO DATA(ls_field) WITH KEY name = lv_field.
+    DATA(lv_found) = xsdbool( sy-subrc = 0 ).
     DATA(lr_row) = lo_vh->result( ).
-    IF sy-subrc = 0 AND lr_row IS BOUND.
+    IF lv_found = abap_true AND lr_row IS BOUND.
       ASSIGN lr_row->* TO <ls_row>.
       LOOP AT ls_field-value_help-additional_binding INTO DATA(ls_bind)
         WHERE local_element IS NOT INITIAL AND element IS NOT INITIAL.
@@ -961,12 +986,17 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
             WHEN `DELETE`.
               DELETE (entity_name) FROM @<ls_row>.
           ENDCASE.
+          "committed here: after main( ) the core rolls back the LUW of every
+          "non-sticky app, so an uncommitted write showed "saved" and was gone
           IF sy-subrc = 0.
+            COMMIT WORK.
             result-success = abap_true.
           ELSE.
             APPEND |{ operation } failed (sy-subrc { sy-subrc })| TO result-messages.
+            ROLLBACK WORK.                               "#EC CI_ROLLBACK
           ENDIF.
         CATCH cx_root INTO DATA(lx).
+          ROLLBACK WORK.                                 "#EC CI_ROLLBACK
           APPEND lx->get_text( ) TO result-messages.
       ENDTRY.
 
