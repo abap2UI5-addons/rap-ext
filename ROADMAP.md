@@ -1,9 +1,37 @@
 # Roadmap
 
-What the 2026-09 round implemented, and what is still open. Everything marked
-**done** passes the three offline gates (abaplint, the transpiled unit tests,
-the abap2UI5-linter); none of it has been clicked through in an SAP system yet
-— that is the first open item.
+What the 2026-09 and 2026-10 rounds implemented, and what is still open.
+Everything marked **done** passes the three offline gates (abaplint, the
+transpiled unit tests, the abap2UI5-linter); none of it has been clicked
+through in an SAP system yet — that is the first open item.
+
+> **Paused until the system test (section 0) is done.** Nothing below
+> "Next, after the system test" is started before it: most of it builds on
+> RAP behavior (derived type names, draft actions, MAPPED keys) that has only
+> been written from documentation so far. What the system test shows decides
+> the order.
+
+## Next, after the system test
+
+Collected from the sections below, roughly by value:
+
+1. fix whatever the system test of section 0 finds
+2. association targets found automatically (today only through
+   `z2ui5_if_rap_ext~resolve_association`)
+3. child entities written (create by association, update of items)
+4. late numbering: read the key back after save (`CONVERT KEY`) instead of
+   returning to the list
+5. RAW (UUID) keys in `reload_data` - a host variable instead of a
+   character literal, if the system test shows the literal fails
+6. feature control (`GET PERMISSIONS`: disabled actions, read-only fields per instance)
+7. draft editing across roundtrips: keep a draft, Discard, show another
+   user's unsaved changes
+8. value help with its own filter fields, typeahead suggestions
+9. deep link / bookmark of an object page (the page can already be opened by key)
+10. more chart types, cards from `@UI.presentationVariant`
+11. a text pool for the built-in texts (translatable in SE63; English and
+    German are built in today)
+12. unit tests for the floorplans (they need the core in the transpiled run)
 
 ## 0 · Verify in a system (open, first)
 
