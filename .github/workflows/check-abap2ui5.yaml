@@ -1,70 +1,26 @@
-# The three gates of this repo:
-#   abaplint - syntax/style with dependency resolution against the
-#              steampunk-2305 API set and the abap2UI5 core repo (both cloned
-#              by abaplint from the URLs in abaplint.jsonc)
-#   unit     - the ABAP Unit tests that need no system, transpiled
-#   linter   - abap2UI5-linter: every view the floorplans build is checked
-#              against the UI5 metadata (control/property/version) and
-#              rendered headless. Settings live in abap2ui5lint.jsonc
-# Zero issues is the gate - see AGENTS.md "Build & verify".
-name: check
+# The abap2UI5-specific lint, as opposed to abap-standard, which lints ABAP
+# itself: every view the floorplans build is checked against the UI5 metadata
+# (control/property/version) and rendered headless. Settings live in
+# abap2ui5lint.jsonc. Zero findings is the gate - see AGENTS.md "Build & verify".
+name: check-abap2ui5
 
 on:
   push:
     branches: [ main ]
   pull_request:
-  # The core is pinned to a release tag (abaplint.jsonc, scripts/core-pin.mjs).
-  # The weekly run is the canary against the core's main branch: a rename
-  # there used to break this repository silently - every floorplan named a
-  # class the core does not ship, abaplint reported 55 errors, and the badge
-  # stayed green for ten days because no pull request was opened in between.
+  # nothing else notices when an upstream rename breaks the views here
   schedule:
     - cron: '0 5 * * 1'
   workflow_dispatch:
 
 concurrency:
-  group: check-${{ github.ref }}
+  group: check-abap2ui5-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  abaplint:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '22'
-      # pinned through package-lock.json, so CI and `npm run lint` are the
-      # same version - @latest made every run a different check
-      - run: npm ci
-      # the scheduled run lints against main tip instead of the pinned tag -
-      # in this checkout only, it is never committed
-      - name: Canary - resolve the core from main
-        if: github.event_name == 'schedule'
-        run: node scripts/core-pin.mjs set main
-      - name: abaplint (expect 0 issues)
-        run: npm run lint
-
-  # the ABAP Unit tests that need no system (scripts/unit.mjs), transpiled
-  # with open-abap-core - the parsing of the annotations and the filter and
-  # search syntax the floorplans put into their dynamic SELECTs
-  unit:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '22'
-          cache: 'npm'
-      - run: npm ci
-      - name: ABAP Unit (transpiled)
-        run: npm run unit
-
   view_lint:
     runs-on: ubuntu-latest
     timeout-minutes: 15

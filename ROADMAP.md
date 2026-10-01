@@ -55,7 +55,7 @@ without a system:
 ## 1 · Hygiene — done
 
 - core pinned to its release tag, `bump-core.yml`, the weekly canary against `main`
-- linter 0.8.5, `bump-linter.yml`
+- linter 0.8.5, bumped by hand
 - unit tests transpiled in CI (`npm run unit`)
 
 ## 2 · Value help — done
