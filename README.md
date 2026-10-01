@@ -1,10 +1,12 @@
-![ABAP](https://img.shields.io/badge/ABAP-Standard%20(Steampunk)-blue)
+![ABAP](https://img.shields.io/badge/ABAP-7.58%20%E2%86%92%20Standard-blue)
 [![namespace](https://img.shields.io/badge/namespace-z2ui5__cl__rap-blue)](abaplint.jsonc)
 [![dependency](https://img.shields.io/badge/dependency-abap2UI5-blue)](https://github.com/abap2UI5/abap2UI5)
-[![abap2UI5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fabap2UI5-addons%2Frap-ext%2Fbadges%2Fabap2ui5.json)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check.yml)
+[![abap2UI5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fabap2UI5-addons%2Frap-ext%2Fbadges%2Fabap2ui5.json)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check-abap2ui5.yaml)
 <br><br>
-[![check-abap2UI5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fabap2UI5-addons%2Frap-ext%2Fbadges%2Fcheck-abap2ui5.json)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check.yml)
-[![check](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check.yml/badge.svg)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check.yml)
+[![abap-standard](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/abap-standard.yaml/badge.svg)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/abap-standard.yaml)
+<br>
+[![check-abap2UI5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fabap2UI5-addons%2Frap-ext%2Fbadges%2Fcheck-abap2ui5.json)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check-abap2ui5.yaml)
+[![unit](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/unit.yaml/badge.svg)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/unit.yaml)
 
 # rap-extension
 
@@ -200,7 +202,7 @@ npm run check                   # all three
 
 abaplint checks against the abap2UI5 release pinned in `abaplint.jsonc`
 (`scripts/core-pin.mjs`, moved weekly by `bump-core.yml`); the weekly run of
-`check.yml` is the canary against the core's `main`.
+`abap-standard.yaml` is the canary against the core's `main`.
 
 End-to-end still needs a system: install via abapGit and run
 `z2ui5_cl_rap_test`.

@@ -42,7 +42,7 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   needs network access. The core is **pinned to a release tag** (the
   `"branch"` key, abap2UI5 CONVENTIONS §9) - read and move it only with
   `scripts/core-pin.mjs`; `bump-core.yml` moves it weekly after abaplint
-  passed on the new tag, and the scheduled run of `check.yml` lints against
+  passed on the new tag, and the scheduled run of `abap-standard.yaml` lints against
   the core's `main` as the canary. Do not drop the key: abaplint then clones
   `main` silently.
 - `npm run unit` (`scripts/unit.mjs`) transpiles the classes listed in its
@@ -59,8 +59,9 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   `abap2ui5lint-baseline.json` records the one accepted finding (the
   overview page's public `mt_card_data`, kept for the public contract and
   explained in `abap2ui5lint.jsonc`), and only shrinks.
-- CI (`.github/workflows/check.yml`) runs the three gates on every push and
-  PR - a local clean run means CI passes.
+- CI runs the three gates on every push and PR, one workflow each
+  (`.github/workflows/abap-standard.yaml`, `unit.yaml`, `check-abap2ui5.yaml`)
+  - a local clean run means CI passes.
 - The overview page's ABAP Unit test
   (`z2ui5_cl_rap_overview_page.clas.testclasses.abap`) drives a table card
   through the core's client, and a draft roundtrip through its handler. It

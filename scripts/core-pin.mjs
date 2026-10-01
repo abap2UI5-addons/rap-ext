@@ -16,7 +16,7 @@
  *   node scripts/core-pin.mjs set <ref>     pin a tag (or `main` for the canary)
  *   node scripts/core-pin.mjs latest        print the newest release tag
  *
- * `set main` is what the weekly canary run in check.yml does in its own
+ * `set main` is what the weekly canary run in abap-standard.yaml does in its own
  * checkout - it is never committed. bump-core.yml moves the pin to `latest`
  * after the gates passed on it.
  */
