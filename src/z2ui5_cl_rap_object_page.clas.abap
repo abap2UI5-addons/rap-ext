@@ -16,6 +16,12 @@
 "! (context): it is written through the BDEF of the root, and a table of a
 "! composition offers Create - a create by association under this record.
 "!
+"! A record of a draft-enabled business object is edited in a draft of its
+"! own (since 2026-10): Edit creates it (committed), Save writes the changes
+"! into it and activates it, Cancel discards it, and leaving the page while
+"! editing keeps it with the changes. A draft that exists already is the
+"! business object's message - one of the user's own can be discarded.
+"!
 "! Writing goes through z2ui5_cl_rap_floorplan->write_row( ): RAP (EML) for
 "! a business object, ABAP SQL for a table. A CDS view that is neither is
 "! read-only, and the page offers no Edit or Delete for it - up to 2026-09
@@ -46,7 +52,8 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         action     TYPE string VALUE `ACTION`,
         child_row  TYPE string VALUE `CHILD_ROW`,
         "added 2026-10
-        child_create TYPE string VALUE `CHILD_CREATE`,
+        child_create   TYPE string VALUE `CHILD_CREATE`,
+        draft_decision TYPE string VALUE `DRAFT_DECISION`,
       END OF cs_event.
 
     "! val: the record, any structure typed after the CDS entity. Or,
@@ -128,6 +135,9 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
     DATA ms_context TYPE ty_s_rap_context.
     "! the messages of the last save - their fields are marked in edit mode
     DATA mt_messages TYPE ty_t_message.
+    "! the page edits a draft of the business object (committed, kept
+    "! between roundtrips)
+    DATA mv_draft TYPE abap_bool.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app
@@ -297,6 +307,34 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
+    "! the BDEF the record is written through - the root's for a child, the
+    "! entity's own for the root of a business object, empty otherwise
+    METHODS get_bdef
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the keys of the root instance of the business object
+    METHODS get_root_keys
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
+
+    "! Edit of a draft business object: a draft of the root (committed) -
+    "! abap_false when the business object refused it, which the user sees
+    METHODS start_draft
+      IMPORTING
+        client        TYPE REF TO z2ui5_if_client
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! Save in draft mode: the changes into the draft, then Activate - when
+    "! the activation is refused the draft keeps the changes and the page
+    "! stays in edit mode
+    METHODS save_draft
+      IMPORTING
+        client        TYPE REF TO z2ui5_if_client
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
     "! the key fields of the record with their values
     METHODS get_own_keys
       RETURNING
@@ -422,6 +460,20 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
 
     IF client->check_on_event( cs_event-back ).
+      "leaving a draft keeps it - with what was changed since the last save
+      IF mv_draft = abap_true.
+        FIELD-SYMBOLS <ls_now> TYPE any.
+        FIELD-SYMBOLS <ls_before> TYPE any.
+        ASSIGN ms_data->* TO <ls_now>.
+        ASSIGN ms_data_backup->* TO <ls_before>.
+        IF <ls_now> <> <ls_before>.
+          write_draft( entity_name = mv_entity_name
+                       row         = <ls_now>
+                       original    = <ls_before>
+                       context     = ms_context ).
+        ENDIF.
+        client->message_toast_display( get_text( cs_text-draft_kept ) ).
+      ENDIF.
       client->nav_app_leave( ).
       RETURN.
     ENDIF.
@@ -432,8 +484,32 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                      type = `error` ).
         RETURN.
       ENDIF.
+      "a draft business object is edited in a draft of its own
+      IF is_draft_enabled( get_bdef( ) ) = abap_true AND start_draft( client ) = abap_false.
+        RETURN.
+      ENDIF.
       mv_editable = abap_true.
       render_page( client ).
+      RETURN.
+    ENDIF.
+
+    IF client->check_on_event( cs_event-draft_decision ).
+      "the user's answer to "a draft exists": discard it and edit anew
+      IF client->get_event_arg( ) = get_text( cs_text-discard_draft ).
+        DATA(ls_discard) = run_draft_action( bdef      = get_bdef( )
+                                             action    = `DISCARD`
+                                             root_keys = get_root_keys( )
+                                             is_draft  = abap_true ).
+        IF ls_discard-success = abap_false.
+          show_messages( client   = client
+                         messages = ls_discard-messages ).
+          RETURN.
+        ENDIF.
+        IF start_draft( client ) = abap_true.
+          mv_editable = abap_true.
+          render_page( client ).
+        ENDIF.
+      ENDIF.
       RETURN.
     ENDIF.
 
@@ -442,7 +518,23 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         client->nav_app_leave( ).
         RETURN.
       ENDIF.
-      ms_data->* = ms_data_backup->*.
+      IF mv_draft = abap_true.
+        DATA(ls_cancel) = run_draft_action( bdef      = get_bdef( )
+                                            action    = `DISCARD`
+                                            root_keys = get_root_keys( )
+                                            is_draft  = abap_true ).
+        IF ls_cancel-success = abap_false.
+          show_messages( client   = client
+                         messages = ls_cancel-messages ).
+          RETURN.
+        ENDIF.
+        mv_draft = abap_false.
+        "the active record as it is - the draft had the changes
+        reload_data( ).
+        ms_data_backup->* = ms_data->*.
+      ELSE.
+        ms_data->* = ms_data_backup->*.
+      ENDIF.
       mv_editable = abap_false.
       CLEAR mt_messages.
       render_page( client ).
@@ -463,7 +555,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       DATA lv_since_ts TYPE timestampl.
       GET TIME STAMP FIELD lv_since_ts.
       DATA(lv_since_utc) = utclong_current( ).
-      IF save_data( client ).
+      DATA(lv_saved) = COND abap_bool( WHEN mv_draft = abap_true THEN save_draft( client )
+                                       ELSE save_data( client ) ).
+      IF lv_saved = abap_true.
         mv_saved = abap_true.
         mv_editable = abap_false.
         mv_is_create = abap_false.
@@ -785,6 +879,81 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ENDIF.
       APPEND VALUE #( name = lv_key value = |{ <lv_value> }| ) TO et_values.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_bdef.
+    IF ms_context-bdef IS NOT INITIAL.
+      result = ms_context-bdef.
+    ELSEIF ms_caps-is_rap_bo = abap_true.
+      result = mv_entity_name.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD get_root_keys.
+    result = COND #( WHEN ms_context-bdef IS NOT INITIAL THEN ms_context-root_keys
+                     ELSE get_own_keys( ) ).
+  ENDMETHOD.
+
+
+  METHOD start_draft.
+
+    DATA(ls_result) = run_draft_action( bdef      = get_bdef( )
+                                        action    = `EDIT`
+                                        root_keys = get_root_keys( ) ).
+    IF ls_result-success = abap_true.
+      mv_draft = abap_true.
+      result = abap_true.
+      RETURN.
+    ENDIF.
+
+    "a draft exists already - another user's lock, which the business
+    "object names, or one of this user's that can be discarded
+    client->message_box_display(
+      text    = concat_lines_of( table = ls_result-messages sep = cl_abap_char_utilities=>newline )
+      type    = `warning`
+      actions = VALUE #( ( get_text( cs_text-discard_draft ) ) ( get_text( cs_text-cancel ) ) )
+      onclose = cs_event-draft_decision ).
+
+  ENDMETHOD.
+
+
+  METHOD save_draft.
+
+    DATA(ls_result) = write_draft( entity_name = mv_entity_name
+                                   row         = ms_data->*
+                                   original    = ms_data_backup->*
+                                   context     = ms_context ).
+    mt_messages = ls_result-details.
+    IF ls_result-success = abap_false.
+      show_messages( client   = client
+                     messages = ls_result-messages ).
+      RETURN.
+    ENDIF.
+    "the draft has the changes now - the next change is compared with it
+    ms_data_backup->* = ms_data->*.
+
+    ls_result = run_draft_action( bdef      = get_bdef( )
+                                  action    = `ACTIVATE`
+                                  root_keys = get_root_keys( )
+                                  is_draft  = abap_true ).
+    mt_messages = ls_result-details.
+    IF ls_result-success = abap_false.
+      "the draft keeps the changes, the page stays in edit mode
+      show_messages( client   = client
+                     messages = ls_result-messages ).
+      RETURN.
+    ENDIF.
+
+    mv_draft = abap_false.
+    IF mo_ext IS BOUND.
+      mo_ext->after_save( entity_name = mv_entity_name
+                          operation   = `UPDATE`
+                          data        = ms_data ).
+    ENDIF.
+    result = abap_true.
 
   ENDMETHOD.
 

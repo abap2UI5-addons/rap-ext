@@ -56,6 +56,8 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         no_authority   TYPE string VALUE `NO_AUTHORITY`,
         locked         TYPE string VALUE `LOCKED`,
         changed        TYPE string VALUE `CHANGED`,
+        discard_draft  TYPE string VALUE `DISCARD_DRAFT`,
+        draft_kept     TYPE string VALUE `DRAFT_KEPT`,
       END OF cs_text.
 
     " Where z2ui5_if_rap_ext~extend_view may add controls
@@ -429,6 +431,38 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
+    "! the business object bdef (its root entity) has a draft
+    METHODS is_draft_enabled
+      IMPORTING
+        bdef          TYPE string
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! a draft action on the root instance of root_keys, committed: EDIT
+    "! (a draft appears, an existing one is kept), ACTIVATE, DISCARD -
+    "! is_draft addresses the draft instance (Activate, Discard)
+    METHODS run_draft_action
+      IMPORTING
+        bdef          TYPE string
+        action        TYPE string
+        root_keys     TYPE ty_t_name_value
+        is_draft      TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(result) TYPE ty_s_result.
+
+    "! write the changes of row (against original) into its draft,
+    "! committed - the draft keeps them between roundtrips until it is
+    "! activated or discarded. Checked like write_row, the extension's
+    "! before_save is called with operation UPDATE
+    METHODS write_draft
+      IMPORTING
+        entity_name   TYPE string
+        row           TYPE data
+        original      TYPE data
+        context       TYPE ty_s_rap_context OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_s_result.
+
     "! the parameter structure of a RAP action, unbound when it has none
     METHODS create_action_parameter
       IMPORTING
@@ -620,6 +654,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-no_authority THEN `Keine Berechtigung`
         WHEN cs_text-locked       THEN `Der Eintrag ist gesperrt`
         WHEN cs_text-changed      THEN `Der Eintrag wurde inzwischen geändert - bitte neu lesen`
+        WHEN cs_text-discard_draft THEN `Entwurf verwerfen`
+        WHEN cs_text-draft_kept   THEN `Entwurf gesichert`
         ELSE key ).
     ELSE.
       result = SWITCH #( key
@@ -652,6 +688,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       WHEN cs_text-no_authority THEN `No authorization`
       WHEN cs_text-locked       THEN `The record is locked`
       WHEN cs_text-changed      THEN `The record was changed meanwhile - read it again`
+      WHEN cs_text-discard_draft THEN `Discard draft`
+      WHEN cs_text-draft_kept   THEN `Draft saved`
       ELSE key ).
     ENDIF.
 
@@ -1508,6 +1546,59 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
           CLEAR <lv_value>.
       ENDTRY.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD is_draft_enabled.
+    IF eml_available( ) = abap_true AND bdef IS NOT INITIAL.
+      result = z2ui5_cl_rap_eml=>is_draft_enabled( bdef ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD run_draft_action.
+    IF is_draft_enabled( bdef ) = abap_false.
+      APPEND get_text( cs_text-read_only ) TO result-messages.
+      RETURN.
+    ENDIF.
+    result = z2ui5_cl_rap_eml=>run_root_action( bdef     = bdef
+                                                action   = action
+                                                keys     = root_keys
+                                                is_draft = is_draft ).
+  ENDMETHOD.
+
+
+  METHOD write_draft.
+
+    DATA lv_cancel TYPE abap_bool.
+    DATA lr_row TYPE REF TO data.
+    FIELD-SYMBOLS <ls_row> TYPE any.
+
+    IF get_entity_capabilities( entity_name = entity_name
+                                context     = context )-can_update = abap_false.
+      APPEND get_text( cs_text-read_only ) TO result-messages.
+      RETURN.
+    ENDIF.
+
+    CREATE DATA lr_row LIKE row.
+    ASSIGN lr_row->* TO <ls_row>.
+    <ls_row> = row.
+    IF mo_ext IS BOUND.
+      mo_ext->before_save( EXPORTING entity_name = entity_name
+                                     operation   = `UPDATE`
+                                     data        = lr_row
+                           CHANGING  messages    = result-messages
+                                     cancel      = lv_cancel ).
+      IF lv_cancel = abap_true.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
+    result = z2ui5_cl_rap_eml=>update_draft( entity_name = entity_name
+                                             row         = <ls_row>
+                                             original    = original
+                                             context     = context ).
 
   ENDMETHOD.
 
