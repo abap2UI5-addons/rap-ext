@@ -51,7 +51,36 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         nav_path   TYPE string VALUE `NAV_PATH`,
         intent     TYPE string VALUE `INTENT`,
         export     TYPE string VALUE `EXPORT`,
+        variant_select    TYPE string VALUE `VARIANT_SELECT`,
+        variant_save_open TYPE string VALUE `VARIANT_SAVE_OPEN`,
+        variant_save      TYPE string VALUE `VARIANT_SAVE`,
+        variant_delete    TYPE string VALUE `VARIANT_DELETE`,
+        columns           TYPE string VALUE `COLUMNS`,
+        columns_ok        TYPE string VALUE `COLUMNS_OK`,
+        popup_cancel      TYPE string VALUE `POPUP_CANCEL`,
       END OF cs_event.
+
+    "! the key of the standard view - the annotations' filters, sort order
+    "! and columns
+    CONSTANTS cv_variant_standard TYPE string VALUE `*STANDARD*`.
+
+    " an entry of the views select, a row of the columns dialog
+    TYPES:
+      BEGIN OF ty_s_variant_item,
+        key  TYPE string,
+        text TYPE string,
+      END OF ty_s_variant_item.
+
+    TYPES ty_t_variant_item TYPE STANDARD TABLE OF ty_s_variant_item WITH EMPTY KEY.
+
+    TYPES:
+      BEGIN OF ty_s_column,
+        name    TYPE string,
+        label   TYPE string,
+        visible TYPE abap_bool,
+      END OF ty_s_column.
+
+    TYPES ty_t_column TYPE STANDARD TABLE OF ty_s_column WITH EMPTY KEY.
 
     "! the most rows an export writes
     CONSTANTS cv_export_max TYPE i VALUE 10000.
@@ -86,6 +115,16 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     "! more rows match than are loaded - the "more" button shows
     DATA mv_more       TYPE abap_bool.
 
+    "! the views of the user (z2ui5_cl_rap_variant) and the selected one -
+    "! empty when the system has no table for them
+    DATA mt_variant_item   TYPE ty_t_variant_item.
+    DATA mv_variant        TYPE string.
+    "! the dialog that saves a view
+    DATA mv_variant_name    TYPE string.
+    DATA mv_variant_default TYPE abap_bool.
+    "! the dialog that shows and hides columns
+    DATA mt_column TYPE ty_t_column.
+
   PROTECTED SECTION.
     DATA mv_cds_view TYPE string.
     DATA mv_title    TYPE string.
@@ -105,6 +144,12 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     "! the keys of the row an inline action was pressed on - empty for a
     "! toolbar action, which runs on the selected rows
     DATA mt_pending_keys TYPE string_table.
+
+    "! the columns the user hid (the columns dialog, a view)
+    DATA mt_hidden_column TYPE string_table.
+    "! the saved views, and the standard view as the list started
+    DATA mt_variants TYPE z2ui5_cl_rap_variant=>ty_t_variant.
+    DATA ms_standard TYPE z2ui5_cl_rap_variant=>ty_s_data.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app;
@@ -227,6 +272,48 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         io_toolbar TYPE REF TO z2ui5_cl_ui5_view_builder
         client     TYPE REF TO z2ui5_if_client.
 
+    "! the columns of the table - the line item without the hidden ones
+    METHODS get_visible_columns
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_field_info.
+
+    "! read the user's views, apply the default one
+    METHODS init_variants.
+
+    "! filters, search, sort order and hidden columns as they are now
+    METHODS capture_variant
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_variant=>ty_s_data.
+
+    METHODS apply_variant
+      IMPORTING
+        is_data TYPE z2ui5_cl_rap_variant=>ty_s_data.
+
+    "! the views select, save, delete and the columns button - in the
+    "! table's toolbar, when the system keeps views
+    METHODS render_variant_controls
+      IMPORTING
+        io_toolbar TYPE REF TO z2ui5_cl_ui5_view_builder
+        client     TYPE REF TO z2ui5_if_client.
+
+    "! the dialog that saves the current view under a name
+    METHODS render_variant_popup
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    "! the dialog that shows and hides columns
+    METHODS render_column_popup
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    "! the events of the views and the columns dialog - abap_true when the
+    "! event was one of them
+    METHODS on_variant_event
+      IMPORTING
+        client        TYPE REF TO z2ui5_if_client
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
     "! the labels of the mandatory filters (@Consumption.filter.mandatory)
     "! that have no value
     METHODS get_missing_filters
@@ -310,6 +397,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         mv_sort_desc = ms_entity-sort_order[ 1 ]-descending.
       ENDIF.
 
+      init_variants( ).
       load_data( ).
       render_page( client ).
       RETURN.
@@ -386,6 +474,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     IF client->check_on_event( cs_event-export ).
       on_export( client ).
+      RETURN.
+    ENDIF.
+
+    IF on_variant_event( client ) = abap_true.
       RETURN.
     ENDIF.
 
@@ -688,7 +780,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     ENDIF.
 
     DATA(lv_csv) = z2ui5_cl_rap_util=>to_csv( data      = lr_rows
-                                              it_fields = get_line_item_fields( ) ).
+                                              it_fields = get_visible_columns( ) ).
     DATA(lv_base64) = z2ui5_cl_rap_util=>base64_encode( z2ui5_cl_rap_util=>to_utf8( val = lv_csv
                                                                                     bom = abap_true ) ).
     DATA(lv_name) = replace( val = mv_cds_view sub = `/` with = `_` occ = 0 ).
@@ -707,6 +799,313 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
               t = get_text( cs_text-export )
         )->a( n = `press`
               v = client->_event( cs_event-export ) ).
+  ENDMETHOD.
+
+
+  METHOD get_visible_columns.
+    result = get_line_item_fields( ).
+    LOOP AT mt_hidden_column INTO DATA(lv_hidden).
+      DELETE result WHERE name = lv_hidden.
+    ENDLOOP.
+    "never no column at all
+    IF result IS INITIAL.
+      result = get_line_item_fields( ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD init_variants.
+
+    CLEAR: mt_variant_item, mt_variants, mv_variant.
+    IF z2ui5_cl_rap_variant=>is_available( ) = abap_false.
+      RETURN.
+    ENDIF.
+    ms_standard = capture_variant( ).
+    mt_variants = z2ui5_cl_rap_variant=>read_all( mv_cds_view ).
+
+    mv_variant = cv_variant_standard.
+    APPEND VALUE #( key = cv_variant_standard text = get_text( cs_text-standard ) ) TO mt_variant_item.
+    LOOP AT mt_variants INTO DATA(ls_variant).
+      APPEND VALUE #( key = ls_variant-name text = ls_variant-name ) TO mt_variant_item.
+      IF ls_variant-is_default = abap_true.
+        mv_variant = ls_variant-name.
+        apply_variant( ls_variant-data ).
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD capture_variant.
+    LOOP AT mt_filter INTO DATA(ls_filter).
+      APPEND VALUE #( name = ls_filter-name value = ls_filter-value ) TO result-filters.
+    ENDLOOP.
+    result-search = mv_search.
+    result-sort_field = mv_sort_field.
+    result-sort_desc = mv_sort_desc.
+    result-hidden_columns = mt_hidden_column.
+  ENDMETHOD.
+
+
+  METHOD apply_variant.
+    "only the filters the list has - a view of an older version of the
+    "entity may name others
+    LOOP AT mt_filter ASSIGNING FIELD-SYMBOL(<ls_filter>).
+      READ TABLE is_data-filters INTO DATA(ls_value) WITH KEY name = <ls_filter>-name.
+      <ls_filter>-value = COND #( WHEN sy-subrc = 0 THEN ls_value-value ).
+    ENDLOOP.
+    mv_search = is_data-search.
+    IF is_data-sort_field IS INITIAL OR line_exists( mt_sort_field[ name = is_data-sort_field ] ).
+      mv_sort_field = is_data-sort_field.
+      mv_sort_desc = is_data-sort_desc.
+    ENDIF.
+    mt_hidden_column = is_data-hidden_columns.
+  ENDMETHOD.
+
+
+  METHOD render_variant_controls.
+
+    IF mt_variant_item IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    io_toolbar->ele( `Select`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+        )->a( n = `selectedKey`
+              v = client->_bind( mv_variant )
+        )->a( n = `items`
+              v = client->_bind( mt_variant_item )
+        )->a( n = `change`
+              v = client->_event( cs_event-variant_select )
+        )->a( n = `width`
+              v = `12rem`
+        )->tag( n  = `Item`
+                ns = `core`
+            )->a( n = `key`
+                  v = `{KEY}`
+            )->a( n = `text`
+                  v = `{TEXT}` ).
+
+    io_toolbar->tag( `Button`
+        )->a( n = `icon`
+              v = `sap-icon://save`
+        )->a( n = `tooltip`
+              t = get_text( cs_text-save_view )
+        )->a( n = `press`
+              v = client->_event( cs_event-variant_save_open ) ).
+
+    DATA(lv_deletable) = xsdbool( mv_variant IS NOT INITIAL AND mv_variant <> cv_variant_standard ).
+    io_toolbar->tag( `Button`
+        )->a( n = `icon`
+              v = `sap-icon://delete`
+        )->a( n = `tooltip`
+              t = get_text( cs_text-delete_view )
+        )->a( n = `enabled`
+              b = lv_deletable
+        )->a( n = `press`
+              v = client->_event( cs_event-variant_delete ) ).
+
+    io_toolbar->tag( `Button`
+        )->a( n = `icon`
+              v = `sap-icon://action-settings`
+        )->a( n = `tooltip`
+              t = get_text( cs_text-columns )
+        )->a( n = `press`
+              v = client->_event( cs_event-columns ) ).
+
+  ENDMETHOD.
+
+
+  METHOD render_variant_popup.
+
+    DATA(lo_popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+    DATA(lo_dialog) = lo_popup->ele( n  = `FragmentDefinition`
+                                      ns = `core`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+        )->ele( `Dialog`
+            )->a( n = `title`
+                  t = get_text( cs_text-save_view )
+            )->a( n = `contentWidth`
+                  v = `25rem` ).
+
+    lo_dialog->ele( `content`
+        )->ele( `VBox`
+            )->a( n = `class`
+                  v = `sapUiSmallMargin`
+            )->tag( `Label`
+                )->a( n = `text`
+                      t = get_text( cs_text-view_name )
+                )->a( n = `required`
+                      v = `true`
+            )->tag( `Input`
+                )->a( n = `value`
+                      v = client->_bind( mv_variant_name )
+                )->a( n = `maxLength`
+                      v = `60`
+            )->tag( `CheckBox`
+                )->a( n = `text`
+                      t = get_text( cs_text-as_default )
+                )->a( n = `selected`
+                      v = client->_bind( mv_variant_default ) ).
+
+    lo_dialog->ele( `beginButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-save )
+            )->a( n = `type`
+                  v = `Emphasized`
+            )->a( n = `press`
+                  v = client->_event( cs_event-variant_save ) ).
+    lo_dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-cancel )
+            )->a( n = `press`
+                  v = client->_event( cs_event-popup_cancel ) ).
+
+    client->popup_display( lo_popup->stringify( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD render_column_popup.
+
+    DATA(lo_popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+    DATA(lo_dialog) = lo_popup->ele( n  = `FragmentDefinition`
+                                      ns = `core`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+        )->ele( `Dialog`
+            )->a( n = `title`
+                  t = get_text( cs_text-columns )
+            )->a( n = `contentWidth`
+                  v = `25rem` ).
+
+    lo_dialog->ele( `content`
+        )->ele( `List`
+            )->a( n = `mode`
+                  v = `MultiSelect`
+            )->a( n = `items`
+                  v = client->_bind( mt_column )
+            )->tag( `StandardListItem`
+                )->a( n = `title`
+                      v = `{LABEL}`
+                )->a( n = `selected`
+                      v = `{VISIBLE}` ).
+
+    lo_dialog->ele( `beginButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-ok )
+            )->a( n = `type`
+                  v = `Emphasized`
+            )->a( n = `press`
+                  v = client->_event( cs_event-columns_ok ) ).
+    lo_dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-cancel )
+            )->a( n = `press`
+                  v = client->_event( cs_event-popup_cancel ) ).
+
+    client->popup_display( lo_popup->stringify( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD on_variant_event.
+
+    result = abap_true.
+    CASE client->get_event( ).
+
+      WHEN cs_event-variant_select.
+        IF mv_variant = cv_variant_standard.
+          apply_variant( ms_standard ).
+        ELSE.
+          READ TABLE mt_variants INTO DATA(ls_variant) WITH KEY name = mv_variant.
+          IF sy-subrc = 0.
+            apply_variant( ls_variant-data ).
+          ENDIF.
+        ENDIF.
+        load_data( ).
+        "the columns may differ - built into the view
+        render_page( client ).
+
+      WHEN cs_event-variant_save_open.
+        mv_variant_name = COND #( WHEN mv_variant <> cv_variant_standard THEN mv_variant ).
+        READ TABLE mt_variants INTO ls_variant WITH KEY name = mv_variant.
+        mv_variant_default = xsdbool( sy-subrc = 0 AND ls_variant-is_default = abap_true ).
+        render_variant_popup( client ).
+
+      WHEN cs_event-variant_save.
+        DATA(lv_name) = condense( mv_variant_name ).
+        IF lv_name IS INITIAL OR lv_name = cv_variant_standard.
+          client->message_box_display( text = |{ get_text( cs_text-required ) }: { get_text( cs_text-view_name ) }|
+                                       type = `warning` ).
+          RETURN.
+        ENDIF.
+        IF z2ui5_cl_rap_variant=>save( entity_name = mv_cds_view
+                                       variant     = VALUE #( name       = lv_name
+                                                              is_default = mv_variant_default
+                                                              data       = capture_variant( ) ) ) = abap_false.
+          client->message_box_display( text = get_text( cs_text-load_error )
+                                       type = `error` ).
+          RETURN.
+        ENDIF.
+        client->popup_destroy( ).
+        init_variants( ).
+        mv_variant = lv_name.
+        READ TABLE mt_variants INTO ls_variant WITH KEY name = lv_name.
+        IF sy-subrc = 0.
+          apply_variant( ls_variant-data ).
+        ENDIF.
+        render_page( client ).
+        client->message_toast_display( get_text( cs_text-view_saved ) ).
+
+      WHEN cs_event-variant_delete.
+        IF mv_variant <> cv_variant_standard AND mv_variant IS NOT INITIAL.
+          z2ui5_cl_rap_variant=>delete( entity_name = mv_cds_view
+                                        name        = mv_variant ).
+        ENDIF.
+        "the standard view again - init_variants would apply the default
+        DATA(ls_now) = capture_variant( ).
+        init_variants( ).
+        apply_variant( ls_now ).
+        mv_variant = cv_variant_standard.
+        render_page( client ).
+
+      WHEN cs_event-columns.
+        CLEAR mt_column.
+        LOOP AT get_line_item_fields( ) INTO DATA(ls_col).
+          APPEND VALUE #( name    = ls_col-name
+                          label   = COND #( WHEN ls_col-line_item_label IS NOT INITIAL THEN ls_col-line_item_label
+                                            ELSE ls_col-label )
+                          visible = xsdbool( NOT line_exists( mt_hidden_column[ table_line = ls_col-name ] ) ) )
+            TO mt_column.
+        ENDLOOP.
+        render_column_popup( client ).
+
+      WHEN cs_event-columns_ok.
+        CLEAR mt_hidden_column.
+        LOOP AT mt_column INTO DATA(ls_column) WHERE visible = abap_false.
+          APPEND ls_column-name TO mt_hidden_column.
+        ENDLOOP.
+        client->popup_destroy( ).
+        render_page( client ).
+
+      WHEN cs_event-popup_cancel.
+        client->popup_destroy( ).
+
+      WHEN OTHERS.
+        result = abap_false.
+    ENDCASE.
+
   ENDMETHOD.
 
 
@@ -1053,7 +1452,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
     ASSIGN mr_data->* TO <lt_data>.
 
-    DATA(lt_columns) = get_line_item_fields( ).
+    DATA(lt_columns) = get_visible_columns( ).
     DATA(lt_inline) = get_line_item_actions( abap_true ).
     DATA(lv_select) = xsdbool( get_line_item_actions( abap_false ) IS NOT INITIAL ).
     "the rows are selectable when there are actions to run on them
@@ -1179,6 +1578,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     render_sort_controls( io_toolbar = lo_toolbar
                           client     = client ).
+
+    render_variant_controls( io_toolbar = lo_toolbar
+                             client     = client ).
 
     IF ms_caps-can_create = abap_true.
       lo_toolbar->tag( `Button`

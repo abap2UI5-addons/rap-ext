@@ -63,6 +63,13 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         export         TYPE string VALUE `EXPORT`,
         copy_link      TYPE string VALUE `COPY_LINK`,
         link_copied    TYPE string VALUE `LINK_COPIED`,
+        standard       TYPE string VALUE `STANDARD`,
+        save_view      TYPE string VALUE `SAVE_VIEW`,
+        delete_view    TYPE string VALUE `DELETE_VIEW`,
+        view_name      TYPE string VALUE `VIEW_NAME`,
+        as_default     TYPE string VALUE `AS_DEFAULT`,
+        view_saved     TYPE string VALUE `VIEW_SAVED`,
+        columns        TYPE string VALUE `COLUMNS`,
       END OF cs_text.
 
     " Where z2ui5_if_rap_ext~extend_view may add controls
@@ -731,6 +738,13 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-export       THEN `Exportieren`
         WHEN cs_text-copy_link    THEN `Link kopieren`
         WHEN cs_text-link_copied  THEN `Link kopiert`
+        WHEN cs_text-standard     THEN `Standard`
+        WHEN cs_text-save_view    THEN `Sicht sichern`
+        WHEN cs_text-delete_view  THEN `Sicht löschen`
+        WHEN cs_text-view_name    THEN `Name`
+        WHEN cs_text-as_default   THEN `Als Standard verwenden`
+        WHEN cs_text-view_saved   THEN `Sicht gesichert`
+        WHEN cs_text-columns      THEN `Spalten`
         ELSE key ).
     ELSE.
       result = SWITCH #( key
@@ -770,6 +784,13 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       WHEN cs_text-export       THEN `Export`
       WHEN cs_text-copy_link    THEN `Copy link`
       WHEN cs_text-link_copied  THEN `Link copied`
+      WHEN cs_text-standard     THEN `Standard`
+      WHEN cs_text-save_view    THEN `Save view`
+      WHEN cs_text-delete_view  THEN `Delete view`
+      WHEN cs_text-view_name    THEN `Name`
+      WHEN cs_text-as_default   THEN `Use as default`
+      WHEN cs_text-view_saved   THEN `View saved`
+      WHEN cs_text-columns      THEN `Columns`
       ELSE key ).
     ENDIF.
 

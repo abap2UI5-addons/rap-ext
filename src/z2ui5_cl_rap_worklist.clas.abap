@@ -310,6 +310,9 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     render_sort_controls( io_toolbar = lo_toolbar
                           client     = client ).
 
+    render_variant_controls( io_toolbar = lo_toolbar
+                             client     = client ).
+
     "@UI.lineItem actions of type #FOR_ACTION - on the selected rows
     LOOP AT get_line_item_actions( abap_false ) INTO DATA(ls_action).
       lo_toolbar->tag( `Button`
