@@ -136,6 +136,22 @@ CLASS z2ui5_cl_rap_util DEFINITION
         "CREATED_BY, CREATED_AT, LAST_CHANGED_BY, LAST_CHANGED_AT,
         "LOCAL_LAST_CHANGED_AT
         admin_field               TYPE string,
+        "@Consumption.filter: SINGLE, INTERVAL, RANGE (selectionType),
+        "single = one value only (multipleSelections: false or #SINGLE),
+        "mandatory and hidden
+        filter_selection_type     TYPE string,
+        filter_single             TYPE abap_bool,
+        filter_mandatory          TYPE abap_bool,
+        filter_hidden             TYPE abap_bool,
+        "the column's @UI.lineItem type: STANDARD, WITH_URL (line_item_url
+        "is the field with the URL), WITH_NAVIGATION_PATH (line_item_target
+        "is the association), WITH_INTENT_BASED_NAVIGATION (the semantic
+        "object and action)
+        line_item_type            TYPE string,
+        line_item_url             TYPE string,
+        line_item_target          TYPE string,
+        line_item_sem_object      TYPE string,
+        line_item_sem_action      TYPE string,
       END OF ty_s_field_info.
 
     TYPES ty_t_field_info TYPE STANDARD TABLE OF ty_s_field_info WITH DEFAULT KEY.
@@ -202,6 +218,10 @@ CLASS z2ui5_cl_rap_util DEFINITION
         "LINEITEM (list: toolbar or inline) or IDENTIFICATION (object page)
         source   TYPE string,
         inline   TYPE abap_bool,
+        "added 2026-10: an entry of type #FOR_INTENT_BASED_NAVIGATION - a
+        "button that navigates in the launchpad instead of an action
+        semantic_object TYPE string,
+        semantic_action TYPE string,
       END OF ty_s_action.
 
     TYPES ty_t_action TYPE STANDARD TABLE OF ty_s_action WITH DEFAULT KEY.
@@ -464,6 +484,14 @@ CLASS z2ui5_cl_rap_util DEFINITION
     CLASS-METHODS normalize_value
       IMPORTING
         val           TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! val as the content of a JSON string - quotes, backslashes and control
+    "! characters escaped
+    CLASS-METHODS json_escape
+      IMPORTING
+        val           TYPE clike
       RETURNING
         VALUE(result) TYPE string.
 
@@ -933,6 +961,19 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           IF is_true( lv_val ).
             cs_field-admin_field = `LOCAL_LAST_CHANGED_AT`.
           ENDIF.
+        WHEN `CONSUMPTION.FILTER.SELECTIONTYPE`.
+          cs_field-filter_selection_type = replace( val = strip_quotes( lv_val ) sub = `#` with = `` ).
+          IF cs_field-filter_selection_type = `SINGLE`.
+            cs_field-filter_single = abap_true.
+          ENDIF.
+        WHEN `CONSUMPTION.FILTER.MULTIPLESELECTIONS`.
+          IF to_lower( strip_quotes( lv_val ) ) = `false`.
+            cs_field-filter_single = abap_true.
+          ENDIF.
+        WHEN `CONSUMPTION.FILTER.MANDATORY`.
+          cs_field-filter_mandatory = is_true( lv_val ).
+        WHEN `CONSUMPTION.FILTER.HIDDEN`.
+          cs_field-filter_hidden = is_true( lv_val ).
       ENDCASE.
 
       "@ObjectModel.text.element: ['Name'] - an array of one
@@ -969,6 +1010,15 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       cs_field-line_item_label = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) ).
       cs_field-line_item_crit_field = to_upper( strip_quotes(
           get_entry_value( it_entries = lt_entries idx = lv_idx prop = `CRITICALITY` ) ) ).
+      cs_field-line_item_type = replace( val = strip_quotes( lv_type ) sub = `#` with = `` ).
+      cs_field-line_item_url = to_upper( strip_quotes(
+          get_entry_value( it_entries = lt_entries idx = lv_idx prop = `URL` ) ) ).
+      cs_field-line_item_target = to_upper( strip_quotes(
+          get_entry_value( it_entries = lt_entries idx = lv_idx prop = `TARGETELEMENT` ) ) ).
+      cs_field-line_item_sem_object = strip_quotes(
+          get_entry_value( it_entries = lt_entries idx = lv_idx prop = `SEMANTICOBJECT` ) ).
+      cs_field-line_item_sem_action = strip_quotes(
+          get_entry_value( it_entries = lt_entries idx = lv_idx prop = `SEMANTICOBJECTACTION` ) ).
       EXIT.
     ENDLOOP.
 
@@ -1108,7 +1158,8 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         CONTINUE.
       ENDIF.
       lv_idx = ls_entry-idx.
-      IF get_entry_value( it_entries = lt_entries idx = lv_idx prop = `TYPE` ) NS `FOR_ACTION`.
+      DATA(lv_type) = get_entry_value( it_entries = lt_entries idx = lv_idx prop = `TYPE` ).
+      IF lv_type NS `FOR_ACTION` AND lv_type NS `FOR_INTENT_BASED_NAVIGATION`.
         CONTINUE.
       ENDIF.
       DATA(ls_action) = VALUE ty_s_action(
@@ -1117,6 +1168,15 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         position = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) )
         source   = source
         inline   = is_true( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `INLINE` ) ) ).
+      "a navigation: named after its target, never the name of an action
+      IF lv_type CS `FOR_INTENT_BASED_NAVIGATION`.
+        ls_action-semantic_object = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `SEMANTICOBJECT` ) ).
+        ls_action-semantic_action = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `SEMANTICOBJECTACTION` ) ).
+        IF ls_action-semantic_object IS INITIAL OR ls_action-semantic_action IS INITIAL.
+          CONTINUE.
+        ENDIF.
+        ls_action-name = to_upper( |INTENT~{ ls_action-semantic_object }~{ ls_action-semantic_action }| ).
+      ENDIF.
       IF ls_action-name IS INITIAL
         OR line_exists( ct_action[ name = ls_action-name source = source ] ).
         CONTINUE.
@@ -2139,6 +2199,15 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       RETURN.
     ENDLOOP.
 
+  ENDMETHOD.
+
+  METHOD json_escape.
+    result = val.
+    result = replace( val = result sub = `\` with = `\\` occ = 0 ).
+    result = replace( val = result sub = `"` with = `\"` occ = 0 ).
+    result = replace( val = result sub = cl_abap_char_utilities=>cr_lf(1) with = `\r` occ = 0 ).
+    result = replace( val = result sub = cl_abap_char_utilities=>newline with = `\n` occ = 0 ).
+    result = replace( val = result sub = cl_abap_char_utilities=>horizontal_tab with = `\t` occ = 0 ).
   ENDMETHOD.
 
 ENDCLASS.

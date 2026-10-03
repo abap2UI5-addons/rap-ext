@@ -26,6 +26,10 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         value   TYPE string,
         "the field has a value help - the input shows its button
         show_vh TYPE abap_bool,
+        "added 2026-10 (@Consumption.filter): a value is required before
+        "the list loads; single - one value, the value help selects one
+        mandatory TYPE abap_bool,
+        single    TYPE abap_bool,
       END OF ty_s_filter.
 
     TYPES ty_t_filter TYPE STANDARD TABLE OF ty_s_filter WITH DEFAULT KEY.
@@ -43,6 +47,9 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         sort       TYPE string VALUE `SORT`,
         sort_dir   TYPE string VALUE `SORT_DIRECTION`,
         more       TYPE string VALUE `MORE`,
+        "added 2026-10
+        nav_path   TYPE string VALUE `NAV_PATH`,
+        intent     TYPE string VALUE `INTENT`,
       END OF cs_event.
 
     METHODS constructor
@@ -145,10 +152,14 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         io_columns TYPE REF TO z2ui5_cl_ui5_view_builder
         is_col     TYPE z2ui5_cl_rap_util=>ty_s_field_info.
 
+    "! the cell of a column - client (added 2026-10) is needed for the
+    "! links of a #WITH_NAVIGATION_PATH or #WITH_INTENT_BASED_NAVIGATION
+    "! column, which are plain text without it
     METHODS render_cell
       IMPORTING
         io_cells TYPE REF TO z2ui5_cl_ui5_view_builder
-        is_col   TYPE z2ui5_cl_rap_util=>ty_s_field_info.
+        is_col   TYPE z2ui5_cl_rap_util=>ty_s_field_info
+        client   TYPE REF TO z2ui5_if_client OPTIONAL.
 
     METHODS on_row_press
       IMPORTING
@@ -194,6 +205,31 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       RETURNING
         VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_action.
 
+    "! the #FOR_INTENT_BASED_NAVIGATION entries of @UI.lineItem - toolbar
+    "! buttons that navigate in the launchpad
+    METHODS get_line_item_intents
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_action.
+
+    "! the labels of the mandatory filters (@Consumption.filter.mandatory)
+    "! that have no value
+    METHODS get_missing_filters
+      RETURNING
+        VALUE(result) TYPE string_table.
+
+    "! the link of a #WITH_NAVIGATION_PATH column: the object page of the
+    "! record the association leads to
+    METHODS on_nav_path
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    "! a launchpad navigation: a #FOR_INTENT_BASED_NAVIGATION button, or
+    "! the link of a #WITH_INTENT_BASED_NAVIGATION column with its value and
+    "! the row's keys as parameters
+    METHODS on_intent
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
     METHODS normalize_value
       IMPORTING
         val           TYPE string
@@ -231,13 +267,15 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      "init filter bar from @UI.selectionField
+      "init filter bar from @UI.selectionField - a mandatory one is marked
       LOOP AT get_selection_fields( ) INTO DATA(ls_sel).
         APPEND VALUE ty_s_filter(
-          name    = ls_sel-name
-          label   = ls_sel-label
-          value   = ls_sel-filter_default
-          show_vh = xsdbool( ls_sel-value_help-entity_name IS NOT INITIAL ) ) TO mt_filter.
+          name      = ls_sel-name
+          label     = COND #( WHEN ls_sel-filter_mandatory = abap_true THEN |{ ls_sel-label } *| ELSE ls_sel-label )
+          value     = ls_sel-filter_default
+          show_vh   = xsdbool( ls_sel-value_help-entity_name IS NOT INITIAL )
+          mandatory = ls_sel-filter_mandatory
+          single    = ls_sel-filter_single ) TO mt_filter.
       ENDLOOP.
 
       mt_row_key = get_row_key_fields( ).
@@ -269,6 +307,13 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       OR client->check_on_event( cs_event-go )
       OR client->check_on_event( cs_event-search )
       OR client->check_on_event( cs_event-sort ).
+      "the rows of a mandatory filter only - none without its value
+      DATA(lt_missing) = get_missing_filters( ).
+      IF lt_missing IS NOT INITIAL.
+        client->message_box_display(
+          text = |{ get_text( cs_text-required ) }: { concat_lines_of( table = lt_missing sep = `, ` ) }|
+          type = `warning` ).
+      ENDIF.
       load_data( ).
       RETURN.
     ENDIF.
@@ -308,8 +353,18 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       IF sy-subrc = 0.
         open_value_help( client       = client
                          is_field     = ls_field
-                         multi_select = abap_true ).
+                         multi_select = xsdbool( ls_field-filter_single = abap_false ) ).
       ENDIF.
+      RETURN.
+    ENDIF.
+
+    IF client->check_on_event( cs_event-nav_path ).
+      on_nav_path( client ).
+      RETURN.
+    ENDIF.
+
+    IF client->check_on_event( cs_event-intent ).
+      on_intent( client ).
       RETURN.
     ENDIF.
 
@@ -390,6 +445,16 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
 
   METHOD load_data.
+
+    "a mandatory filter without a value: no rows until it has one
+    IF get_missing_filters( ) IS NOT INITIAL.
+      mr_data = create_entity_table(
+        entity_name    = mv_cds_view
+        with_selection = xsdbool( get_line_item_actions( abap_false ) IS NOT INITIAL ) ).
+      mv_count = `0`.
+      mv_more = abap_false.
+      RETURN.
+    ENDIF.
 
     DATA(lv_where) = get_where_clause( ).
     mr_data = select_rows(
@@ -539,7 +604,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD get_selection_fields.
     LOOP AT ms_entity-fields INTO DATA(ls_field)
-      WHERE is_selection_field = abap_true.
+      WHERE is_selection_field = abap_true AND filter_hidden = abap_false.
       APPEND ls_field TO result.
     ENDLOOP.
     SORT result BY selection_field_pos.
@@ -571,9 +636,108 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       RETURN.
     ENDIF.
     LOOP AT ms_entity-actions INTO DATA(ls_action)
-      WHERE source = `LINEITEM` AND inline = inline.
+      WHERE source = `LINEITEM` AND inline = inline AND semantic_object IS INITIAL.
       APPEND ls_action TO result.
     ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD get_line_item_intents.
+    LOOP AT ms_entity-actions INTO DATA(ls_action)
+      WHERE source = `LINEITEM` AND semantic_object IS NOT INITIAL.
+      APPEND ls_action TO result.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD get_missing_filters.
+    LOOP AT mt_filter INTO DATA(ls_filter) WHERE mandatory = abap_true.
+      IF condense( ls_filter-value ) IS INITIAL.
+        READ TABLE ms_entity-fields INTO DATA(ls_field) WITH KEY name = ls_filter-name.
+        APPEND COND string( WHEN sy-subrc = 0 THEN ls_field-label ELSE ls_filter-name ) TO result.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD on_nav_path.
+
+    FIELD-SYMBOLS <ls_row> TYPE any.
+
+    "arg 1 the column, args 2... the keys of the row
+    READ TABLE ms_entity-fields INTO DATA(ls_col) WITH KEY name = client->get_event_arg( ).
+    IF sy-subrc <> 0 OR ls_col-line_item_target IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA(lr_row) = find_row_by_event_keys( data       = mr_data
+                                           key_fields = mt_row_key
+                                           client     = client
+                                           arg_offset = 1 ).
+    IF lr_row IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_row->* TO <ls_row>.
+
+    DATA(lr_target) = read_association_target( is_entity   = ms_entity
+                                               association = ls_col-line_item_target
+                                               row         = <ls_row> ).
+    IF lr_target IS NOT BOUND.
+      client->message_toast_display( get_text( cs_text-not_found ) ).
+      RETURN.
+    ENDIF.
+    ASSIGN lr_target->* TO <ls_row>.
+    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( val = <ls_row> ).
+    lo_op->set_extension( mo_ext ).
+    client->nav_app_call( lo_op ).
+
+  ENDMETHOD.
+
+
+  METHOD on_intent.
+
+    FIELD-SYMBOLS <ls_row> TYPE any.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+    DATA lt_params TYPE ty_t_name_value.
+
+    DATA(lv_arg) = client->get_event_arg( ).
+
+    "a toolbar button: its target, no parameters
+    READ TABLE ms_entity-actions INTO DATA(ls_intent) WITH KEY name = lv_arg.
+    IF sy-subrc = 0 AND ls_intent-semantic_object IS NOT INITIAL.
+      navigate_to_intent( client          = client
+                          semantic_object = ls_intent-semantic_object
+                          action          = ls_intent-semantic_action ).
+      RETURN.
+    ENDIF.
+
+    "a column's link: the value and the row's keys as parameters
+    READ TABLE ms_entity-fields INTO DATA(ls_col) WITH KEY name = lv_arg.
+    IF sy-subrc <> 0 OR ls_col-line_item_sem_object IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA(lr_row) = find_row_by_event_keys( data       = mr_data
+                                           key_fields = mt_row_key
+                                           client     = client
+                                           arg_offset = 1 ).
+    IF lr_row IS BOUND.
+      ASSIGN lr_row->* TO <ls_row>.
+      LOOP AT VALUE string_table( ( ls_col-name ) ( LINES OF mt_row_key ) ) INTO DATA(lv_name).
+        IF line_exists( lt_params[ name = lv_name ] ).
+          CONTINUE.
+        ENDIF.
+        UNASSIGN <lv_value>.
+        ASSIGN COMPONENT lv_name OF STRUCTURE <ls_row> TO <lv_value>.
+        IF <lv_value> IS ASSIGNED.
+          APPEND VALUE #( name = lv_name value = |{ <lv_value> }| ) TO lt_params.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+    navigate_to_intent( client          = client
+                        semantic_object = ls_col-line_item_sem_object
+                        action          = COND #( WHEN ls_col-line_item_sem_action IS NOT INITIAL
+                                                  THEN ls_col-line_item_sem_action ELSE `display` )
+                        params          = lt_params ).
+
   ENDMETHOD.
 
 
@@ -890,7 +1054,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     LOOP AT lt_columns INTO ls_col.
       render_cell( io_cells = lo_cells
-                   is_col   = ls_col ).
+                   is_col   = ls_col
+                   client   = client ).
     ENDLOOP.
 
     "inline actions - one button per row, the row found again by its keys
@@ -940,6 +1105,16 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           )->a( n = `press`
                 v = client->_event( val = cs_event-action
                                     arg = ls_action-name ) ).
+    ENDLOOP.
+
+    "@UI.lineItem #FOR_INTENT_BASED_NAVIGATION - to another app
+    LOOP AT get_line_item_intents( ) INTO DATA(ls_intent).
+      lo_toolbar->tag( `Button`
+          )->a( n = `text`
+                t = ls_intent-label
+          )->a( n = `press`
+                v = client->_event( val = cs_event-intent
+                                    arg = ls_intent-name ) ).
     ENDLOOP.
 
     render_sort_controls( io_toolbar = lo_toolbar
@@ -1012,8 +1187,45 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     DATA(lv_path) = |\{{ is_col-name }\}|.
 
+    "the arguments of a link that needs its row: the column, the row's keys
+    DATA(lt_link_arg) = VALUE string_table( ( is_col-name ) ).
+    LOOP AT mt_row_key INTO DATA(lv_key).
+      APPEND `${` && lv_key && `}` TO lt_link_arg.
+    ENDLOOP.
+
+    "#WITH_URL -> a link to the URL in another field
+    IF is_col-line_item_type = `WITH_URL` AND is_col-line_item_url IS NOT INITIAL
+      AND line_exists( ms_entity-fields[ name = is_col-line_item_url ] ).
+      io_cells->tag( `Link`
+          )->a( n = `text`
+                v = lv_path
+          )->a( n = `href`
+                v = |\{{ is_col-line_item_url }\}|
+          )->a( n = `target`
+                v = `_blank` ).
+
+    "#WITH_NAVIGATION_PATH -> the object page of the associated record
+    ELSEIF is_col-line_item_type = `WITH_NAVIGATION_PATH` AND is_col-line_item_target IS NOT INITIAL
+      AND client IS BOUND AND mt_row_key IS NOT INITIAL.
+      io_cells->tag( `Link`
+          )->a( n = `text`
+                v = lv_path
+          )->a( n = `press`
+                v = client->_event( val   = cs_event-nav_path
+                                    t_arg = lt_link_arg ) ).
+
+    "#WITH_INTENT_BASED_NAVIGATION -> another app of the launchpad
+    ELSEIF is_col-line_item_type = `WITH_INTENT_BASED_NAVIGATION` AND is_col-line_item_sem_object IS NOT INITIAL
+      AND client IS BOUND AND mt_row_key IS NOT INITIAL.
+      io_cells->tag( `Link`
+          )->a( n = `text`
+                v = lv_path
+          )->a( n = `press`
+                v = client->_event( val   = cs_event-intent
+                                    t_arg = lt_link_arg ) ).
+
     "criticality -> ObjectStatus
-    IF is_col-datapoint_crit_field IS NOT INITIAL
+    ELSEIF is_col-datapoint_crit_field IS NOT INITIAL
       OR is_col-line_item_crit_field IS NOT INITIAL.
       DATA(lv_crit_field) = is_col-line_item_crit_field.
       IF lv_crit_field IS INITIAL.

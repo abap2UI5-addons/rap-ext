@@ -58,6 +58,8 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         changed        TYPE string VALUE `CHANGED`,
         discard_draft  TYPE string VALUE `DISCARD_DRAFT`,
         draft_kept     TYPE string VALUE `DRAFT_KEPT`,
+        no_launchpad   TYPE string VALUE `NO_LAUNCHPAD`,
+        not_found      TYPE string VALUE `NOT_FOUND`,
       END OF cs_text.
 
     " Where z2ui5_if_rap_ext~extend_view may add controls
@@ -381,10 +383,32 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE REF TO data.
 
-    "! an empty table of the entity
+    "! an empty table of the entity - with_selection adds the column
+    "! cv_select_column, as select_rows( ) does
     METHODS create_entity_table
       IMPORTING
-        entity_name   TYPE string
+        entity_name    TYPE string
+        with_selection TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(result)  TYPE REF TO data.
+
+    "! navigate in the Fiori launchpad to semantic_object-action with params
+    "! (cross-app navigation) - outside the launchpad the user is told so
+    METHODS navigate_to_intent
+      IMPORTING
+        client          TYPE REF TO z2ui5_if_client
+        semantic_object TYPE string
+        action          TYPE string
+        params          TYPE ty_t_name_value OPTIONAL.
+
+    "! the first record of target the association of entity_name leads to
+    "! from row - its ON condition's fields filled from row; unbound when
+    "! there is none or the condition is not known
+    METHODS read_association_target
+      IMPORTING
+        is_entity     TYPE z2ui5_cl_rap_util=>ty_s_entity_info
+        association   TYPE string
+        row           TYPE data
       RETURNING
         VALUE(result) TYPE REF TO data.
 
@@ -656,6 +680,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-changed      THEN `Der Eintrag wurde inzwischen geändert - bitte neu lesen`
         WHEN cs_text-discard_draft THEN `Entwurf verwerfen`
         WHEN cs_text-draft_kept   THEN `Entwurf gesichert`
+        WHEN cs_text-no_launchpad THEN `Diese Navigation gibt es nur im Fiori Launchpad`
+        WHEN cs_text-not_found    THEN `Kein Eintrag gefunden`
         ELSE key ).
     ELSE.
       result = SWITCH #( key
@@ -690,6 +716,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       WHEN cs_text-changed      THEN `The record was changed meanwhile - read it again`
       WHEN cs_text-discard_draft THEN `Discard draft`
       WHEN cs_text-draft_kept   THEN `Draft saved`
+      WHEN cs_text-no_launchpad THEN `This navigation is only available in the Fiori launchpad`
+      WHEN cs_text-not_found    THEN `No record found`
       ELSE key ).
     ENDIF.
 
@@ -1185,11 +1213,80 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
   METHOD create_entity_table.
     TRY.
         DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( entity_name ) ).
+        IF with_selection = abap_true.
+          DATA(lt_comp) = lo_struct->get_components( ).
+          IF NOT line_exists( lt_comp[ name = cv_select_column ] ).
+            APPEND VALUE #( name = cv_select_column
+                            type = CAST #( cl_abap_typedescr=>describe_by_name( `ABAP_BOOL` ) ) ) TO lt_comp.
+          ENDIF.
+          lo_struct = cl_abap_structdescr=>create( lt_comp ).
+        ENDIF.
         DATA(lo_table) = cl_abap_tabledescr=>create( lo_struct ).
         CREATE DATA result TYPE HANDLE lo_table.
       CATCH cx_root.
         CLEAR result.
     ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD navigate_to_intent.
+
+    IF client->get( )-check_launchpad_active = abap_false.
+      client->message_box_display( text = get_text( cs_text-no_launchpad ) ).
+      RETURN.
+    ENDIF.
+
+    "two JSON objects - the frontend receives them as objects, not strings
+    DATA lt_params TYPE string_table.
+    LOOP AT params INTO DATA(ls_param).
+      APPEND |"{ z2ui5_cl_rap_util=>json_escape( ls_param-name ) }":"{ z2ui5_cl_rap_util=>json_escape( ls_param-value ) }"|
+        TO lt_params.
+    ENDLOOP.
+    DATA(lv_target) = |\{"semanticObject":"{ z2ui5_cl_rap_util=>json_escape( semantic_object ) }",| &&
+                      |"action":"{ z2ui5_cl_rap_util=>json_escape( action ) }"\}|.
+    DATA(lv_params) = |\{{ concat_lines_of( table = lt_params sep = `,` ) }\}|.
+    client->follow_up_action( val   = client->cs_event-cross_app_nav_to_ext
+                              t_arg = VALUE #( ( lv_target ) ( lv_params ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD read_association_target.
+
+    DATA lt_values TYPE ty_t_name_value.
+    DATA lt_names TYPE string_table.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+
+    READ TABLE is_entity-associations INTO DATA(ls_assoc) WITH KEY name = to_upper( association ).
+    IF sy-subrc <> 0 OR ls_assoc-conditions IS INITIAL OR ls_assoc-target IS INITIAL.
+      RETURN.
+    ENDIF.
+    LOOP AT ls_assoc-conditions INTO DATA(ls_condition).
+      UNASSIGN <lv_value>.
+      ASSIGN COMPONENT ls_condition-local OF STRUCTURE row TO <lv_value>.
+      IF <lv_value> IS NOT ASSIGNED.
+        RETURN.
+      ENDIF.
+      APPEND VALUE #( name = ls_condition-target value = |{ <lv_value> }| ) TO lt_values.
+      APPEND ls_condition-target TO lt_names.
+    ENDLOOP.
+
+    DATA(lr_rows) = select_rows( entity_name = ls_assoc-target
+                                 where       = build_key_condition( lt_names )
+                                 max_rows    = 1
+                                 host        = create_host( entity_name = ls_assoc-target
+                                                            values      = lt_values ) ).
+    IF lr_rows IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_rows->* TO <lt_rows>.
+    READ TABLE <lt_rows> INDEX 1 ASSIGNING FIELD-SYMBOL(<ls_row>).
+    IF sy-subrc = 0.
+      result = to_entity_row( entity_name = ls_assoc-target
+                              row         = <ls_row> ).
+    ENDIF.
+
   ENDMETHOD.
 
 

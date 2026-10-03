@@ -35,7 +35,11 @@ CLASS ltcl_annotations DEFINITION FINAL
     METHODS label_fallback            FOR TESTING RAISING cx_static_check.
     METHODS prefix_is_not_a_match     FOR TESTING RAISING cx_static_check.
     METHODS strip_quotes              FOR TESTING RAISING cx_static_check.
+    METHODS json_escape               FOR TESTING RAISING cx_static_check.
     METHODS admin_fields              FOR TESTING RAISING cx_static_check.
+    METHODS consumption_filter        FOR TESTING RAISING cx_static_check.
+    METHODS line_item_types           FOR TESTING RAISING cx_static_check.
+    METHODS intent_navigation_entries FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -350,6 +354,85 @@ CLASS ltcl_annotations IMPLEMENTATION.
                                         exp = `LOCAL_LAST_CHANGED_AT` ).
     cl_abap_unit_assert=>assert_initial( field( `TRAVELID` )-admin_field ).
 
+  ENDMETHOD.
+
+  METHOD consumption_filter.
+
+    apply( it_elements = VALUE #(
+      ( element = `Status`       key = `CONSUMPTION.FILTER.SELECTIONTYPE`      value = `#SINGLE` )
+      ( element = `Status`       key = `CONSUMPTION.FILTER.MANDATORY`          value = `true` )
+      ( element = `AgencyID`     key = `CONSUMPTION.FILTER.MULTIPLESELECTIONS` value = `false` )
+      ( element = `AgencyName`   key = `CONSUMPTION.FILTER.HIDDEN`             value = `true` )
+      ( element = `TotalPrice`   key = `CONSUMPTION.FILTER.SELECTIONTYPE`      value = `#INTERVAL` ) ) ).
+
+    cl_abap_unit_assert=>assert_true( field( `STATUS` )-filter_single ).
+    cl_abap_unit_assert=>assert_true( field( `STATUS` )-filter_mandatory ).
+    cl_abap_unit_assert=>assert_true( field( `AGENCYID` )-filter_single ).
+    cl_abap_unit_assert=>assert_true( field( `AGENCYNAME` )-filter_hidden ).
+    cl_abap_unit_assert=>assert_equals( act = field( `TOTALPRICE` )-filter_selection_type
+                                        exp = `INTERVAL` ).
+    cl_abap_unit_assert=>assert_false( field( `TOTALPRICE` )-filter_single ).
+
+  ENDMETHOD.
+
+
+  METHOD line_item_types.
+
+    apply( it_elements = VALUE #(
+      ( element = `TravelID`  key = `UI.LINEITEM$1$.POSITION`       value = `10` )
+      ( element = `TravelID`  key = `UI.LINEITEM$1$.TYPE`           value = `#WITH_URL` )
+      ( element = `TravelID`  key = `UI.LINEITEM$1$.URL`            value = `'AgencyName'` )
+      ( element = `AgencyID`  key = `UI.LINEITEM$1$.POSITION`       value = `20` )
+      ( element = `AgencyID`  key = `UI.LINEITEM$1$.TYPE`           value = `#WITH_NAVIGATION_PATH` )
+      ( element = `AgencyID`  key = `UI.LINEITEM$1$.TARGETELEMENT`  value = `'_Agency'` )
+      ( element = `Status`    key = `UI.LINEITEM$1$.POSITION`       value = `30` )
+      ( element = `Status`    key = `UI.LINEITEM$1$.TYPE`           value = `#WITH_INTENT_BASED_NAVIGATION` )
+      ( element = `Status`    key = `UI.LINEITEM$1$.SEMANTICOBJECT` value = `'Travel'` )
+      ( element = `Status`    key = `UI.LINEITEM$1$.SEMANTICOBJECTACTION` value = `'manage'` ) ) ).
+
+    DATA(ls_url) = field( `TRAVELID` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_url-line_item_type
+                                        exp = `WITH_URL` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_url-line_item_url
+                                        exp = `AGENCYNAME` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_url-line_item_pos
+                                        exp = 10 ).
+    cl_abap_unit_assert=>assert_equals( act = field( `AGENCYID` )-line_item_target
+                                        exp = `_AGENCY` ).
+    DATA(ls_intent) = field( `STATUS` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_intent-line_item_sem_object
+                                        exp = `Travel` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_intent-line_item_sem_action
+                                        exp = `manage` ).
+
+  ENDMETHOD.
+
+
+  METHOD intent_navigation_entries.
+
+    apply( it_elements = VALUE #(
+      ( element = `TravelID` key = `UI.LINEITEM$1$.POSITION`             value = `10` )
+      ( element = `TravelID` key = `UI.LINEITEM$2$.TYPE`                 value = `#FOR_INTENT_BASED_NAVIGATION` )
+      ( element = `TravelID` key = `UI.LINEITEM$2$.SEMANTICOBJECT`       value = `'Travel'` )
+      ( element = `TravelID` key = `UI.LINEITEM$2$.SEMANTICOBJECTACTION` value = `'display'` )
+      ( element = `TravelID` key = `UI.LINEITEM$2$.LABEL`                value = `'Open'` ) ) ).
+
+    READ TABLE ms_entity-actions INTO DATA(ls_action) WITH KEY semantic_object = `Travel`.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_equals( act = ls_action-name
+                                        exp = `INTENT~TRAVEL~DISPLAY` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_action-label
+                                        exp = `Open` ).
+    "the column is still the field's - the navigation is no column entry
+    cl_abap_unit_assert=>assert_equals( act = field( `TRAVELID` )-line_item_pos
+                                        exp = 10 ).
+
+  ENDMETHOD.
+
+  METHOD json_escape.
+    cl_abap_unit_assert=>assert_equals(
+      act = z2ui5_cl_rap_util=>json_escape( |a"b\\c{ cl_abap_char_utilities=>newline }d| )
+      exp = `a\"b\\c\nd` ).
   ENDMETHOD.
 
 ENDCLASS.

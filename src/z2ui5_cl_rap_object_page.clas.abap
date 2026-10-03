@@ -54,6 +54,7 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         "added 2026-10
         child_create   TYPE string VALUE `CHILD_CREATE`,
         draft_decision TYPE string VALUE `DRAFT_DECISION`,
+        intent         TYPE string VALUE `INTENT`,
       END OF cs_event.
 
     "! val: the record, any structure typed after the CDS entity. Or,
@@ -604,6 +605,18 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "a #FOR_INTENT_BASED_NAVIGATION of @UI.identification - with the keys
+    IF client->check_on_event( cs_event-intent ).
+      READ TABLE ms_entity-actions INTO DATA(ls_intent) WITH KEY name = client->get_event_arg( ).
+      IF sy-subrc = 0 AND ls_intent-semantic_object IS NOT INITIAL.
+        navigate_to_intent( client          = client
+                            semantic_object = ls_intent-semantic_object
+                            action          = ls_intent-semantic_action
+                            params          = get_own_keys( ) ).
+      ENDIF.
+      RETURN.
+    ENDIF.
+
     IF client->check_on_event( cs_event-child_row ).
       on_child_row( client ).
       RETURN.
@@ -1144,7 +1157,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     "only an action of @UI.identification, whatever the event names
     mv_pending_action = client->get_event_arg( ).
-    IF NOT line_exists( ms_entity-actions[ name = mv_pending_action source = `IDENTIFICATION` ] ).
+    IF NOT line_exists( ms_entity-actions[ name = mv_pending_action source = `IDENTIFICATION` semantic_object = `` ] ).
       CLEAR mv_pending_action.
       RETURN.
     ENDIF.
@@ -1502,7 +1515,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                         client       = client ).
       "@UI.identification actions of type #FOR_ACTION
       IF ms_caps-is_rap_bo = abap_true.
-        LOOP AT ms_entity-actions INTO DATA(ls_action) WHERE source = `IDENTIFICATION`.
+        LOOP AT ms_entity-actions INTO DATA(ls_action)
+          WHERE source = `IDENTIFICATION` AND semantic_object IS INITIAL.
           io_actions->tag( `Button`
               )->a( n = `text`
                     t = ls_action-label
@@ -1511,6 +1525,16 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                         arg = ls_action-name ) ).
         ENDLOOP.
       ENDIF.
+      "and of type #FOR_INTENT_BASED_NAVIGATION - to another app
+      LOOP AT ms_entity-actions INTO DATA(ls_intent)
+        WHERE source = `IDENTIFICATION` AND semantic_object IS NOT INITIAL.
+        io_actions->tag( `Button`
+            )->a( n = `text`
+                  t = ls_intent-label
+            )->a( n = `press`
+                  v = client->_event( val = cs_event-intent
+                                      arg = ls_intent-name ) ).
+      ENDLOOP.
       IF ms_caps-can_update = abap_true.
         io_actions->tag( `Button`
             )->a( n = `text`

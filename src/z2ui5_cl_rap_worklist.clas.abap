@@ -320,6 +320,16 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
                                     arg = ls_action-name ) ).
     ENDLOOP.
 
+    "@UI.lineItem #FOR_INTENT_BASED_NAVIGATION - to another app
+    LOOP AT get_line_item_intents( ) INTO DATA(ls_intent).
+      lo_toolbar->tag( `Button`
+          )->a( n = `text`
+                t = ls_intent-label
+          )->a( n = `press`
+                v = client->_event( val = ls_event-intent
+                                    arg = ls_intent-name ) ).
+    ENDLOOP.
+
     render_extension( spot         = cs_spot-toolbar
                       io_container = lo_toolbar
                       client       = client ).
