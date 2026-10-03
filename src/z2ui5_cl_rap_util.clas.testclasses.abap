@@ -607,6 +607,7 @@ CLASS ltcl_variants DEFINITION FINAL
 
     METHODS sort_order_default_variant   FOR TESTING RAISING cx_static_check.
     METHODS selection_variants           FOR TESTING RAISING cx_static_check.
+    METHODS presentation_variants        FOR TESTING RAISING cx_static_check.
     METHODS selection_filter_where       FOR TESTING RAISING cx_static_check.
     METHODS selection_filter_unreadable  FOR TESTING RAISING cx_static_check.
     METHODS text_arrangement             FOR TESTING RAISING cx_static_check.
@@ -762,6 +763,38 @@ CLASS ltcl_variants IMPLEMENTATION.
       value = 1 is_calc = VALUE #( improvement_direction = `MAXIMIZE` tolerance_low = `TargetField` ) ) ).
     cl_abap_unit_assert=>assert_equals( exp = 0 act = z2ui5_cl_rap_util=>criticality_by_calculation(
       value = 1 is_calc = VALUE #( tolerance_low = `1` ) ) ).
+
+  ENDMETHOD.
+
+  METHOD presentation_variants.
+
+    z2ui5_cl_rap_util=>apply_annotations(
+      EXPORTING it_entity   = VALUE #(
+                  ( key = `UI.PRESENTATIONVARIANT$1$.SORTORDER$1$.BY`            value = `'TotalPrice'` )
+                  ( key = `UI.PRESENTATIONVARIANT$2$.QUALIFIER`                  value = `'TopFive'` )
+                  ( key = `UI.PRESENTATIONVARIANT$2$.MAXITEMS`                   value = `5` )
+                  ( key = `UI.PRESENTATIONVARIANT$2$.SORTORDER$1$.BY`            value = `'TotalPrice'` )
+                  ( key = `UI.PRESENTATIONVARIANT$2$.SORTORDER$1$.DIRECTION`     value = `#DESC` )
+                  ( key = `UI.PRESENTATIONVARIANT$2$.VISUALIZATIONS$1$.TYPE`      value = `#AS_LINEITEM` )
+                  ( key = `UI.PRESENTATIONVARIANT$3$.QUALIFIER`                  value = `'ByStatus'` )
+                  ( key = `UI.PRESENTATIONVARIANT$3$.VISUALIZATIONS$1$.TYPE`      value = `#AS_CHART` )
+                  ( key = `UI.PRESENTATIONVARIANT$3$.VISUALIZATIONS$1$.QUALIFIER` value = `'StatusChart'` ) )
+                it_elements = VALUE #( )
+      CHANGING  cs_entity   = ms_entity ).
+
+    cl_abap_unit_assert=>assert_equals( exp = 3 act = lines( ms_entity-presentation_variants ) ).
+    READ TABLE ms_entity-presentation_variants INTO DATA(ls_top) WITH KEY qualifier = `TopFive`.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_equals( exp = 5          act = ls_top-max_items ).
+    cl_abap_unit_assert=>assert_equals( exp = `LINEITEM` act = ls_top-visualization_type ).
+    cl_abap_unit_assert=>assert_equals( exp = `TOTALPRICE` act = ls_top-sort_order[ 1 ]-field ).
+    cl_abap_unit_assert=>assert_true( ls_top-sort_order[ 1 ]-descending ).
+    READ TABLE ms_entity-presentation_variants INTO DATA(ls_chart) WITH KEY qualifier = `ByStatus`.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_equals( exp = `CHART`       act = ls_chart-visualization_type ).
+    cl_abap_unit_assert=>assert_equals( exp = `StatusChart` act = ls_chart-visualization_qualifier ).
+    "the default sort order stays the unqualified variant's
+    cl_abap_unit_assert=>assert_false( ms_entity-sort_order[ 1 ]-descending ).
 
   ENDMETHOD.
 

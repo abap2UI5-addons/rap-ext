@@ -247,6 +247,20 @@ CLASS z2ui5_cl_rap_util DEFINITION
 
     TYPES ty_t_sort TYPE STANDARD TABLE OF ty_s_sort WITH DEFAULT KEY.
 
+    " one @UI.presentationVariant: how many rows, in which order, shown as
+    " the line item or a chart (its first visualization)
+    TYPES:
+      BEGIN OF ty_s_presentation_variant,
+        qualifier               TYPE string,
+        max_items               TYPE i,
+        sort_order              TYPE ty_t_sort,
+        "LINEITEM or CHART
+        visualization_type      TYPE string,
+        visualization_qualifier TYPE string,
+      END OF ty_s_presentation_variant.
+
+    TYPES ty_t_presentation_variant TYPE STANDARD TABLE OF ty_s_presentation_variant WITH EMPTY KEY.
+
     " one @UI.selectionVariant - filter is its filter string
     " ('Status EQ O AND Priority GT 2'), see selection_filter_to_where
     TYPES:
@@ -324,6 +338,8 @@ CLASS z2ui5_cl_rap_util DEFINITION
         selection_variants TYPE ty_t_selection_variant,
         "the associations and compositions, from the DDL source
         associations       TYPE ty_t_association,
+        "every @UI.presentationVariant
+        presentation_variants TYPE ty_t_presentation_variant,
       END OF ty_s_entity_info.
 
     "======= PUBLIC METHODS =======
@@ -1192,6 +1208,14 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
   METHOD parse_variants.
 
+    "declared here, not in the branches - the transpiled run scopes a
+    "declaration to its block
+    DATA lt_sort_annos TYPE ty_t_annotation.
+    DATA lt_sort TYPE ty_t_entry.
+    DATA lv_sidx TYPE i.
+    DATA lv_by TYPE string.
+    DATA ls_sort TYPE ty_s_entry.
+
     "@UI.presentationVariant - the unqualified one, else the first
     DATA(lt_entries) = get_entries( it_annos = it_annos prefix = `UI.PRESENTATIONVARIANT` ).
     DATA lv_idx TYPE i.
@@ -1206,18 +1230,16 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     ENDIF.
     IF lv_idx > 0 AND cs_entity-sort_order IS INITIAL.
       "SORTORDER$n$.BY / .DIRECTION
-      DATA lt_sort_annos TYPE ty_t_annotation.
       LOOP AT lt_entries INTO ls_entry WHERE idx = lv_idx AND prop CP `SORTORDER*`.
         APPEND VALUE #( key = ls_entry-prop value = ls_entry-value ) TO lt_sort_annos.
       ENDLOOP.
-      DATA(lt_sort) = get_entries( it_annos = lt_sort_annos prefix = `SORTORDER` ).
-      DATA lv_sidx TYPE i.
-      LOOP AT lt_sort INTO DATA(ls_sort).
+      lt_sort = get_entries( it_annos = lt_sort_annos prefix = `SORTORDER` ).
+      LOOP AT lt_sort INTO ls_sort.
         IF ls_sort-idx = lv_sidx.
           CONTINUE.
         ENDIF.
         lv_sidx = ls_sort-idx.
-        DATA(lv_by) = to_upper( strip_quotes( get_entry_value( it_entries = lt_sort idx = lv_sidx prop = `BY` ) ) ).
+        lv_by = to_upper( strip_quotes( get_entry_value( it_entries = lt_sort idx = lv_sidx prop = `BY` ) ) ).
         IF lv_by IS INITIAL.
           CONTINUE.
         ENDIF.
@@ -1227,6 +1249,56 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           TO cs_entity-sort_order.
       ENDLOOP.
     ENDIF.
+
+    "every @UI.presentationVariant - what a card of the overview page shows
+    CLEAR lv_idx.
+    LOOP AT lt_entries INTO ls_entry.
+      IF ls_entry-idx = lv_idx.
+        CONTINUE.
+      ENDIF.
+      lv_idx = ls_entry-idx.
+      DATA(ls_variant_pv) = VALUE ty_s_presentation_variant(
+        qualifier = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) )
+        max_items = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `MAXITEMS` ) ) ).
+      IF line_exists( cs_entity-presentation_variants[ qualifier = ls_variant_pv-qualifier ] ).
+        CONTINUE.
+      ENDIF.
+      CLEAR lt_sort_annos.
+      DATA lt_viz_annos TYPE ty_t_annotation.
+      CLEAR lt_viz_annos.
+      LOOP AT lt_entries INTO DATA(ls_part) WHERE idx = lv_idx.
+        IF ls_part-prop CP `SORTORDER*`.
+          APPEND VALUE #( key = ls_part-prop value = ls_part-value ) TO lt_sort_annos.
+        ELSEIF ls_part-prop CP `VISUALIZATIONS*`.
+          APPEND VALUE #( key = ls_part-prop value = ls_part-value ) TO lt_viz_annos.
+        ENDIF.
+      ENDLOOP.
+      lt_sort = get_entries( it_annos = lt_sort_annos prefix = `SORTORDER` ).
+      CLEAR lv_sidx.
+      LOOP AT lt_sort INTO ls_sort.
+        IF ls_sort-idx = lv_sidx.
+          CONTINUE.
+        ENDIF.
+        lv_sidx = ls_sort-idx.
+        lv_by = to_upper( strip_quotes( get_entry_value( it_entries = lt_sort idx = lv_sidx prop = `BY` ) ) ).
+        IF lv_by IS NOT INITIAL.
+          APPEND VALUE ty_s_sort(
+            field      = lv_by
+            descending = xsdbool( get_entry_value( it_entries = lt_sort idx = lv_sidx prop = `DIRECTION` ) CS `DESC` ) )
+            TO ls_variant_pv-sort_order.
+        ENDIF.
+      ENDLOOP.
+      DATA(lt_viz) = get_entries( it_annos = lt_viz_annos prefix = `VISUALIZATIONS` ).
+      IF lt_viz IS NOT INITIAL.
+        DATA(lv_viz_type) = get_entry_value( it_entries = lt_viz idx = lt_viz[ 1 ]-idx prop = `TYPE` ).
+        ls_variant_pv-visualization_type = COND #( WHEN lv_viz_type CS `CHART` THEN `CHART` ELSE `LINEITEM` ).
+        ls_variant_pv-visualization_qualifier = strip_quotes(
+          get_entry_value( it_entries = lt_viz idx = lt_viz[ 1 ]-idx prop = `QUALIFIER` ) ).
+      ELSE.
+        ls_variant_pv-visualization_type = `LINEITEM`.
+      ENDIF.
+      APPEND ls_variant_pv TO cs_entity-presentation_variants.
+    ENDLOOP.
 
     "@UI.selectionVariant - every entry with a filter
     lt_entries = get_entries( it_annos = it_annos prefix = `UI.SELECTIONVARIANT` ).
