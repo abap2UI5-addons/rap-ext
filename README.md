@@ -172,6 +172,7 @@ client->nav_app_call( lo_report ).
 | `on_event` | every event, before the floorplan - return `abap_true` to take it over |
 | `get_text` | every text (keys in `z2ui5_cl_rap_floorplan=>cs_text`) - translation |
 | `resolve_association` | the target entity of a `#LINEITEM_REFERENCE` facet |
+| `adjust_capabilities` | what may be written: switch on the writes of a database table, withhold an operation of a business object |
 | `extend_view` | add controls at fixed places (`z2ui5_cl_rap_floorplan=>cs_spot`): the table toolbar, the object page's header actions and sections, the dialog's content, the overview's cards - their events arrive in `on_event` first |
 
 The built-in texts are English, and German for a German logon (`sy-langu`
@@ -247,11 +248,32 @@ the entity is written through **dynamic EML** (`MODIFY ENTITIES OPERATIONS`,
 `COMMIT ENTITIES`), and only the operations its BDEF defines are offered
 (Create, Edit, Delete, and the `#FOR_ACTION` actions - with a parameter
 dialog when the action has a parameter). The messages of `REPORTED` and
-`FAILED` are shown. A transparent table is written with ABAP SQL. A CDS view
-that is neither is read-only: no Create, Edit or Delete.
+`FAILED` are shown. A CDS view that is no business object is read-only: no
+Create, Edit or Delete.
 
-A transparent table is committed right after the write (`COMMIT WORK`) - the
-abap2UI5 core rolls back the LUW of every non-sticky app after `main( )`.
+A **transparent table is read-only too, unless an extension allows its
+writes** - up to 2026-10 every table a floorplan was opened on could be
+changed and deleted by anyone who reached the app:
+
+```abap
+METHOD z2ui5_if_rap_ext~adjust_capabilities.
+  IF entity_name = `ZMY_TABLE`.
+    caps-can_create = abap_true.
+    caps-can_update = abap_true.
+    caps-can_delete = abap_true.
+  ENDIF.
+ENDMETHOD.
+```
+
+A table write then checks the authorization `S_TABU_NAM` (activity `02`)
+for the table, locks the row (`ENQUEUE_E_TABLE`), and refuses an update or
+delete when the row in the database is no longer the one the user saw. It is
+committed right after the write (`COMMIT WORK`) - the abap2UI5 core rolls
+back the LUW of every non-sticky app after `main( )`. `adjust_capabilities`
+can also withhold an operation of a business object; it cannot add one its
+BDEF lacks. Every write and action is checked against these capabilities on
+the server, not only by hiding the buttons, and only the actions the
+annotations offer can be run.
 After a RAP create the page reads the record again by the keys `MAPPED`
 returns; a business object that assigns its key only on save (late
 numbering) hands none back, and the page then returns to the list.

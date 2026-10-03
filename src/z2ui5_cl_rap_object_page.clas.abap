@@ -331,7 +331,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ENDIF.
       ms_entity = z2ui5_cl_rap_util=>read_entity( mv_entity_name ).
       adjust_entity( CHANGING cs_entity = ms_entity ).
-      ms_caps = get_capabilities( mv_entity_name ).
+      ms_caps = get_entity_capabilities( mv_entity_name ).
 
       IF mt_keys IS NOT INITIAL.
         reload_data( ).
@@ -699,7 +699,12 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD on_action.
 
+    "only an action of @UI.identification, whatever the event names
     mv_pending_action = client->get_event_arg( ).
+    IF NOT line_exists( ms_entity-actions[ name = mv_pending_action source = `IDENTIFICATION` ] ).
+      CLEAR mv_pending_action.
+      RETURN.
+    ENDIF.
     DATA(lr_param) = create_action_parameter( entity_name = mv_entity_name
                                               action      = mv_pending_action ).
     IF lr_param IS BOUND.

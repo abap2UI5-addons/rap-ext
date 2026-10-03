@@ -241,7 +241,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       ENDLOOP.
 
       mt_row_key = get_row_key_fields( ).
-      ms_caps = get_capabilities( mv_cds_view ).
+      ms_caps = get_entity_capabilities( mv_cds_view ).
 
       "sortable: the columns that are text, numbers or dates
       LOOP AT get_line_item_fields( ) INTO DATA(ls_col)
@@ -638,8 +638,15 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD on_action.
 
-    "arg 1 the action, args 2... the keys of the row of an inline action
+    "arg 1 the action, args 2... the keys of the row of an inline action -
+    "only an action the list offers, whatever the event names
     mv_pending_action = client->get_event_arg( ).
+    DATA(lt_offered) = get_line_item_actions( abap_false ).
+    APPEND LINES OF get_line_item_actions( abap_true ) TO lt_offered.
+    IF NOT line_exists( lt_offered[ name = mv_pending_action ] ).
+      CLEAR mv_pending_action.
+      RETURN.
+    ENDIF.
     CLEAR mt_pending_keys.
     DO lines( mt_row_key ) TIMES.
       DATA(lv_key) = client->get_event_arg( sy-index + 1 ).

@@ -52,6 +52,10 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         create_title   TYPE string VALUE `CREATE_TITLE`,
         sort           TYPE string VALUE `SORT`,
         more           TYPE string VALUE `MORE`,
+        "added 2026-10
+        no_authority   TYPE string VALUE `NO_AUTHORITY`,
+        locked         TYPE string VALUE `LOCKED`,
+        changed        TYPE string VALUE `CHANGED`,
       END OF cs_text.
 
     " Where z2ui5_if_rap_ext~extend_view may add controls
@@ -77,7 +81,8 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       BEGIN OF ty_s_capabilities,
         "a RAP business object (a BDEF with this entity as root)
         is_rap_bo  TYPE abap_bool,
-        "a transparent database table - written with ABAP SQL
+        "a transparent database table - written with ABAP SQL, and only
+        "where z2ui5_if_rap_ext~adjust_capabilities allows it
         is_table   TYPE abap_bool,
         can_create TYPE abap_bool,
         can_update TYPE abap_bool,
@@ -113,8 +118,12 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         ext TYPE REF TO z2ui5_if_rap_ext.
 
     "! What can be written to an entity - asked from the BDEF derived types
-    "! (a BDEF without `delete` has no delete type) or, for a transparent
-    "! table, answered with everything
+    "! (a BDEF without `delete` has no delete type). A transparent table is
+    "! recognized (is_table) but answered read-only: up to 2026-10 every
+    "! table a floorplan was opened on could be changed and deleted by
+    "! anyone who reached the app. The writes of a table are switched on per
+    "! entity by z2ui5_if_rap_ext~adjust_capabilities - what the floorplans
+    "! ask is get_entity_capabilities( ), which applies it
     CLASS-METHODS get_capabilities
       IMPORTING
         entity_name   TYPE clike
@@ -134,6 +143,42 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     DATA mv_floorplan TYPE string.
     "! the field a called value help fills on return
     DATA mv_vh_target TYPE string.
+
+    "! the name select_rows( ) gives the host structure - a dynamic WHERE
+    "! compares with its components as @<LS_HOST>-name
+    CONSTANTS cv_host TYPE string VALUE `<LS_HOST>`.
+
+    "! what this floorplan lets the user write to entity_name: the
+    "! capabilities of the entity, as the extension adjusts them
+    "! (z2ui5_if_rap_ext~adjust_capabilities). Every write and action goes
+    "! through it, not only the buttons - an event a browser sends without
+    "! the button is refused the same way
+    METHODS get_entity_capabilities
+      IMPORTING
+        entity_name   TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_s_capabilities.
+
+    "! the WHERE condition that compares every field of names with the
+    "! component of the same name of the host structure (select_rows,
+    "! parameter host) - typed host variables instead of literals, so a RAW
+    "! key (a UUID) or a date compares with a value of its own type
+    METHODS build_key_condition
+      IMPORTING
+        names         TYPE string_table
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! a structure of the entity with the fields of values set - the host
+    "! structure of a key condition (build_key_condition). A value is the
+    "! text form a row, an event argument or a URL carries: a date as
+    "! 2024-01-15 or 20240115, a RAW as its hex digits
+    METHODS create_host
+      IMPORTING
+        entity_name   TYPE string
+        values        TYPE ty_t_name_value
+      RETURNING
+        VALUE(result) TYPE REF TO data.
 
     "! the text for a key of cs_text - the extension can change it
     METHODS get_text
@@ -171,6 +216,9 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         with_selection TYPE abap_bool DEFAULT abap_false
         "an ABAP SQL ORDER BY list, e.g. `TRAVELID DESCENDING, STATUS`
         order_by       TYPE string OPTIONAL
+        "a structure where compares with as @<LS_HOST>-name (cv_host,
+        "build_key_condition) - added 2026-10
+        host           TYPE REF TO data OPTIONAL
       RETURNING
         VALUE(result)  TYPE REF TO data.
 
@@ -316,6 +364,8 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
 
     "! write one row: operation is CREATE, UPDATE or DELETE. Through RAP when
     "! the entity is a business object, with ABAP SQL when it is a table
+    "! whose writes the extension allowed (get_entity_capabilities) - an
+    "! operation the entity does not allow is refused here, whoever asks
     METHODS write_row
       IMPORTING
         entity_name   TYPE string
@@ -350,6 +400,20 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         messages TYPE string_table
         type     TYPE string DEFAULT `error`.
 
+    "! write one row of a database table with ABAP SQL: the authorization
+    "! S_TABU_NAM (activity 02) for the table, a lock (ENQUEUE_E_TABLE) on
+    "! the row's key, and for UPDATE and DELETE the check that the row is
+    "! still what the user saw (original) - a change of somebody else in
+    "! between is reported instead of overwritten
+    METHODS write_table_row
+      IMPORTING
+        entity_name   TYPE string
+        operation     TYPE string
+        row           TYPE data
+        original      TYPE data OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_s_result.
+
     "! align ABAP and JSON model representations (dates, times, padding)
     METHODS normalize_key_value
       IMPORTING
@@ -364,6 +428,16 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         name          TYPE string
       RETURNING
         VALUE(result) TYPE abap_bool.
+
+    "! the lock argument of ENQUEUE_E_TABLE for one row: the key fields in
+    "! their internal form, one after the other - empty (the whole table)
+    "! when a key field is not character-like or the key is too long
+    METHODS get_table_varkey
+      IMPORTING
+        row           TYPE data
+        key_fields    TYPE ddfields
+      RETURNING
+        VALUE(result) TYPE string.
 
 ENDCLASS.
 
@@ -414,19 +488,16 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ENDIF.
 
     "a transparent table - what the object page wrote before RAP support.
-    "A CDS view is never writable with ABAP SQL, so it ends here read-only
+    "A CDS view is never writable with ABAP SQL, so it ends here read-only,
+    "and so does a table until get_entity_capabilities( ) is told otherwise
     TRY.
         DATA lv_tabclass TYPE c LENGTH 8.
         SELECT SINGLE tabclass FROM dd02l
           WHERE tabname  = @lv_entity
             AND as4local = 'A'
           INTO @lv_tabclass.
-        IF sy-subrc = 0 AND lv_tabclass = `TRANSP`.
-          result-is_table = abap_true.
-          result-can_create = abap_true.
-          result-can_update = abap_true.
-          result-can_delete = abap_true.
-        ENDIF.
+        "read-only until the extension allows the writes
+        result-is_table = xsdbool( sy-subrc = 0 AND lv_tabclass = `TRANSP` ).
       CATCH cx_root ##NO_HANDLER.
     ENDTRY.
 
@@ -476,6 +547,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-create_title THEN `Anlegen`
         WHEN cs_text-sort         THEN `Sortieren`
         WHEN cs_text-more         THEN `Mehr`
+        WHEN cs_text-no_authority THEN `Keine Berechtigung`
+        WHEN cs_text-locked       THEN `Der Eintrag ist gesperrt`
+        WHEN cs_text-changed      THEN `Der Eintrag wurde inzwischen geändert - bitte neu lesen`
         ELSE key ).
     ELSE.
       result = SWITCH #( key
@@ -505,6 +579,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       WHEN cs_text-create_title THEN `Create`
       WHEN cs_text-sort         THEN `Sort`
       WHEN cs_text-more         THEN `More`
+      WHEN cs_text-no_authority THEN `No authorization`
+      WHEN cs_text-locked       THEN `The record is locked`
+      WHEN cs_text-changed      THEN `The record was changed meanwhile - read it again`
       ELSE key ).
     ENDIF.
 
@@ -545,6 +622,13 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
   METHOD select_rows.
 
     FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
+    "the host structure - a dynamic WHERE names it as @<LS_HOST>-field
+    "(cv_host), so the name of this field symbol is part of the contract
+    FIELD-SYMBOLS <ls_host> TYPE any.
+
+    IF host IS BOUND.
+      ASSIGN host->* TO <ls_host>.
+    ENDIF.
 
     DATA(lv_where) = get_ext_where( entity_name = entity_name
                                     where       = where ).
@@ -1030,6 +1114,18 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     DATA lr_row TYPE REF TO data.
     FIELD-SYMBOLS <ls_row> TYPE any.
 
+    "decided here, not by the buttons - an event can arrive without one
+    DATA(ls_caps) = get_entity_capabilities( entity_name ).
+    DATA(lv_allowed) = SWITCH abap_bool( operation
+      WHEN `CREATE` THEN ls_caps-can_create
+      WHEN `UPDATE` THEN ls_caps-can_update
+      WHEN `DELETE` THEN ls_caps-can_delete
+      ELSE abap_false ).
+    IF lv_allowed = abap_false.
+      APPEND get_text( cs_text-read_only ) TO result-messages.
+      RETURN.
+    ENDIF.
+
     CREATE DATA lr_row LIKE row.
     ASSIGN lr_row->* TO <ls_row>.
     <ls_row> = row.
@@ -1045,8 +1141,6 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    DATA(ls_caps) = get_capabilities( entity_name ).
-
     IF ls_caps-is_rap_bo = abap_true.
       CASE operation.
         WHEN `CREATE`.
@@ -1060,16 +1154,136 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
           result = z2ui5_cl_rap_eml=>delete( entity_name = entity_name
                                              row         = <ls_row> ).
       ENDCASE.
+    ELSE.
+      result = write_table_row( entity_name = entity_name
+                                operation   = operation
+                                row         = <ls_row>
+                                original    = original ).
+    ENDIF.
 
-    ELSEIF ls_caps-is_table = abap_true.
-      TRY.
+    IF result-success = abap_true AND mo_ext IS BOUND.
+      mo_ext->after_save( entity_name = entity_name
+                          operation   = operation
+                          data        = lr_row ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD write_table_row.
+
+    DATA lv_tabname TYPE c LENGTH 30.
+    DATA lv_varkey TYPE c LENGTH 120.
+    DATA lt_ddic TYPE ddfields.
+    DATA lt_keys TYPE string_table.
+    DATA lr_current TYPE REF TO data.
+    DATA lr_seen TYPE REF TO data.
+    "the host structure of the key condition (build_key_condition)
+    FIELD-SYMBOLS <ls_host> TYPE any.
+    FIELD-SYMBOLS <ls_current> TYPE any.
+    FIELD-SYMBOLS <ls_seen> TYPE any.
+    FIELD-SYMBOLS <lv_from> TYPE any.
+    FIELD-SYMBOLS <lv_to> TYPE any.
+
+    lv_tabname = to_upper( entity_name ).
+
+    "the authorization of table maintenance by table name - what SM30 and
+    "SE16 ask before a change
+    AUTHORITY-CHECK OBJECT 'S_TABU_NAM'
+      ID 'ACTVT' FIELD '02'
+      ID 'TABLE' FIELD lv_tabname.
+    IF sy-subrc <> 0.
+      APPEND |{ get_text( cs_text-no_authority ) }: { lv_tabname }| TO result-messages.
+      RETURN.
+    ENDIF.
+
+    TRY.
+        DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( lv_tabname ) ).
+        lo_struct->get_ddic_field_list(
+          RECEIVING
+            p_field_list = lt_ddic
+          EXCEPTIONS
+            not_found    = 1
+            no_ddic_type = 2
+            OTHERS       = 3 ).
+        IF sy-subrc <> 0.
+          CLEAR lt_ddic.
+        ENDIF.
+      CATCH cx_root.
+        CLEAR lt_ddic.
+    ENDTRY.
+    "the key without the client - ABAP SQL adds the client by itself
+    LOOP AT lt_ddic INTO DATA(ls_ddic) WHERE keyflag = abap_true AND datatype <> `CLNT`.
+      APPEND CONV string( ls_ddic-fieldname ) TO lt_keys.
+    ENDLOOP.
+    IF lt_keys IS INITIAL.
+      APPEND |{ get_text( cs_text-read_only ) }: { lv_tabname }| TO result-messages.
+      RETURN.
+    ENDIF.
+
+    lv_varkey = get_table_varkey( row        = row
+                                  key_fields = lt_ddic ).
+    CALL FUNCTION 'ENQUEUE_E_TABLE'
+      EXPORTING
+        mode_rstable   = 'E'
+        tabname        = lv_tabname
+        varkey         = lv_varkey
+      EXCEPTIONS
+        foreign_lock   = 1
+        system_failure = 2
+        OTHERS         = 3.
+    IF sy-subrc = 1.
+      APPEND |{ get_text( cs_text-locked ) } ({ sy-msgv1 })| TO result-messages.
+      RETURN.
+    ELSEIF sy-subrc <> 0.
+      APPEND get_text( cs_text-locked ) TO result-messages.
+      RETURN.
+    ENDIF.
+
+    TRY.
+        "still what the user saw? A change made meanwhile is reported, not
+        "overwritten - and a row deleted meanwhile is not created again
+        IF operation <> `CREATE`.
+          CREATE DATA lr_current TYPE (lv_tabname).
+          ASSIGN lr_current->* TO <ls_current>.
+          CREATE DATA lr_seen TYPE (lv_tabname).
+          ASSIGN lr_seen->* TO <ls_seen>.
+          IF operation = `UPDATE` AND original IS SUPPLIED.
+            MOVE-CORRESPONDING original TO <ls_seen>.
+          ELSE.
+            MOVE-CORRESPONDING row TO <ls_seen>.
+          ENDIF.
+          ASSIGN row TO <ls_host>.
+          DATA(lv_where) = build_key_condition( lt_keys ).
+          SELECT SINGLE * FROM (lv_tabname)
+            WHERE (lv_where)
+            INTO @<ls_current>.
+          IF sy-subrc <> 0.
+            APPEND get_text( cs_text-changed ) TO result-messages.
+          ELSE.
+            "the client is the database's - not part of what was seen
+            LOOP AT lt_ddic INTO ls_ddic WHERE datatype = `CLNT`.
+              ASSIGN COMPONENT ls_ddic-fieldname OF STRUCTURE <ls_current> TO <lv_from>.
+              ASSIGN COMPONENT ls_ddic-fieldname OF STRUCTURE <ls_seen> TO <lv_to>.
+              IF <lv_from> IS ASSIGNED AND <lv_to> IS ASSIGNED.
+                <lv_to> = <lv_from>.
+              ENDIF.
+              UNASSIGN: <lv_from>, <lv_to>.
+            ENDLOOP.
+            IF <ls_seen> <> <ls_current>.
+              APPEND get_text( cs_text-changed ) TO result-messages.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+
+        IF result-messages IS INITIAL.
           CASE operation.
             WHEN `CREATE`.
-              INSERT (entity_name) FROM @<ls_row>.
+              INSERT (lv_tabname) FROM @row.
             WHEN `UPDATE`.
-              UPDATE (entity_name) FROM @<ls_row>.
+              UPDATE (lv_tabname) FROM @row.
             WHEN `DELETE`.
-              DELETE (entity_name) FROM @<ls_row>.
+              DELETE (lv_tabname) FROM @row.
           ENDCASE.
           "committed here: after main( ) the core rolls back the LUW of every
           "non-sticky app, so an uncommitted write showed "saved" and was gone
@@ -1080,20 +1294,124 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
             APPEND |{ operation } failed (sy-subrc { sy-subrc })| TO result-messages.
             ROLLBACK WORK.                               "#EC CI_ROLLBACK
           ENDIF.
-        CATCH cx_root INTO DATA(lx).
-          ROLLBACK WORK.                                 "#EC CI_ROLLBACK
-          APPEND lx->get_text( ) TO result-messages.
+        ENDIF.
+      CATCH cx_root INTO DATA(lx).
+        ROLLBACK WORK.                                   "#EC CI_ROLLBACK
+        APPEND lx->get_text( ) TO result-messages.
+    ENDTRY.
+
+    CALL FUNCTION 'DEQUEUE_E_TABLE'
+      EXPORTING
+        mode_rstable = 'E'
+        tabname      = lv_tabname
+        varkey       = lv_varkey.
+
+  ENDMETHOD.
+
+
+  METHOD get_table_varkey.
+
+    DATA lv_buffer TYPE c LENGTH 120.
+    DATA lv_offset TYPE i.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+
+    LOOP AT key_fields INTO DATA(ls_field) WHERE keyflag = abap_true.
+      DATA(lv_length) = CONV i( ls_field-leng ).
+      "only character-like keys have an internal form that is their text
+      IF ls_field-inttype NA `CNDT` OR lv_offset + lv_length > 120.
+        RETURN.
+      ENDIF.
+      IF ls_field-datatype = `CLNT`.
+        lv_buffer+lv_offset(lv_length) = sy-mandt.
+      ELSE.
+        ASSIGN COMPONENT ls_field-fieldname OF STRUCTURE row TO <lv_value>.
+        IF sy-subrc <> 0.
+          RETURN.
+        ENDIF.
+        lv_buffer+lv_offset(lv_length) = <lv_value>.
+      ENDIF.
+      lv_offset = lv_offset + lv_length.
+    ENDLOOP.
+    result = lv_buffer.
+
+  ENDMETHOD.
+
+
+  METHOD get_entity_capabilities.
+
+    DATA(ls_entity) = get_capabilities( entity_name ).
+    result = ls_entity.
+    IF mo_ext IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    mo_ext->adjust_capabilities( EXPORTING floorplan   = mv_floorplan
+                                           entity_name = to_upper( entity_name )
+                                 CHANGING  caps        = result ).
+
+    "the extension decides what is offered, not what the entity is: it may
+    "withhold an operation of a business object and allow the writes of a
+    "table, but it cannot give a business object an operation its BDEF
+    "does not have, nor make a CDS view writable
+    result-is_rap_bo = ls_entity-is_rap_bo.
+    result-is_table = ls_entity-is_table.
+    IF ls_entity-is_rap_bo = abap_true.
+      result-can_create = xsdbool( result-can_create = abap_true AND ls_entity-can_create = abap_true ).
+      result-can_update = xsdbool( result-can_update = abap_true AND ls_entity-can_update = abap_true ).
+      result-can_delete = xsdbool( result-can_delete = abap_true AND ls_entity-can_delete = abap_true ).
+    ELSEIF ls_entity-is_table = abap_false.
+      CLEAR: result-can_create, result-can_update, result-can_delete.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD build_key_condition.
+
+    DATA lt_and TYPE string_table.
+    LOOP AT names INTO DATA(lv_name).
+      DATA(lv_field) = to_upper( lv_name ).
+      APPEND |{ lv_field } = @{ cv_host }-{ lv_field }| TO lt_and.
+    ENDLOOP.
+    result = concat_lines_of( table = lt_and sep = ` AND ` ).
+
+  ENDMETHOD.
+
+
+  METHOD create_host.
+
+    FIELD-SYMBOLS <ls_host> TYPE any.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+
+    TRY.
+        CREATE DATA result TYPE (entity_name).
+      CATCH cx_root.
+        CLEAR result.
+        RETURN.
+    ENDTRY.
+    ASSIGN result->* TO <ls_host>.
+
+    LOOP AT values INTO DATA(ls_value).
+      DATA(lv_name) = to_upper( ls_value-name ).
+      UNASSIGN <lv_value>.
+      ASSIGN COMPONENT lv_name OF STRUCTURE <ls_host> TO <lv_value>.
+      IF <lv_value> IS NOT ASSIGNED.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_kind) = cl_abap_typedescr=>describe_by_data( <lv_value> )->type_kind.
+      TRY.
+          "a date or time as the JSON model writes it (2024-01-15), a RAW
+          "as hex digits - a UUID may come with its dashes
+          IF lv_kind = cl_abap_typedescr=>typekind_date
+            OR lv_kind = cl_abap_typedescr=>typekind_time
+            OR lv_kind = cl_abap_typedescr=>typekind_hex.
+            <lv_value> = z2ui5_cl_rap_util=>normalize_value( ls_value-value ).
+          ELSE.
+            <lv_value> = ls_value-value.
+          ENDIF.
+        CATCH cx_root.
+          CLEAR <lv_value>.
       ENDTRY.
-
-    ELSE.
-      APPEND get_text( cs_text-read_only ) TO result-messages.
-    ENDIF.
-
-    IF result-success = abap_true AND mo_ext IS BOUND.
-      mo_ext->after_save( entity_name = entity_name
-                          operation   = operation
-                          data        = lr_row ).
-    ENDIF.
+    ENDLOOP.
 
   ENDMETHOD.
 
@@ -1124,7 +1442,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    IF eml_available( ) = abap_false.
+    IF eml_available( ) = abap_false OR get_entity_capabilities( entity_name )-is_rap_bo = abap_false.
       APPEND get_text( cs_text-read_only ) TO result-messages.
       RETURN.
     ENDIF.
