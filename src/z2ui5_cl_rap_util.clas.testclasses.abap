@@ -902,6 +902,8 @@ CLASS ltcl_associations IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_equals( act = ls_parsed-base
                                         exp = `ZI_TRAVEL` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_parsed-exposed
+                                        exp = VALUE string_table( ( `_BOOKING` ) ( `_AGENCY` ) ) ).
     DATA(ls_booking) = assoc( it_assoc = ls_parsed-associations name = `_BOOKING` ).
     cl_abap_unit_assert=>assert_equals( act = ls_booking-target
                                         exp = `ZC_BOOKING` ).
@@ -991,6 +993,16 @@ CLASS ltcl_associations IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = assoc( it_assoc = lt_own name = `_AGENCY` )-target
                                         exp = `/DMO/I_AGENCY` ).
 
+    "what the projection does not expose, it does not have
+    CLEAR lt_own.
+    z2ui5_cl_rap_util=>merge_base_associations(
+      EXPORTING it_base    = VALUE #( ( name = `_AGENCY` target = `/DMO/I_AGENCY` )
+                                      ( name = `_HIDDEN` target = `Z_HIDDEN` ) )
+                it_exposed = VALUE #( ( `_AGENCY` ) )
+      CHANGING  ct_assoc   = lt_own ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_own )
+                                        exp = 1 ).
+
   ENDMETHOD.
 
 
@@ -1039,7 +1051,7 @@ CLASS ltcl_export IMPLEMENTATION.
 
     DATA lt_rows TYPE STANDARD TABLE OF ty_s_row WITH EMPTY KEY.
     lt_rows = VALUE #( ( id = `A1` name = `Say "hi"` day = '20240115' price = '12.50' )
-                       ( id = `B2` name = `x;y`      day = '00000000' price = 0 ) ).
+                       ( id = `B2` name = `x;y`      day = '00000000' price = '-3.10' ) ).
 
     DATA(lv_csv) = z2ui5_cl_rap_util=>to_csv(
       data      = REF #( lt_rows )
@@ -1053,7 +1065,7 @@ CLASS ltcl_export IMPLEMENTATION.
       act = lv_csv
       exp = |"Id";"Name";"Day";"Price ""EUR"""{ lv_crlf }| &&
             |"A1";"Say ""hi""";"2024-01-15";"12.50"{ lv_crlf }| &&
-            |"B2";"x;y";"";"0.00"{ lv_crlf }| ).
+            |"B2";"x;y";"";"-3.10"{ lv_crlf }| ).
 
   ENDMETHOD.
 

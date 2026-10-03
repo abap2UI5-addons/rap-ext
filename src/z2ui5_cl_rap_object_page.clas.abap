@@ -18,9 +18,10 @@
 "!
 "! A record of a draft-enabled business object is edited in a draft of its
 "! own (since 2026-10): Edit creates it (committed), Save writes the changes
-"! into it and activates it, Cancel discards it, and leaving the page while
-"! editing keeps it with the changes. A draft that exists already is the
-"! business object's message - one of the user's own can be discarded.
+"! into it and activates it - a refused activation keeps the draft and the
+"! page in edit mode - and Cancel or leaving the page discards it. A draft
+"! that exists already is the business object's message - one of the
+"! user's own can be discarded.
 "!
 "! Writing goes through z2ui5_cl_rap_floorplan->write_row( ): RAP (EML) for
 "! a business object, ABAP SQL for a table. A CDS view that is neither is
@@ -478,19 +479,14 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
 
     IF client->check_on_event( cs_event-back ).
-      "leaving a draft keeps it - with what was changed since the last save
+      "leaving the page ends its draft: a draft kept here could only be
+      "discarded later, since the page cannot read one back (ROADMAP.md)
       IF mv_draft = abap_true.
-        FIELD-SYMBOLS <ls_now> TYPE any.
-        FIELD-SYMBOLS <ls_before> TYPE any.
-        ASSIGN ms_data->* TO <ls_now>.
-        ASSIGN ms_data_backup->* TO <ls_before>.
-        IF <ls_now> <> <ls_before>.
-          write_draft( entity_name = mv_entity_name
-                       row         = <ls_now>
-                       original    = <ls_before>
-                       context     = ms_context ).
-        ENDIF.
-        client->message_toast_display( get_text( cs_text-draft_kept ) ).
+        run_draft_action( bdef      = get_bdef( )
+                          action    = `DISCARD`
+                          root_keys = get_root_keys( )
+                          is_draft  = abap_true ).
+        mv_draft = abap_false.
       ENDIF.
       client->nav_app_leave( ).
       RETURN.
@@ -594,6 +590,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         ms_data_backup->* = ms_data->*.
         render_page( client ).
         client->message_toast_display( get_text( cs_text-saved ) ).
+      ELSEIF mt_messages IS NOT INITIAL.
+        "the fields the messages are about are marked - built into the view
+        render_page( client ).
       ENDIF.
       RETURN.
     ENDIF.
@@ -1032,10 +1031,12 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD get_child_context.
 
-    "an association that is no composition leads to an entity of its own -
-    "written, if at all, as its own business object
+    "only a composition the DDL source declares: any other association -
+    "and one the source does not show, e.g. resolved by the extension -
+    "leads to an entity of its own, written, if at all, as its own business
+    "object
     READ TABLE ms_entity-associations INTO DATA(ls_assoc) WITH KEY name = to_upper( association ).
-    IF sy-subrc = 0 AND ls_assoc-is_composition = abap_false.
+    IF sy-subrc <> 0 OR ls_assoc-is_composition = abap_false.
       RETURN.
     ENDIF.
 

@@ -16,8 +16,10 @@ clicked through in an SAP system yet** - that is the first open item, and
    written from documentation.
 2. **Feature control** (`GET PERMISSIONS`: actions disabled and fields
    read-only per instance) - blocked by the tooling, see below.
-3. **Reading a draft back**: resume a draft of the user's own with its data
-   (today the user can discard it and edit anew) - blocked the same way.
+3. **Reading a draft back**: resume a draft of the user's own with its data,
+   and with it keep the draft when the user leaves the page (today leaving
+   discards it, and a draft left by another app can only be discarded) -
+   blocked the same way.
 4. **Late numbering through `CONVERT KEY`** - blocked the same way. A record
    with `@Semantics.user.createdBy` and `.systemDateTime.createdAt` is found
    again without it (done); one without them still returns to the list.
@@ -69,8 +71,8 @@ decision:
   parser): the target of a `#LINEITEM_REFERENCE` facet and the ON condition
   of its rows without `resolve_association`.
 - **Draft editing across roundtrips**: Edit, Save (into the draft, then
-  Activate), Cancel (Discard), Back keeps the draft, an existing own draft
-  can be discarded.
+  Activate - a refused activation keeps the draft and the edit mode),
+  Cancel and Back discard, an existing own draft can be discarded.
 - **Keys as typed host variables** (RAW/UUID keys), late numbering by the
   administrative fields, the fields of RAP messages marked in edit mode.
 - **`@Consumption.filter`** (mandatory, single value, hidden) and the link

@@ -315,6 +315,9 @@ CLASS z2ui5_cl_rap_util DEFINITION
         "the entity a projection is defined on (as projection on X)
         base         TYPE string,
         associations TYPE ty_t_association,
+        "the names of the source's select list that start with _ - what a
+        "projection exposes of its base
+        exposed      TYPE string_table,
       END OF ty_s_ddl_associations.
 
     TYPES:
@@ -486,15 +489,16 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE ty_s_ddl_associations.
 
-    "! A projection inherits the associations of its base: one it does not
-    "! redirect keeps the base's target, one it redirects keeps its own
-    "! target and takes what it lacks (the ON condition, the kind) from the
-    "! base
+    "! A projection inherits the associations of its base that it exposes:
+    "! one it does not redirect keeps the base's target, one it redirects
+    "! keeps its own target and takes what it lacks (the ON condition, the
+    "! kind) from the base. it_exposed empty: every association of the base
     CLASS-METHODS merge_base_associations
       IMPORTING
-        it_base  TYPE ty_t_association
+        it_base    TYPE ty_t_association
+        it_exposed TYPE string_table OPTIONAL
       CHANGING
-        ct_assoc TYPE ty_t_association.
+        ct_assoc   TYPE ty_t_association.
 
     "! The ON condition of a composition, seen from the parent: the child's
     "! association to parent (target = parent) turned around
@@ -2012,9 +2016,10 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
     "a projection: what it does not redirect it exposes as the base has it
     IF ls_parsed-base IS NOT INITIAL AND level < 4.
-      merge_base_associations( EXPORTING it_base  = read_associations_level( entity_name = ls_parsed-base
-                                                                             level       = level + 1 )
-                               CHANGING  ct_assoc = result ).
+      merge_base_associations( EXPORTING it_base    = read_associations_level( entity_name = ls_parsed-base
+                                                                               level       = level + 1 )
+                                         it_exposed = ls_parsed-exposed
+                               CHANGING  ct_assoc   = result ).
     ENDIF.
 
     "a composition names no ON condition - the child's association to
@@ -2149,6 +2154,14 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     "upper case once - the names are compared and returned upper case
     LOOP AT lt_tokens ASSIGNING FIELD-SYMBOL(<lv_token>).
       <lv_token> = to_upper( <lv_token> ).
+    ENDLOOP.
+
+    "every _Name that stands alone - an association the select list exposes
+    "or declares (a path _A.Field is one token and does not count)
+    LOOP AT lt_tokens INTO DATA(lv_word) WHERE table_line CP `_*`.
+      IF lv_word NA `.` AND NOT line_exists( result-exposed[ table_line = lv_word ] ).
+        APPEND lv_word TO result-exposed.
+      ENDIF.
     ENDLOOP.
 
     DATA(lv_idx) = 1.
@@ -2302,7 +2315,10 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     LOOP AT it_base INTO DATA(ls_base).
       READ TABLE ct_assoc ASSIGNING FIELD-SYMBOL(<ls_own>) WITH KEY name = ls_base-name.
       IF sy-subrc <> 0.
-        APPEND ls_base TO ct_assoc.
+        "only what the projection exposes
+        IF it_exposed IS INITIAL OR line_exists( it_exposed[ table_line = ls_base-name ] ).
+          APPEND ls_base TO ct_assoc.
+        ENDIF.
         CONTINUE.
       ENDIF.
       IF <ls_own>-conditions IS INITIAL.
@@ -2372,7 +2388,8 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
             ELSEIF ls_field-type_kind = `DATS`.
               lv_text = ``.
             ELSE.
-              lv_text = condense( CONV string( <lv_value> ) ).
+              "a template - CONV string( ) puts the sign of -12.50 behind it
+              lv_text = condense( |{ <lv_value> }| ).
             ENDIF.
           ENDIF.
           APPEND |"{ replace( val = lv_text sub = `"` with = `""` occ = 0 ) }"| TO lt_cells.

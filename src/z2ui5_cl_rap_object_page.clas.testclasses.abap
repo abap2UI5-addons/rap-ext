@@ -145,8 +145,10 @@ CLASS ltcl_object_page IMPLEMENTATION.
 
   METHOD child_context_association.
 
-    "an association that is no composition leads to an entity of its own
+    "an association that is no composition leads to an entity of its own -
+    "and so does one the DDL source does not show
     cl_abap_unit_assert=>assert_initial( mo_cut->get_child_context( `_AGENCY` ) ).
+    cl_abap_unit_assert=>assert_initial( mo_cut->get_child_context( `_UNKNOWN` ) ).
 
   ENDMETHOD.
 

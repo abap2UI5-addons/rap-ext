@@ -48,10 +48,10 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
 
 - [ ] Edit creates a draft (visible in the draft table), Save activates it,
       no draft is left behind
-- [ ] Cancel discards the draft
-- [ ] Back while editing keeps the draft with the changes; Edit again answers
-      with the business object's message and offers Discard - which discards
-      and edits anew
+- [ ] Cancel discards the draft, and so does Back while editing
+- [ ] a draft left by another app (the RAP Fiori app): Edit answers with the
+      business object's message and offers Discard - which discards and edits
+      anew
 - [ ] a refused activation keeps the draft and the page in edit mode
 - [ ] another user's draft: Edit is refused with the business object's message
 - [ ] a change and a create of a booking edit and activate the root

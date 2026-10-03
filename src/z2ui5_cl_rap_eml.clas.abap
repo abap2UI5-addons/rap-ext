@@ -21,9 +21,9 @@
 "! written the way its own UI would: update = Edit (a draft of the active
 "! instance), update the draft, Activate; create = create a draft, Activate
 "! it. Everything runs before the one COMMIT ENTITIES, and a failed step
-"! rolls the whole request back - no draft is left behind. The draft
-"! editing that spans several roundtrips (a draft kept between them,
-"! Discard) is z2ui5_cl_rap_draft's.
+"! rolls the whole request back - no draft is left behind. The object page
+"! edits across roundtrips instead: run_root_action (Edit, Activate,
+"! Discard) and update_draft, each committed.
 "!
 "! Not verified in a system by an automated gate - see AGENTS.md.
 CLASS z2ui5_cl_rap_eml DEFINITION
@@ -86,9 +86,9 @@ CLASS z2ui5_cl_rap_eml DEFINITION
         VALUE(result) TYPE ty_s_result.
 
     "! run one action of the root of a business object on the instance of
-    "! keys, committed - what the draft editing of z2ui5_cl_rap_draft
-    "! needs: Edit, Activate, Discard, Resume. is_draft addresses the draft
-    "! instance; preserve sets Edit's preserve_changes
+    "! keys, committed - what the object page's draft editing needs: Edit,
+    "! Activate, Discard. is_draft addresses the draft instance; preserve
+    "! sets Edit's preserve_changes
     CLASS-METHODS run_root_action
       IMPORTING
         bdef          TYPE clike

@@ -30,6 +30,8 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         "the list loads; single - one value, the value help selects one
         mandatory TYPE abap_bool,
         single    TYPE abap_bool,
+        "@Consumption.filter.hidden: not shown, its default still applies
+        hidden    TYPE abap_bool,
       END OF ty_s_filter.
 
     TYPES ty_t_filter TYPE STANDARD TABLE OF ty_s_filter WITH DEFAULT KEY.
@@ -147,7 +149,8 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
 
     "! the columns the user hid (the columns dialog, a view)
     DATA mt_hidden_column TYPE string_table.
-    "! the saved views, and the standard view as the list started
+    "! the saved views, and the standard view as the list started (taken
+    "! once, before a view applied)
     DATA mt_variants TYPE z2ui5_cl_rap_variant=>ty_t_variant.
     DATA ms_standard TYPE z2ui5_cl_rap_variant=>ty_s_data.
 
@@ -378,7 +381,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           value     = ls_sel-filter_default
           show_vh   = xsdbool( ls_sel-value_help-entity_name IS NOT INITIAL )
           mandatory = ls_sel-filter_mandatory
-          single    = ls_sel-filter_single ) TO mt_filter.
+          single    = ls_sel-filter_single
+          hidden    = ls_sel-filter_hidden ) TO mt_filter.
       ENDLOOP.
 
       mt_row_key = get_row_key_fields( ).
@@ -397,6 +401,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         mv_sort_desc = ms_entity-sort_order[ 1 ]-descending.
       ENDIF.
 
+      "the standard view: the annotations' filters, sort order, columns
+      ms_standard = capture_variant( ).
       init_variants( ).
       load_data( ).
       render_page( client ).
@@ -717,7 +723,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD get_selection_fields.
     LOOP AT ms_entity-fields INTO DATA(ls_field)
-      WHERE is_selection_field = abap_true AND filter_hidden = abap_false.
+      WHERE is_selection_field = abap_true.
       APPEND ls_field TO result.
     ENDLOOP.
     SORT result BY selection_field_pos.
@@ -820,7 +826,6 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     IF z2ui5_cl_rap_variant=>is_available( ) = abap_false.
       RETURN.
     ENDIF.
-    ms_standard = capture_variant( ).
     mt_variants = z2ui5_cl_rap_variant=>read_all( mv_cds_view ).
 
     mv_variant = cv_variant_standard.
@@ -1415,7 +1420,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         )->a( n = `wrap`
               v = `Wrap` ).
 
+    "a hidden filter is not shown - its default still restricts the rows
     lo_fbox->tag( `Input`
+        )->a( n = `visible`
+              v = `{= !${HIDDEN} }`
         )->a( n = `value`
               v = `{VALUE}`
         )->a( n = `placeholder`

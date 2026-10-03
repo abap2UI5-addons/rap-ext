@@ -107,7 +107,10 @@ CLASS z2ui5_cl_rap_start IMPLEMENTATION.
 
   METHOD get_parameters.
 
-    result = client->get( )-t_comp_params.
+    "the core names them n and v
+    LOOP AT client->get( )-t_comp_params INTO DATA(ls_comp).
+      APPEND VALUE #( name = ls_comp-n value = ls_comp-v ) TO result.
+    ENDLOOP.
     APPEND LINES OF z2ui5_cl_rap_util=>parse_url_query( client->get( )-s_config-search ) TO result.
     "the framework's and the system's own
     DELETE result WHERE name = `app_start` OR name CP `sap-*`.

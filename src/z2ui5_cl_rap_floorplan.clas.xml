@@ -195,78 +195,72 @@
     <item>
      <ID>I</ID>
      <KEY>031</KEY>
-     <ENTRY>Draft saved</ENTRY>
-     <LENGTH>11</LENGTH>
-    </item>
-    <item>
-     <ID>I</ID>
-     <KEY>032</KEY>
      <ENTRY>This navigation is only available in the Fiori launchpad</ENTRY>
      <LENGTH>56</LENGTH>
     </item>
     <item>
      <ID>I</ID>
-     <KEY>033</KEY>
+     <KEY>032</KEY>
      <ENTRY>No record found</ENTRY>
      <LENGTH>15</LENGTH>
     </item>
     <item>
      <ID>I</ID>
-     <KEY>034</KEY>
+     <KEY>033</KEY>
      <ENTRY>Export</ENTRY>
      <LENGTH>6</LENGTH>
     </item>
     <item>
      <ID>I</ID>
-     <KEY>035</KEY>
+     <KEY>034</KEY>
      <ENTRY>Copy link</ENTRY>
      <LENGTH>9</LENGTH>
     </item>
     <item>
      <ID>I</ID>
-     <KEY>036</KEY>
+     <KEY>035</KEY>
      <ENTRY>Link copied</ENTRY>
      <LENGTH>11</LENGTH>
     </item>
     <item>
      <ID>I</ID>
-     <KEY>037</KEY>
+     <KEY>036</KEY>
      <ENTRY>Standard</ENTRY>
      <LENGTH>8</LENGTH>
     </item>
     <item>
      <ID>I</ID>
-     <KEY>038</KEY>
+     <KEY>037</KEY>
      <ENTRY>Save view</ENTRY>
      <LENGTH>9</LENGTH>
     </item>
     <item>
      <ID>I</ID>
-     <KEY>039</KEY>
+     <KEY>038</KEY>
      <ENTRY>Delete view</ENTRY>
      <LENGTH>11</LENGTH>
     </item>
     <item>
      <ID>I</ID>
-     <KEY>040</KEY>
+     <KEY>039</KEY>
      <ENTRY>Name</ENTRY>
      <LENGTH>4</LENGTH>
     </item>
     <item>
      <ID>I</ID>
-     <KEY>041</KEY>
+     <KEY>040</KEY>
      <ENTRY>Use as default</ENTRY>
      <LENGTH>14</LENGTH>
     </item>
     <item>
      <ID>I</ID>
-     <KEY>042</KEY>
+     <KEY>041</KEY>
      <ENTRY>View saved</ENTRY>
      <LENGTH>10</LENGTH>
     </item>
     <item>
      <ID>I</ID>
-     <KEY>043</KEY>
+     <KEY>042</KEY>
      <ENTRY>Columns</ENTRY>
      <LENGTH>7</LENGTH>
     </item>

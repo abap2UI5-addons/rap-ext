@@ -57,7 +57,6 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         locked         TYPE string VALUE `LOCKED`,
         changed        TYPE string VALUE `CHANGED`,
         discard_draft  TYPE string VALUE `DISCARD_DRAFT`,
-        draft_kept     TYPE string VALUE `DRAFT_KEPT`,
         no_launchpad   TYPE string VALUE `NO_LAUNCHPAD`,
         not_found      TYPE string VALUE `NOT_FOUND`,
         export         TYPE string VALUE `EXPORT`,
@@ -732,7 +731,6 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-locked       THEN `Der Eintrag ist gesperrt`
         WHEN cs_text-changed      THEN `Der Eintrag wurde inzwischen geändert - bitte neu lesen`
         WHEN cs_text-discard_draft THEN `Entwurf verwerfen`
-        WHEN cs_text-draft_kept   THEN `Entwurf gesichert`
         WHEN cs_text-no_launchpad THEN `Diese Navigation gibt es nur im Fiori Launchpad`
         WHEN cs_text-not_found    THEN `Kein Eintrag gefunden`
         WHEN cs_text-export       THEN `Exportieren`
@@ -780,19 +778,18 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-locked        THEN 'The record is locked'(028)
         WHEN cs_text-changed       THEN 'The record was changed meanwhile - read it again'(029)
         WHEN cs_text-discard_draft THEN 'Discard draft'(030)
-        WHEN cs_text-draft_kept    THEN 'Draft saved'(031)
-        WHEN cs_text-no_launchpad  THEN 'This navigation is only available in the Fiori launchpad'(032)
-        WHEN cs_text-not_found     THEN 'No record found'(033)
-        WHEN cs_text-export        THEN 'Export'(034)
-        WHEN cs_text-copy_link     THEN 'Copy link'(035)
-        WHEN cs_text-link_copied   THEN 'Link copied'(036)
-        WHEN cs_text-standard      THEN 'Standard'(037)
-        WHEN cs_text-save_view     THEN 'Save view'(038)
-        WHEN cs_text-delete_view   THEN 'Delete view'(039)
-        WHEN cs_text-view_name     THEN 'Name'(040)
-        WHEN cs_text-as_default    THEN 'Use as default'(041)
-        WHEN cs_text-view_saved    THEN 'View saved'(042)
-        WHEN cs_text-columns       THEN 'Columns'(043)
+        WHEN cs_text-no_launchpad  THEN 'This navigation is only available in the Fiori launchpad'(031)
+        WHEN cs_text-not_found     THEN 'No record found'(032)
+        WHEN cs_text-export        THEN 'Export'(033)
+        WHEN cs_text-copy_link     THEN 'Copy link'(034)
+        WHEN cs_text-link_copied   THEN 'Link copied'(035)
+        WHEN cs_text-standard      THEN 'Standard'(036)
+        WHEN cs_text-save_view     THEN 'Save view'(037)
+        WHEN cs_text-delete_view   THEN 'Delete view'(038)
+        WHEN cs_text-view_name     THEN 'Name'(039)
+        WHEN cs_text-as_default    THEN 'Use as default'(040)
+        WHEN cs_text-view_saved    THEN 'View saved'(041)
+        WHEN cs_text-columns       THEN 'Columns'(042)
         ELSE key ).
     ENDIF.
 
@@ -1567,11 +1564,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                                              row         = <ls_row>
                                              context     = context ).
       ENDCASE.
-    ELSE.
+    ELSEIF original IS SUPPLIED.
       result = write_table_row( entity_name = entity_name
                                 operation   = operation
                                 row         = <ls_row>
                                 original    = original ).
+    ELSE.
+      result = write_table_row( entity_name = entity_name
+                                operation   = operation
+                                row         = <ls_row> ).
     ENDIF.
 
     IF result-success = abap_true AND mo_ext IS BOUND.
@@ -1655,7 +1656,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     TRY.
         "still what the user saw? A change made meanwhile is reported, not
-        "overwritten - and a row deleted meanwhile is not created again
+        "overwritten - and a row deleted meanwhile is not created again. An
+        "update without the original can only check that the row is there
         IF operation <> `CREATE`.
           CREATE DATA lr_current TYPE (lv_tabname).
           ASSIGN lr_current->* TO <ls_current>.
@@ -1683,7 +1685,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
               ENDIF.
               UNASSIGN: <lv_from>, <lv_to>.
             ENDLOOP.
-            IF <ls_seen> <> <ls_current>.
+            IF ( operation = `DELETE` OR original IS SUPPLIED ) AND <ls_seen> <> <ls_current>.
               APPEND get_text( cs_text-changed ) TO result-messages.
             ENDIF.
           ENDIF.
