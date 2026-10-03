@@ -142,6 +142,13 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "the suggestions of an input with a value help, while the user types
+    IF client->check_on_event( cv_event_suggest ).
+      load_suggestions( client    = client
+                        it_fields = ms_entity-fields ).
+      RETURN.
+    ENDIF.
+
     IF client->check_on_event( cs_event-confirm ).
       DATA(lt_missing) = get_missing_fields( ).
       IF lt_missing IS NOT INITIAL.

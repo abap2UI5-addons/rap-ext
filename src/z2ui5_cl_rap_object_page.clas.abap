@@ -460,6 +460,13 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "the suggestions of an input with a value help, while the user types
+    IF client->check_on_event( cv_event_suggest ).
+      load_suggestions( client    = client
+                        it_fields = ms_entity-fields ).
+      RETURN.
+    ENDIF.
+
     IF client->check_on_event( cs_event-back ).
       "leaving a draft keeps it - with what was changed since the last save
       IF mv_draft = abap_true.

@@ -81,6 +81,10 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     "! select - the name the core's own select popup uses
     CONSTANTS cv_select_column TYPE string VALUE `ZZSELKZ`.
 
+    "! the event of an input with a value help while the user types - the
+    "! suggestions (load_suggestions); arguments: the field, the text
+    CONSTANTS cv_event_suggest TYPE string VALUE `SUGGEST`.
+
     TYPES:
       BEGIN OF ty_s_capabilities,
         "a RAP business object (a BDEF with this entity as root)
@@ -149,6 +153,12 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     "! abap2UI5 model resolves a binding into and carries through the draft.
     DATA mr_value_lists TYPE REF TO data.
 
+    "! The suggestions of the inputs with a value help - one component per
+    "! field, each a table of the value help entity, filled while the user
+    "! types (load_suggestions). PUBLIC and a REF TO data for the same
+    "! reason as mr_value_lists.
+    DATA mr_suggestions TYPE REF TO data.
+
     "! Hand the floorplan an implementation of the extension points
     METHODS set_extension
       IMPORTING
@@ -183,6 +193,10 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     DATA mv_floorplan TYPE string.
     "! the field a called value help fills on return
     DATA mv_vh_target TYPE string.
+
+    "! the text element of each value help entity with suggestions - the
+    "! additional text of a suggestion (prepare_value_lists)
+    DATA mt_suggest_text TYPE ty_t_name_value.
 
     "! the name select_rows( ) gives the host structure - a dynamic WHERE
     "! compares with its components as @<LS_HOST>-name
@@ -314,9 +328,18 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         VALUE(result) TYPE string.
 
     "! fill mr_value_lists for every field of it_fields with a dropdown
+    "! value help, and prepare mr_suggestions for every field with another
     "! value help - run it before rendering the controls of those fields
     METHODS prepare_value_lists
       IMPORTING
+        it_fields TYPE z2ui5_cl_rap_util=>ty_t_field_info.
+
+    "! the suggestions for what the user typed into the input of a field
+    "! with a value help (cv_event_suggest): the rows of the value help
+    "! entity whose element starts with it or whose texts contain it
+    METHODS load_suggestions
+      IMPORTING
+        client    TYPE REF TO z2ui5_if_client
         it_fields TYPE z2ui5_cl_rap_util=>ty_t_field_info.
 
     "! the input control for one field, bound to value (a component of a
@@ -898,18 +921,102 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       APPEND lr_rows TO lt_lists.
     ENDLOOP.
 
-    IF lt_comp IS INITIAL.
+    IF lt_comp IS NOT INITIAL.
+      DATA(lo_struct) = cl_abap_structdescr=>create( lt_comp ).
+      CREATE DATA mr_value_lists TYPE HANDLE lo_struct.
+      ASSIGN mr_value_lists->* TO <ls_lists>.
+      LOOP AT lt_lists INTO DATA(lr_list).
+        ASSIGN COMPONENT sy-tabix OF STRUCTURE <ls_lists> TO <lt_target>.
+        ASSIGN lr_list->* TO <lt_source>.
+        <lt_target> = <lt_source>.
+      ENDLOOP.
+    ENDIF.
+
+    "the suggestions: an empty table per field with a value help that is
+    "no dropdown - filled while the user types
+    CLEAR: mr_suggestions, mt_suggest_text, lt_comp.
+    LOOP AT it_fields INTO ls_field
+      WHERE value_help-is_dropdown = abap_false AND value_help-entity_name IS NOT INITIAL
+        AND value_help-element IS NOT INITIAL AND is_hidden = abap_false.
+      IF line_exists( lt_comp[ name = ls_field-name ] ).
+        CONTINUE.
+      ENDIF.
+      DATA(lr_empty) = create_entity_table( ls_field-value_help-entity_name ).
+      IF lr_empty IS NOT BOUND.
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( name = ls_field-name
+                      type = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_data_ref( lr_empty ) ) )
+        TO lt_comp.
+      "the text of the element, shown next to it
+      DATA(ls_vh_entity) = z2ui5_cl_rap_util=>read_entity( ls_field-value_help-entity_name ).
+      READ TABLE ls_vh_entity-fields INTO DATA(ls_element) WITH KEY name = ls_field-value_help-element.
+      IF sy-subrc = 0 AND ls_element-text_element IS NOT INITIAL
+        AND line_exists( ls_vh_entity-fields[ name = ls_element-text_element ] ).
+        APPEND VALUE #( name = ls_field-name value = ls_element-text_element ) TO mt_suggest_text.
+      ENDIF.
+    ENDLOOP.
+    IF lt_comp IS NOT INITIAL.
+      DATA(lo_suggest) = cl_abap_structdescr=>create( lt_comp ).
+      CREATE DATA mr_suggestions TYPE HANDLE lo_suggest.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD load_suggestions.
+
+    FIELD-SYMBOLS <ls_all> TYPE any.
+    FIELD-SYMBOLS <lt_target> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+
+    DATA(lv_field) = client->get_event_arg( 1 ).
+    DATA(lv_text) = condense( client->get_event_arg( 2 ) ).
+    IF mr_suggestions IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN mr_suggestions->* TO <ls_all>.
+    ASSIGN COMPONENT lv_field OF STRUCTURE <ls_all> TO <lt_target>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    CLEAR <lt_target>.
+    READ TABLE it_fields INTO DATA(ls_field) WITH KEY name = lv_field.
+    IF sy-subrc <> 0 OR lv_text IS INITIAL.
       RETURN.
     ENDIF.
 
-    DATA(lo_struct) = cl_abap_structdescr=>create( lt_comp ).
-    CREATE DATA mr_value_lists TYPE HANDLE lo_struct.
-    ASSIGN mr_value_lists->* TO <ls_lists>.
-    LOOP AT lt_lists INTO DATA(lr_list).
-      ASSIGN COMPONENT sy-tabix OF STRUCTURE <ls_lists> TO <lt_target>.
-      ASSIGN lr_list->* TO <lt_source>.
-      <lt_target> = <lt_source>.
-    ENDLOOP.
+    "the element starts with the text, or a text field contains it
+    DATA(ls_vh_entity) = z2ui5_cl_rap_util=>read_entity( ls_field-value_help-entity_name ).
+    DATA lt_or TYPE string_table.
+    READ TABLE ls_vh_entity-fields INTO DATA(ls_element) WITH KEY name = ls_field-value_help-element.
+    IF sy-subrc = 0.
+      "the user's own * and ; are text here, not the filter syntax
+      DATA(lv_prefix) = replace( val = lv_text sub = `*` with = `` occ = 0 ).
+      lv_prefix = replace( val = lv_prefix sub = `;` with = `` occ = 0 ).
+      IF ls_element-type_kind = `CHAR` AND lv_prefix IS NOT INITIAL AND lv_prefix(1) CN `=!<>`.
+        APPEND build_filter_condition( is_field = ls_element
+                                       value    = |{ lv_prefix }*| ) TO lt_or.
+      ENDIF.
+    ENDIF.
+    DATA(lv_search) = build_search_condition( it_fields = ls_vh_entity-fields
+                                              search    = lv_text ).
+    IF lv_search IS NOT INITIAL.
+      APPEND lv_search TO lt_or.
+    ENDIF.
+    DELETE lt_or WHERE table_line IS INITIAL.
+    IF lt_or IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    DATA(lr_rows) = select_rows( entity_name = ls_field-value_help-entity_name
+                                 where       = |( { concat_lines_of( table = lt_or sep = ` OR ` ) } )|
+                                 max_rows    = 20 ).
+    IF lr_rows IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_rows->* TO <lt_rows>.
+    <lt_target> = <lt_rows>.
 
   ENDMETHOD.
 
@@ -1013,7 +1120,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ENDIF.
 
     IF is_field-value_help-entity_name IS NOT INITIAL AND vh_event IS NOT INITIAL.
-      io_container->tag( `Input`
+      DATA(lo_input) = io_container->ele( `Input`
           )->a( n = `value`
                 v = client->_bind( value )
           )->a( n = `showValueHelp`
@@ -1025,6 +1132,35 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                 b = lv_editable
           )->a( n = `required`
                 b = is_field-is_mandatory ).
+      "suggestions while the user types - a per-keystroke wire: the last
+      "keystroke is never lost and the busy indicator stays down
+      IF mr_suggestions IS BOUND AND lv_editable = abap_true.
+        ASSIGN mr_suggestions->* TO <ls_lists>.
+        ASSIGN COMPONENT is_field-name OF STRUCTURE <ls_lists> TO <lt_list>.
+        IF sy-subrc = 0.
+          lo_input->a( n = `xmlns:core`
+                       v = `sap.ui.core`
+              )->a( n = `showSuggestion`
+                    v = `true`
+              )->a( n = `suggest`
+                    v = client->_event( val    = cv_event_suggest
+                                        t_arg  = VALUE #( ( is_field-name ) ( `${$parameters>/suggestValue}` ) )
+                                        s_ctrl = VALUE #( check_queue_last = abap_true
+                                                          check_no_busy    = abap_true ) )
+              )->a( n = `suggestionItems`
+                    v = client->_bind( <lt_list> ) ).
+          DATA(lo_item) = lo_input->ele( `suggestionItems`
+              )->tag( n  = `ListItem`
+                      ns = `core`
+                  )->a( n = `text`
+                        v = |\{{ is_field-value_help-element }\}| ).
+          READ TABLE mt_suggest_text INTO DATA(ls_text) WITH KEY name = is_field-name.
+          IF sy-subrc = 0.
+            lo_item->a( n = `additionalText`
+                        v = |\{{ ls_text-value }\}| ).
+          ENDIF.
+        ENDIF.
+      ENDIF.
       add_value_state( io_container     = io_container
                        value_state      = value_state
                        value_state_text = value_state_text ).
