@@ -98,13 +98,46 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
 
     TYPES ty_t_name_value TYPE STANDARD TABLE OF ty_s_name_value WITH DEFAULT KEY.
 
+    "! one message of a write, as RAP reported it
+    TYPES:
+      BEGIN OF ty_s_message,
+        text   TYPE string,
+        "error, warning, success or information
+        type   TYPE string,
+        "the fields the message is about (%element)
+        fields TYPE string_table,
+      END OF ty_s_message.
+
+    TYPES ty_t_message TYPE STANDARD TABLE OF ty_s_message WITH EMPTY KEY.
+
     TYPES:
       BEGIN OF ty_s_result,
         success  TYPE abap_bool,
         messages TYPE string_table,
         "the keys of a created instance, as RAP assigned them (MAPPED)
         keys     TYPE ty_t_name_value,
+        "added 2026-10: the messages with their severity and fields
+        details  TYPE ty_t_message,
       END OF ty_s_result.
+
+    "! Where a record sits in a RAP business object. Empty for the root
+    "! entity, which is its own behavior definition; set for a child, which
+    "! is written through the BDEF of its root - and, for a create by
+    "! association, with the parent the new child is created under
+    TYPES:
+      BEGIN OF ty_s_rap_context,
+        "the behavior definition - the name of its root entity
+        bdef        TYPE string,
+        "the keys of the root instance: a draft is edited and activated there
+        root_keys   TYPE ty_t_name_value,
+        "a create by association: the parent entity, its keys, the composition
+        parent      TYPE string,
+        parent_keys TYPE ty_t_name_value,
+        association TYPE string,
+        "the child's fields that point at the parent - the composition
+        "fills them, so a create does not send them
+        parent_fields TYPE string_table,
+      END OF ty_s_rap_context.
 
     "! The dropdown entries of the fields that have a small value help
     "! (sizeCategory #XS) - one component per field, each a table of the
@@ -127,6 +160,9 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     CLASS-METHODS get_capabilities
       IMPORTING
         entity_name   TYPE clike
+        "a child entity: the BDEF of its root and, for its create, the
+        "parent and composition - added 2026-10
+        context       TYPE ty_s_rap_context OPTIONAL
       RETURNING
         VALUE(result) TYPE ty_s_capabilities.
 
@@ -156,6 +192,7 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     METHODS get_entity_capabilities
       IMPORTING
         entity_name   TYPE string
+        context       TYPE ty_s_rap_context OPTIONAL
       RETURNING
         VALUE(result) TYPE ty_s_capabilities.
 
@@ -288,7 +325,11 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         client       TYPE REF TO z2ui5_if_client
         value        TYPE data
         editable     TYPE abap_bool DEFAULT abap_true
-        vh_event     TYPE string OPTIONAL.
+        vh_event     TYPE string OPTIONAL
+        "a sap.ui.core.ValueState (Error, Warning) and its text - a message
+        "of the last save about this field (added 2026-10)
+        value_state      TYPE string OPTIONAL
+        value_state_text TYPE string OPTIONAL.
 
     "! call the value help of is_field; source holds the values for the
     "! additional bindings with usage FILTER (the structure being edited)
@@ -372,6 +413,8 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         operation     TYPE string
         row           TYPE data
         original      TYPE data OPTIONAL
+        "a child entity of a business object - added 2026-10
+        context       TYPE ty_s_rap_context OPTIONAL
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -382,6 +425,7 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         action        TYPE string
         rows          TYPE REF TO data
         param         TYPE REF TO data OPTIONAL
+        context       TYPE ty_s_rap_context OPTIONAL
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -390,6 +434,7 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       IMPORTING
         entity_name   TYPE string
         action        TYPE string
+        context       TYPE ty_s_rap_context OPTIONAL
       RETURNING
         VALUE(result) TYPE REF TO data.
 
@@ -422,6 +467,14 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         VALUE(result) TYPE string.
 
   PRIVATE SECTION.
+
+    "! the value state of the control render_field_input just added - the
+    "! container's last child
+    METHODS add_value_state
+      IMPORTING
+        io_container     TYPE REF TO z2ui5_cl_ui5_view_builder
+        value_state      TYPE string
+        value_state_text TYPE string.
 
     CLASS-METHODS try_create_data
       IMPORTING
@@ -474,8 +527,14 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ENDIF.
 
     IF eml_available( ) = abap_true.
-      DATA(lv_base) = |\\BDEF={ lv_entity }\\ENTITY={ lv_entity }|.
+      DATA(lv_bdef) = COND string( WHEN context-bdef IS NOT INITIAL THEN to_upper( context-bdef ) ELSE lv_entity ).
+      DATA(lv_base) = |\\BDEF={ lv_bdef }\\ENTITY={ lv_entity }|.
       result-can_create = try_create_data( lv_base && `\TYPE=CREATE` ).
+      "a child is created under its parent - by association, not alone
+      IF context-association IS NOT INITIAL.
+        result-can_create = try_create_data( |\\BDEF={ lv_bdef }\\ENTITY={ to_upper( context-parent ) }| &&
+                                             |\\ASSOCIATION={ to_upper( context-association ) }\\TYPE=CREATE| ).
+      ENDIF.
       result-can_update = try_create_data( lv_base && `\TYPE=UPDATE` ).
       result-can_delete = try_create_data( lv_base && `\TYPE=DELETE` ).
       result-is_rap_bo = xsdbool( result-can_create = abap_true
@@ -501,6 +560,17 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       CATCH cx_root ##NO_HANDLER.
     ENDTRY.
 
+  ENDMETHOD.
+
+
+  METHOD add_value_state.
+    IF value_state IS INITIAL.
+      RETURN.
+    ENDIF.
+    io_container->a( n = `valueState`
+                     v = value_state
+        )->a( n = `valueStateText`
+              t = value_state_text ).
   ENDMETHOD.
 
 
@@ -805,6 +875,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                 b = lv_editable
           )->a( n = `required`
                 b = is_field-is_mandatory ).
+      add_value_state( io_container     = io_container
+                       value_state      = value_state
+                       value_state_text = value_state_text ).
       RETURN.
     ENDIF.
 
@@ -818,6 +891,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                 b = lv_editable
           )->a( n = `required`
                 b = is_field-is_mandatory ).
+      add_value_state( io_container     = io_container
+                       value_state      = value_state
+                       value_state_text = value_state_text ).
       RETURN.
     ENDIF.
 
@@ -833,6 +909,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                 b = lv_editable
           )->a( n = `required`
                 b = is_field-is_mandatory ).
+      add_value_state( io_container     = io_container
+                       value_state      = value_state
+                       value_state_text = value_state_text ).
       RETURN.
     ENDIF.
 
@@ -860,6 +939,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                       v = lv_key_path
                 )->a( n = `text`
                       v = lv_key_path ).
+        add_value_state( io_container     = io_container
+                         value_state      = value_state
+                         value_state_text = value_state_text ).
         RETURN.
       ENDIF.
     ENDIF.
@@ -877,6 +959,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                 b = lv_editable
           )->a( n = `required`
                 b = is_field-is_mandatory ).
+      add_value_state( io_container     = io_container
+                       value_state      = value_state
+                       value_state_text = value_state_text ).
       RETURN.
     ENDIF.
 
@@ -890,6 +975,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                 b = lv_editable
           )->a( n = `required`
                 b = is_field-is_mandatory ).
+      add_value_state( io_container     = io_container
+                       value_state      = value_state
+                       value_state_text = value_state_text ).
       RETURN.
     ENDIF.
 
@@ -900,6 +988,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
               b = lv_editable
         )->a( n = `required`
               b = is_field-is_mandatory ).
+    add_value_state( io_container     = io_container
+                     value_state      = value_state
+                     value_state_text = value_state_text ).
 
   ENDMETHOD.
 
@@ -1115,7 +1206,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     FIELD-SYMBOLS <ls_row> TYPE any.
 
     "decided here, not by the buttons - an event can arrive without one
-    DATA(ls_caps) = get_entity_capabilities( entity_name ).
+    DATA(ls_caps) = get_entity_capabilities( entity_name = entity_name
+                                             context     = context ).
     DATA(lv_allowed) = SWITCH abap_bool( operation
       WHEN `CREATE` THEN ls_caps-can_create
       WHEN `UPDATE` THEN ls_caps-can_update
@@ -1145,14 +1237,17 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       CASE operation.
         WHEN `CREATE`.
           result = z2ui5_cl_rap_eml=>create( entity_name = entity_name
-                                             row         = <ls_row> ).
+                                             row         = <ls_row>
+                                             context     = context ).
         WHEN `UPDATE`.
           result = z2ui5_cl_rap_eml=>update( entity_name = entity_name
                                              row         = <ls_row>
-                                             original    = original ).
+                                             original    = original
+                                             context     = context ).
         WHEN `DELETE`.
           result = z2ui5_cl_rap_eml=>delete( entity_name = entity_name
-                                             row         = <ls_row> ).
+                                             row         = <ls_row>
+                                             context     = context ).
       ENDCASE.
     ELSE.
       result = write_table_row( entity_name = entity_name
@@ -1339,7 +1434,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD get_entity_capabilities.
 
-    DATA(ls_entity) = get_capabilities( entity_name ).
+    DATA(ls_entity) = get_capabilities( entity_name = entity_name
+                                        context     = context ).
     result = ls_entity.
     IF mo_ext IS NOT BOUND.
       RETURN.
@@ -1442,7 +1538,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    IF eml_available( ) = abap_false OR get_entity_capabilities( entity_name )-is_rap_bo = abap_false.
+    IF eml_available( ) = abap_false
+      OR get_entity_capabilities( entity_name = entity_name
+                                  context     = context )-is_rap_bo = abap_false.
       APPEND get_text( cs_text-read_only ) TO result-messages.
       RETURN.
     ENDIF.
@@ -1450,7 +1548,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     result = z2ui5_cl_rap_eml=>execute_action( entity_name = entity_name
                                                action      = action
                                                rows        = <lt_rows>
-                                               param       = param ).
+                                               param       = param
+                                               context     = context ).
 
     IF result-success = abap_true AND mo_ext IS BOUND.
       mo_ext->after_save( entity_name = entity_name
@@ -1470,7 +1569,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       RETURN.
     ENDIF.
     DATA(lv_entity) = to_upper( entity_name ).
-    DATA(lv_type) = |\\BDEF={ lv_entity }\\ENTITY={ lv_entity }\\ACTION={ to_upper( action ) }\\TYPE=IMPORTING|.
+    DATA(lv_bdef) = COND string( WHEN context-bdef IS NOT INITIAL THEN to_upper( context-bdef ) ELSE lv_entity ).
+    DATA(lv_type) = |\\BDEF={ lv_bdef }\\ENTITY={ lv_entity }\\ACTION={ to_upper( action ) }\\TYPE=IMPORTING|.
     TRY.
         CREATE DATA lr_table TYPE (lv_type).
         ASSIGN lr_table->* TO <lt_table>.

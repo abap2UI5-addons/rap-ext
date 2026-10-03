@@ -35,6 +35,7 @@ CLASS ltcl_annotations DEFINITION FINAL
     METHODS label_fallback            FOR TESTING RAISING cx_static_check.
     METHODS prefix_is_not_a_match     FOR TESTING RAISING cx_static_check.
     METHODS strip_quotes              FOR TESTING RAISING cx_static_check.
+    METHODS admin_fields              FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -330,6 +331,24 @@ CLASS ltcl_annotations IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( exp = `abc` act = z2ui5_cl_rap_util=>strip_quotes( ` 'abc' ` ) ).
     cl_abap_unit_assert=>assert_equals( exp = `#HIGH` act = z2ui5_cl_rap_util=>strip_quotes( `#HIGH` ) ).
     cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>strip_quotes( `` ) ).
+
+  ENDMETHOD.
+
+  METHOD admin_fields.
+
+    apply( it_elements = VALUE #(
+      ( element = `AgencyID`   key = `SEMANTICS.USER.CREATEDBY`             value = `true` )
+      ( element = `AgencyName` key = `SEMANTICS.SYSTEMDATETIME.CREATEDAT`   value = `true` )
+      ( element = `Status`     key = `SEMANTICS.SYSTEMDATETIME.LOCALINSTANCELASTCHANGEDAT` value = `true` )
+      ( element = `TravelID`   key = `SEMANTICS.USER.LASTCHANGEDBY`         value = `false` ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( act = field( `AGENCYID` )-admin_field
+                                        exp = `CREATED_BY` ).
+    cl_abap_unit_assert=>assert_equals( act = field( `AGENCYNAME` )-admin_field
+                                        exp = `CREATED_AT` ).
+    cl_abap_unit_assert=>assert_equals( act = field( `STATUS` )-admin_field
+                                        exp = `LOCAL_LAST_CHANGED_AT` ).
+    cl_abap_unit_assert=>assert_initial( field( `TRAVELID` )-admin_field ).
 
   ENDMETHOD.
 
@@ -660,6 +679,215 @@ CLASS ltcl_variants IMPLEMENTATION.
       value = 1 is_calc = VALUE #( improvement_direction = `MAXIMIZE` tolerance_low = `TargetField` ) ) ).
     cl_abap_unit_assert=>assert_equals( exp = 0 act = z2ui5_cl_rap_util=>criticality_by_calculation(
       value = 1 is_calc = VALUE #( tolerance_low = `1` ) ) ).
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+" parse_ddl_associations( ) on DDL sources as DDDDLSRC holds them - the
+" interface view of a RAP business object, its projection, the 7.58 forms
+" and comments in between.
+CLASS ltcl_associations DEFINITION FINAL
+  FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS assoc
+      IMPORTING
+        it_assoc      TYPE z2ui5_cl_rap_util=>ty_t_association
+        name          TYPE string
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_s_association.
+
+    METHODS interface_view           FOR TESTING RAISING cx_static_check.
+    METHODS to_parent_condition      FOR TESTING RAISING cx_static_check.
+    METHODS projection_redirects     FOR TESTING RAISING cx_static_check.
+    METHODS new_cardinality_syntax   FOR TESTING RAISING cx_static_check.
+    METHODS comments_are_skipped     FOR TESTING RAISING cx_static_check.
+    METHODS literal_is_no_field_pair FOR TESTING RAISING cx_static_check.
+    METHODS merge_with_base          FOR TESTING RAISING cx_static_check.
+    METHODS parent_conditions        FOR TESTING RAISING cx_static_check.
+
+ENDCLASS.
+
+
+CLASS ltcl_associations IMPLEMENTATION.
+
+  METHOD assoc.
+    READ TABLE it_assoc INTO result WITH KEY name = name.
+    cl_abap_unit_assert=>assert_subrc( msg = |association { name }| ).
+  ENDMETHOD.
+
+
+  METHOD interface_view.
+
+    DATA(ls_parsed) = z2ui5_cl_rap_util=>parse_ddl_associations(
+      |define root view entity ZI_Travel as select from ztravel\n| &&
+      |  composition [0..*] of ZI_Booking as _Booking\n| &&
+      |  association [0..1] to /DMO/I_Agency as _Agency on $projection.AgencyID = _Agency.AgencyID\n| &&
+      |  association [0..1] to I_Currency as _Currency\n| &&
+      |    on $projection.CurrencyCode = _Currency.Currency and _Currency.Decimals = $projection.Decimals\n| &&
+      |\{\n  key travel_uuid as TravelUUID,\n  agency_id as AgencyID,\n  _Booking,\n  _Agency\n\}| ).
+
+    cl_abap_unit_assert=>assert_initial( ls_parsed-base ).
+    cl_abap_unit_assert=>assert_equals( act = lines( ls_parsed-associations )
+                                        exp = 3 ).
+
+    DATA(ls_booking) = assoc( it_assoc = ls_parsed-associations name = `_BOOKING` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_booking-target
+                                        exp = `ZI_BOOKING` ).
+    cl_abap_unit_assert=>assert_true( ls_booking-is_composition ).
+    cl_abap_unit_assert=>assert_initial( ls_booking-conditions ).
+
+    DATA(ls_agency) = assoc( it_assoc = ls_parsed-associations name = `_AGENCY` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_agency-target
+                                        exp = `/DMO/I_AGENCY` ).
+    cl_abap_unit_assert=>assert_false( ls_agency-is_composition ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_agency-conditions
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_assoc_condition( ( local = `AGENCYID` target = `AGENCYID` ) ) ).
+
+    "either side may name the target first
+    DATA(ls_currency) = assoc( it_assoc = ls_parsed-associations name = `_CURRENCY` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_currency-conditions
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_assoc_condition( ( local = `CURRENCYCODE` target = `CURRENCY` )
+                                                          ( local = `DECIMALS`     target = `DECIMALS` ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD to_parent_condition.
+
+    DATA(ls_parsed) = z2ui5_cl_rap_util=>parse_ddl_associations(
+      |define view entity ZI_Booking as select from zbooking\n| &&
+      |  association to parent ZI_Travel as _Travel on $projection.TravelUUID = _Travel.TravelUUID\n| &&
+      |\{ key booking_uuid as BookingUUID, parent_uuid as TravelUUID, _Travel \}| ).
+
+    DATA(ls_travel) = assoc( it_assoc = ls_parsed-associations name = `_TRAVEL` ).
+    cl_abap_unit_assert=>assert_true( ls_travel-is_to_parent ).
+    cl_abap_unit_assert=>assert_equals( act = ls_travel-target
+                                        exp = `ZI_TRAVEL` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_travel-conditions
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_assoc_condition( ( local = `TRAVELUUID` target = `TRAVELUUID` ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD projection_redirects.
+
+    DATA(ls_parsed) = z2ui5_cl_rap_util=>parse_ddl_associations(
+      |define root view entity ZC_Travel provider contract transactional_query\n| &&
+      |  as projection on ZI_Travel\n| &&
+      |\{\n  key TravelUUID,\n  AgencyID,\n| &&
+      |  _Booking : redirected to composition child ZC_Booking,\n| &&
+      |  _Agency\n\}| ).
+
+    cl_abap_unit_assert=>assert_equals( act = ls_parsed-base
+                                        exp = `ZI_TRAVEL` ).
+    DATA(ls_booking) = assoc( it_assoc = ls_parsed-associations name = `_BOOKING` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_booking-target
+                                        exp = `ZC_BOOKING` ).
+    cl_abap_unit_assert=>assert_true( ls_booking-is_composition ).
+
+    ls_parsed = z2ui5_cl_rap_util=>parse_ddl_associations(
+      `define view entity ZC_Booking as projection on ZI_Booking { key BookingUUID, _Travel : redirected to parent ZC_Travel }` ).
+    DATA(ls_travel) = assoc( it_assoc = ls_parsed-associations name = `_TRAVEL` ).
+    cl_abap_unit_assert=>assert_true( ls_travel-is_to_parent ).
+    cl_abap_unit_assert=>assert_equals( act = ls_travel-target
+                                        exp = `ZC_TRAVEL` ).
+
+  ENDMETHOD.
+
+
+  METHOD new_cardinality_syntax.
+
+    DATA(ls_parsed) = z2ui5_cl_rap_util=>parse_ddl_associations(
+      |define view entity ZI_X as select from zx\n| &&
+      |  association of many to one I_Country as _Country on $projection.Country = _Country.Country\n| &&
+      |  composition of exact one to many ZI_Item as _Item\n| &&
+      |\{ key id as Id, country as Country \}| ).
+
+    cl_abap_unit_assert=>assert_equals( act = assoc( it_assoc = ls_parsed-associations name = `_COUNTRY` )-target
+                                        exp = `I_COUNTRY` ).
+    DATA(ls_item) = assoc( it_assoc = ls_parsed-associations name = `_ITEM` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_item-target
+                                        exp = `ZI_ITEM` ).
+    cl_abap_unit_assert=>assert_true( ls_item-is_composition ).
+
+  ENDMETHOD.
+
+
+  METHOD comments_are_skipped.
+
+    DATA(ls_parsed) = z2ui5_cl_rap_util=>parse_ddl_associations(
+      |// association [0..1] to ZI_Old as _Old on $projection.A = _Old.A\n| &&
+      |define view entity ZI_X as select from zx\n| &&
+      |  /* association to ZI_Gone as _Gone\n     on $projection.A = _Gone.A */\n| &&
+      |  association [0..1] to ZI_Kept as _Kept on $projection.A = _Kept.A // the real one\n| &&
+      |\{ key a as A \}| ).
+
+    cl_abap_unit_assert=>assert_equals( act = lines( ls_parsed-associations )
+                                        exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = assoc( it_assoc = ls_parsed-associations name = `_KEPT` )-target
+                                        exp = `ZI_KEPT` ).
+
+  ENDMETHOD.
+
+
+  METHOD literal_is_no_field_pair.
+
+    "a text association: the language is compared with the session, which
+    "is no field of the entity
+    DATA(ls_parsed) = z2ui5_cl_rap_util=>parse_ddl_associations(
+      |define view entity ZI_X as select from zx\n| &&
+      |  association [0..*] to ZI_XText as _Text on $projection.Id = _Text.Id\n| &&
+      |    and _Text.Language = $session.system_language and _Text.Kind = 'A'\n| &&
+      |\{ key id as Id \}| ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = assoc( it_assoc = ls_parsed-associations name = `_TEXT` )-conditions
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_assoc_condition( ( local = `ID` target = `ID` ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD merge_with_base.
+
+    DATA(lt_own) = VALUE z2ui5_cl_rap_util=>ty_t_association(
+      ( name = `_BOOKING` target = `ZC_BOOKING` is_composition = abap_true ) ).
+    z2ui5_cl_rap_util=>merge_base_associations(
+      EXPORTING it_base  = VALUE #(
+                  ( name = `_BOOKING` target = `ZI_BOOKING` is_composition = abap_true
+                    conditions = VALUE #( ( local = `TRAVELUUID` target = `PARENTUUID` ) ) )
+                  ( name = `_AGENCY` target = `/DMO/I_AGENCY`
+                    conditions = VALUE #( ( local = `AGENCYID` target = `AGENCYID` ) ) ) )
+      CHANGING  ct_assoc = lt_own ).
+
+    "the redirect keeps its target and takes the condition
+    DATA(ls_booking) = assoc( it_assoc = lt_own name = `_BOOKING` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_booking-target
+                                        exp = `ZC_BOOKING` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( ls_booking-conditions )
+                                        exp = 1 ).
+    "what is not redirected is the base's
+    cl_abap_unit_assert=>assert_equals( act = assoc( it_assoc = lt_own name = `_AGENCY` )-target
+                                        exp = `/DMO/I_AGENCY` ).
+
+  ENDMETHOD.
+
+
+  METHOD parent_conditions.
+
+    DATA(lt_conditions) = z2ui5_cl_rap_util=>get_parent_conditions(
+      it_child_assoc = VALUE #( ( name = `_TRAVEL` target = `ZI_TRAVEL` is_to_parent = abap_true
+                                  conditions = VALUE #( ( local = `PARENTUUID` target = `TRAVELUUID` ) ) ) )
+      parent         = `zi_travel` ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_conditions
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_assoc_condition( ( local = `TRAVELUUID` target = `PARENTUUID` ) ) ).
 
   ENDMETHOD.
 

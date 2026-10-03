@@ -131,6 +131,11 @@ CLASS z2ui5_cl_rap_util DEFINITION
         "@UI.textArrangement: TEXT_FIRST, TEXT_LAST, TEXT_ONLY, TEXT_SEPARATE
         text_arrangement          TYPE string,
         crit_calc                 TYPE ty_s_crit_calc,
+        "added 2026-10
+        "the administrative field this is (@Semantics.user / .systemDateTime):
+        "CREATED_BY, CREATED_AT, LAST_CHANGED_BY, LAST_CHANGED_AT,
+        "LOCAL_LAST_CHANGED_AT
+        admin_field               TYPE string,
       END OF ty_s_field_info.
 
     TYPES ty_t_field_info TYPE STANDARD TABLE OF ty_s_field_info WITH DEFAULT KEY.
@@ -233,6 +238,41 @@ CLASS z2ui5_cl_rap_util DEFINITION
 
     TYPES ty_t_selection_variant TYPE STANDARD TABLE OF ty_s_selection_variant WITH DEFAULT KEY.
 
+    " one comparison of an association's ON condition: a field of the
+    " entity that has the association equals a field of its target
+    TYPES:
+      BEGIN OF ty_s_assoc_condition,
+        local  TYPE string,
+        target TYPE string,
+      END OF ty_s_assoc_condition.
+
+    TYPES ty_t_assoc_condition TYPE STANDARD TABLE OF ty_s_assoc_condition WITH EMPTY KEY.
+
+    " an association or composition of a CDS entity, read from its DDL
+    " source (read_associations) - name is the alias (_BOOKING), target the
+    " entity it leads to, both upper case
+    TYPES:
+      BEGIN OF ty_s_association,
+        name           TYPE string,
+        target         TYPE string,
+        is_composition TYPE abap_bool,
+        is_to_parent   TYPE abap_bool,
+        "the field pairs of the ON condition that compare two fields; a
+        "composition has none in its own source - they come from the
+        "child's association to parent
+        conditions     TYPE ty_t_assoc_condition,
+      END OF ty_s_association.
+
+    TYPES ty_t_association TYPE STANDARD TABLE OF ty_s_association WITH EMPTY KEY.
+
+    " what parse_ddl_associations finds in one DDL source
+    TYPES:
+      BEGIN OF ty_s_ddl_associations,
+        "the entity a projection is defined on (as projection on X)
+        base         TYPE string,
+        associations TYPE ty_t_association,
+      END OF ty_s_ddl_associations.
+
     TYPES:
       BEGIN OF ty_s_entity_info,
         "identification
@@ -262,6 +302,8 @@ CLASS z2ui5_cl_rap_util DEFINITION
         "the sort order of the default @UI.presentationVariant
         sort_order         TYPE ty_t_sort,
         selection_variants TYPE ty_t_selection_variant,
+        "the associations and compositions, from the DDL source
+        associations       TYPE ty_t_association,
       END OF ty_s_entity_info.
 
     "======= PUBLIC METHODS =======
@@ -376,6 +418,47 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE i.
 
+    "! The associations of a CDS entity with their targets and ON
+    "! conditions - read from its DDL source (DDDDLSRC), completed from the
+    "! entity a projection is defined on and, for a composition, from the
+    "! child's association to parent. Empty when the source cannot be read;
+    "! z2ui5_if_rap_ext~resolve_association still decides first
+    CLASS-METHODS read_associations
+      IMPORTING
+        entity_name   TYPE clike
+      RETURNING
+        VALUE(result) TYPE ty_t_association.
+
+    "! The associations a DDL source declares: association [..] to X as _A
+    "! on ..., association to parent X as _A on ..., composition [..] of X
+    "! as _A, the 7.58 forms with of many to one, and in a projection
+    "! _A : redirected to [composition child | parent] X. Comments are
+    "! skipped. Needs no system - the unit tests drive it
+    CLASS-METHODS parse_ddl_associations
+      IMPORTING
+        source        TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_s_ddl_associations.
+
+    "! A projection inherits the associations of its base: one it does not
+    "! redirect keeps the base's target, one it redirects keeps its own
+    "! target and takes what it lacks (the ON condition, the kind) from the
+    "! base
+    CLASS-METHODS merge_base_associations
+      IMPORTING
+        it_base  TYPE ty_t_association
+      CHANGING
+        ct_assoc TYPE ty_t_association.
+
+    "! The ON condition of a composition, seen from the parent: the child's
+    "! association to parent (target = parent) turned around
+    CLASS-METHODS get_parent_conditions
+      IMPORTING
+        it_child_assoc TYPE ty_t_association
+        parent         TYPE clike
+      RETURNING
+        VALUE(result)  TYPE ty_t_assoc_condition.
+
     "! align ABAP and JSON model representations of a key value: dates
     "! (2024-01-15), times (12:30:00), padding
     CLASS-METHODS normalize_value
@@ -403,6 +486,47 @@ CLASS z2ui5_cl_rap_util DEFINITION
     "! report reads the annotations of every value help entity it meets, and
     "! the same few entities come up again and again
     CLASS-DATA gt_cache TYPE STANDARD TABLE OF ty_s_cache WITH DEFAULT KEY.
+
+    TYPES:
+      BEGIN OF ty_s_assoc_cache,
+        name         TYPE string,
+        associations TYPE ty_t_association,
+      END OF ty_s_assoc_cache.
+
+    "! the associations per entity for the rest of the ABAP session
+    CLASS-DATA gt_assoc_cache TYPE STANDARD TABLE OF ty_s_assoc_cache WITH EMPTY KEY.
+
+    CLASS-METHODS read_associations_level
+      IMPORTING
+        entity_name   TYPE string
+        level         TYPE i
+      RETURNING
+        VALUE(result) TYPE ty_t_association.
+
+    "! the DDL source of an entity - empty when there is none to read
+    CLASS-METHODS read_ddl_source
+      IMPORTING
+        entity_name   TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the words and signs of a DDL source, comments left out - a quoted
+    "! literal stays one token, a bracket, brace, parenthesis, comma, colon,
+    "! semicolon and equals sign are tokens of their own
+    CLASS-METHODS tokenize_ddl
+      IMPORTING
+        source        TYPE string
+      RETURNING
+        VALUE(result) TYPE string_table.
+
+    "! the field pairs of an ON condition (its tokens) - alias is the
+    "! association's own name, which marks the target's side
+    CLASS-METHODS parse_on_condition
+      IMPORTING
+        it_tokens     TYPE string_table
+        alias         TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_t_assoc_condition.
 
     TYPES:
       BEGIN OF ty_s_entry,
@@ -628,6 +752,8 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
+    result-associations = read_associations( lv_name ).
+
   ENDMETHOD.
 
 
@@ -787,6 +913,26 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           cs_field-datapoint_qualifier = strip_quotes( lv_val ).
         WHEN `UI.DATAPOINT.CRITICALITY`.
           cs_field-datapoint_crit_field = to_upper( strip_quotes( lv_val ) ).
+        WHEN `SEMANTICS.USER.CREATEDBY`.
+          IF is_true( lv_val ).
+            cs_field-admin_field = `CREATED_BY`.
+          ENDIF.
+        WHEN `SEMANTICS.SYSTEMDATETIME.CREATEDAT` OR `SEMANTICS.SYSTEMDATE.CREATEDAT`.
+          IF is_true( lv_val ).
+            cs_field-admin_field = `CREATED_AT`.
+          ENDIF.
+        WHEN `SEMANTICS.USER.LASTCHANGEDBY`.
+          IF is_true( lv_val ).
+            cs_field-admin_field = `LAST_CHANGED_BY`.
+          ENDIF.
+        WHEN `SEMANTICS.SYSTEMDATETIME.LASTCHANGEDAT` OR `SEMANTICS.SYSTEMDATE.LASTCHANGEDAT`.
+          IF is_true( lv_val ).
+            cs_field-admin_field = `LAST_CHANGED_AT`.
+          ENDIF.
+        WHEN `SEMANTICS.SYSTEMDATETIME.LOCALINSTANCELASTCHANGEDAT`.
+          IF is_true( lv_val ).
+            cs_field-admin_field = `LOCAL_LAST_CHANGED_AT`.
+          ENDIF.
       ENDCASE.
 
       "@ObjectModel.text.element: ['Name'] - an array of one
@@ -1653,6 +1799,346 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
                    OR lv_rel_name = `BOOLE_D`      OR lv_rel_name = `XFELD`
                    OR lv_rel_name = `ABAP_BOOL`    OR lv_rel_name = `FLAG`
                    OR lv_rel_name = `BOOLEAN`      OR lv_rel_name = `XFLAG` ).
+  ENDMETHOD.
+
+
+  METHOD read_associations.
+    result = read_associations_level( entity_name = to_upper( entity_name )
+                                      level       = 1 ).
+  ENDMETHOD.
+
+
+  METHOD read_associations_level.
+
+    READ TABLE gt_assoc_cache INTO DATA(ls_cache) WITH KEY name = entity_name.
+    IF sy-subrc = 0.
+      result = ls_cache-associations.
+      RETURN.
+    ENDIF.
+
+    DATA(ls_parsed) = parse_ddl_associations( read_ddl_source( entity_name ) ).
+    result = ls_parsed-associations.
+
+    "a projection: what it does not redirect it exposes as the base has it
+    IF ls_parsed-base IS NOT INITIAL AND level < 4.
+      merge_base_associations( EXPORTING it_base  = read_associations_level( entity_name = ls_parsed-base
+                                                                             level       = level + 1 )
+                               CHANGING  ct_assoc = result ).
+    ENDIF.
+
+    "a composition names no ON condition - the child's association to
+    "parent does. Only one level down, so two entities that point at each
+    "other end here
+    IF level < 3.
+      LOOP AT result ASSIGNING FIELD-SYMBOL(<ls_assoc>)
+        WHERE is_composition = abap_true AND conditions IS INITIAL.
+        <ls_assoc>-conditions = get_parent_conditions(
+          it_child_assoc = read_associations_level( entity_name = <ls_assoc>-target
+                                                    level       = level + 1 )
+          parent         = entity_name ).
+      ENDLOOP.
+    ENDIF.
+
+    IF level = 1.
+      APPEND VALUE #( name = entity_name associations = result ) TO gt_assoc_cache.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD read_ddl_source.
+
+    "dynamic on purpose: the tables are not in every release, and a static
+    "SELECT on one that is missing would keep the class from activating
+    DATA lv_ddlname TYPE string.
+    DATA(lv_table) = `DDDDLSRC`.
+    DATA(lv_where) = |DDLNAME = @ENTITY_NAME AND AS4LOCAL = 'A'|.
+    TRY.
+        SELECT SINGLE ('SOURCE') FROM (lv_table)
+          WHERE (lv_where)
+          INTO @result.
+        IF sy-subrc = 0.
+          RETURN.
+        ENDIF.
+        "an entity whose DDL source has another name
+        lv_table = `DDLDEPENDENCY`.
+        lv_where = |OBJECTNAME = @ENTITY_NAME AND STATE = 'A'|.
+        SELECT SINGLE ('DDLNAME') FROM (lv_table)
+          WHERE (lv_where)
+          INTO @lv_ddlname.
+        IF sy-subrc <> 0 OR lv_ddlname = entity_name.
+          RETURN.
+        ENDIF.
+        lv_table = `DDDDLSRC`.
+        lv_where = |DDLNAME = @LV_DDLNAME AND AS4LOCAL = 'A'|.
+        SELECT SINGLE ('SOURCE') FROM (lv_table)
+          WHERE (lv_where)
+          INTO @result.
+      CATCH cx_root.
+        CLEAR result.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD tokenize_ddl.
+
+    DATA lv_token TYPE string.
+    DATA(lv_length) = strlen( source ).
+    DATA(lv_pos) = 0.
+
+    WHILE lv_pos < lv_length.
+      DATA(lv_char) = substring( val = source off = lv_pos len = 1 ).
+      DATA(lv_next) = ``.
+      IF lv_pos + 1 < lv_length.
+        lv_next = substring( val = source off = lv_pos + 1 len = 1 ).
+      ENDIF.
+
+      "a comment: // to the end of the line, /* to */
+      IF lv_char = `/` AND ( lv_next = `/` OR lv_next = `*` ).
+        IF lv_token IS NOT INITIAL.
+          APPEND lv_token TO result.
+          CLEAR lv_token.
+        ENDIF.
+        IF lv_next = `/`.
+          DATA(lv_end) = find( val = source sub = cl_abap_char_utilities=>newline off = lv_pos ).
+          lv_pos = COND #( WHEN lv_end < 0 THEN lv_length ELSE lv_end + 1 ).
+        ELSE.
+          lv_end = find( val = source sub = `*/` off = lv_pos + 2 ).
+          lv_pos = COND #( WHEN lv_end < 0 THEN lv_length ELSE lv_end + 2 ).
+        ENDIF.
+        CONTINUE.
+      ENDIF.
+
+      "a literal is one token, whatever it contains
+      IF lv_char = `'`.
+        IF lv_token IS NOT INITIAL.
+          APPEND lv_token TO result.
+          CLEAR lv_token.
+        ENDIF.
+        lv_end = find( val = source sub = `'` off = lv_pos + 1 ).
+        IF lv_end < 0.
+          lv_end = lv_length - 1.
+        ENDIF.
+        APPEND substring( val = source off = lv_pos len = lv_end - lv_pos + 1 ) TO result.
+        lv_pos = lv_end + 1.
+        CONTINUE.
+      ENDIF.
+
+      IF lv_char = ` ` OR lv_char = cl_abap_char_utilities=>newline
+        OR lv_char = cl_abap_char_utilities=>cr_lf(1)
+        OR lv_char = cl_abap_char_utilities=>horizontal_tab.
+        IF lv_token IS NOT INITIAL.
+          APPEND lv_token TO result.
+          CLEAR lv_token.
+        ENDIF.
+      ELSEIF lv_char CA `[]{}(),;:=`.
+        IF lv_token IS NOT INITIAL.
+          APPEND lv_token TO result.
+          CLEAR lv_token.
+        ENDIF.
+        APPEND lv_char TO result.
+      ELSE.
+        lv_token = lv_token && lv_char.
+      ENDIF.
+      lv_pos = lv_pos + 1.
+    ENDWHILE.
+
+    IF lv_token IS NOT INITIAL.
+      APPEND lv_token TO result.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD parse_ddl_associations.
+
+    DATA(lt_tokens) = tokenize_ddl( source ).
+    DATA(lv_count) = lines( lt_tokens ).
+    "upper case once - the names are compared and returned upper case
+    LOOP AT lt_tokens ASSIGNING FIELD-SYMBOL(<lv_token>).
+      <lv_token> = to_upper( <lv_token> ).
+    ENDLOOP.
+
+    DATA(lv_idx) = 1.
+    WHILE lv_idx <= lv_count.
+      DATA(lv_token) = lt_tokens[ lv_idx ].
+
+      "as projection on BASE
+      IF lv_token = `PROJECTION` AND lv_idx + 2 <= lv_count AND lt_tokens[ lv_idx + 1 ] = `ON`.
+        result-base = lt_tokens[ lv_idx + 2 ].
+        lv_idx = lv_idx + 3.
+        CONTINUE.
+      ENDIF.
+
+      "_Alias : redirected to [composition child | parent] TARGET
+      IF lv_idx + 3 <= lv_count AND lt_tokens[ lv_idx + 1 ] = `:`
+        AND lt_tokens[ lv_idx + 2 ] = `REDIRECTED` AND lt_tokens[ lv_idx + 3 ] = `TO`.
+        DATA(ls_redirect) = VALUE ty_s_association( name = lv_token ).
+        lv_idx = lv_idx + 4.
+        IF lv_idx + 1 <= lv_count AND lt_tokens[ lv_idx ] = `COMPOSITION` AND lt_tokens[ lv_idx + 1 ] = `CHILD`.
+          ls_redirect-is_composition = abap_true.
+          lv_idx = lv_idx + 2.
+        ELSEIF lv_idx <= lv_count AND lt_tokens[ lv_idx ] = `PARENT`.
+          ls_redirect-is_to_parent = abap_true.
+          lv_idx = lv_idx + 1.
+        ENDIF.
+        IF lv_idx <= lv_count.
+          ls_redirect-target = lt_tokens[ lv_idx ].
+          DELETE result-associations WHERE name = ls_redirect-name.
+          APPEND ls_redirect TO result-associations.
+        ENDIF.
+        lv_idx = lv_idx + 1.
+        CONTINUE.
+      ENDIF.
+
+      IF lv_token <> `ASSOCIATION` AND lv_token <> `COMPOSITION`.
+        lv_idx = lv_idx + 1.
+        CONTINUE.
+      ENDIF.
+
+      DATA(ls_assoc) = VALUE ty_s_association( is_composition = xsdbool( lv_token = `COMPOSITION` ) ).
+      lv_idx = lv_idx + 1.
+
+      "[0..*] - the cardinality in brackets
+      IF lv_idx <= lv_count AND lt_tokens[ lv_idx ] = `[`.
+        WHILE lv_idx <= lv_count AND lt_tokens[ lv_idx ] <> `]`.
+          lv_idx = lv_idx + 1.
+        ENDWHILE.
+        lv_idx = lv_idx + 1.
+      ENDIF.
+      "of many to one, of exact one to many - the cardinality in words
+      IF lv_idx <= lv_count AND lt_tokens[ lv_idx ] = `OF`.
+        lv_idx = lv_idx + 1.
+        WHILE lv_idx <= lv_count
+          AND ( lt_tokens[ lv_idx ] = `EXACT` OR lt_tokens[ lv_idx ] = `ONE`
+             OR lt_tokens[ lv_idx ] = `MANY` OR lt_tokens[ lv_idx ] = `TO` ).
+          lv_idx = lv_idx + 1.
+        ENDWHILE.
+      ENDIF.
+      IF lv_idx <= lv_count AND lt_tokens[ lv_idx ] = `TO`.
+        lv_idx = lv_idx + 1.
+      ENDIF.
+      IF lv_idx <= lv_count AND lt_tokens[ lv_idx ] = `PARENT`.
+        ls_assoc-is_to_parent = abap_true.
+        lv_idx = lv_idx + 1.
+      ENDIF.
+      IF lv_idx + 2 > lv_count OR lt_tokens[ lv_idx + 1 ] <> `AS`.
+        "not a declaration this parser knows - e.g. the word in a comment
+        "that survived, or an annotation value
+        CONTINUE.
+      ENDIF.
+      ls_assoc-target = lt_tokens[ lv_idx ].
+      ls_assoc-name = lt_tokens[ lv_idx + 2 ].
+      lv_idx = lv_idx + 3.
+
+      IF lv_idx <= lv_count AND lt_tokens[ lv_idx ] = `ON`.
+        lv_idx = lv_idx + 1.
+        DATA lt_condition TYPE string_table.
+        CLEAR lt_condition.
+        WHILE lv_idx <= lv_count.
+          lv_token = lt_tokens[ lv_idx ].
+          IF lv_token = `ASSOCIATION` OR lv_token = `COMPOSITION` OR lv_token = `{`
+            OR lv_token = `}` OR lv_token = `WHERE` OR lv_token = `GROUP` OR lv_token = `UNION`
+            OR lv_token = `WITH` OR lv_token = `,` OR lv_token = `;`.
+            EXIT.
+          ENDIF.
+          APPEND lv_token TO lt_condition.
+          lv_idx = lv_idx + 1.
+        ENDWHILE.
+        ls_assoc-conditions = parse_on_condition( it_tokens = lt_condition
+                                                  alias     = ls_assoc-name ).
+      ENDIF.
+
+      DELETE result-associations WHERE name = ls_assoc-name.
+      APPEND ls_assoc TO result-associations.
+    ENDWHILE.
+
+  ENDMETHOD.
+
+
+  METHOD parse_on_condition.
+
+    "a = b AND c = d - every comparison of two fields; one with a literal,
+    "a session variable or another operator is no field pair and left out
+    DATA(lv_prefix) = |{ alias }.|.
+    DATA(lv_prefix_length) = strlen( lv_prefix ).
+    DATA(lv_count) = lines( it_tokens ).
+    DATA(lv_idx) = 1.
+
+    WHILE lv_idx + 2 <= lv_count.
+      IF it_tokens[ lv_idx + 1 ] <> `=`.
+        lv_idx = lv_idx + 1.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_left) = it_tokens[ lv_idx ].
+      DATA(lv_right) = it_tokens[ lv_idx + 2 ].
+      lv_idx = lv_idx + 3.
+
+      "the target's side is the one that starts with the alias
+      DATA(lv_target) = ``.
+      DATA(lv_local) = ``.
+      IF strlen( lv_left ) > lv_prefix_length AND substring( val = lv_left len = lv_prefix_length ) = lv_prefix.
+        lv_target = substring( val = lv_left off = lv_prefix_length ).
+        lv_local = lv_right.
+      ELSEIF strlen( lv_right ) > lv_prefix_length AND substring( val = lv_right len = lv_prefix_length ) = lv_prefix.
+        lv_target = substring( val = lv_right off = lv_prefix_length ).
+        lv_local = lv_left.
+      ELSE.
+        CONTINUE.
+      ENDIF.
+
+      "$projection.Field, Source.Field or Field - the field is the last part
+      IF lv_local(1) = `'` OR lv_local(1) = `#` OR lv_local CS `$SESSION` OR lv_local CS `$PARAMETERS`
+        OR lv_local CO `0123456789.-`.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_dot) = find( val = lv_local sub = `.` occ = -1 ).
+      IF lv_dot >= 0.
+        lv_local = substring( val = lv_local off = lv_dot + 1 ).
+      ENDIF.
+      IF lv_local IS INITIAL OR lv_target IS INITIAL OR lv_target CS `.`.
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( local = lv_local target = lv_target ) TO result.
+    ENDWHILE.
+
+  ENDMETHOD.
+
+
+  METHOD merge_base_associations.
+
+    LOOP AT it_base INTO DATA(ls_base).
+      READ TABLE ct_assoc ASSIGNING FIELD-SYMBOL(<ls_own>) WITH KEY name = ls_base-name.
+      IF sy-subrc <> 0.
+        APPEND ls_base TO ct_assoc.
+        CONTINUE.
+      ENDIF.
+      IF <ls_own>-conditions IS INITIAL.
+        <ls_own>-conditions = ls_base-conditions.
+      ENDIF.
+      IF <ls_own>-is_composition = abap_false AND <ls_own>-is_to_parent = abap_false.
+        <ls_own>-is_composition = ls_base-is_composition.
+        <ls_own>-is_to_parent = ls_base-is_to_parent.
+      ENDIF.
+      IF <ls_own>-target IS INITIAL.
+        <ls_own>-target = ls_base-target.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_parent_conditions.
+
+    DATA(lv_parent) = to_upper( parent ).
+    LOOP AT it_child_assoc INTO DATA(ls_assoc) WHERE is_to_parent = abap_true AND target = lv_parent.
+      LOOP AT ls_assoc-conditions INTO DATA(ls_condition).
+        APPEND VALUE #( local = ls_condition-target target = ls_condition-local ) TO result.
+      ENDLOOP.
+      RETURN.
+    ENDLOOP.
+
   ENDMETHOD.
 
 ENDCLASS.
