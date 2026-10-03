@@ -310,6 +310,9 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     render_sort_controls( io_toolbar = lo_toolbar
                           client     = client ).
 
+    render_variant_controls( io_toolbar = lo_toolbar
+                             client     = client ).
+
     "@UI.lineItem actions of type #FOR_ACTION - on the selected rows
     LOOP AT get_line_item_actions( abap_false ) INTO DATA(ls_action).
       lo_toolbar->tag( `Button`
@@ -320,9 +323,22 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
                                     arg = ls_action-name ) ).
     ENDLOOP.
 
+    "@UI.lineItem #FOR_INTENT_BASED_NAVIGATION - to another app
+    LOOP AT get_line_item_intents( ) INTO DATA(ls_intent).
+      lo_toolbar->tag( `Button`
+          )->a( n = `text`
+                t = ls_intent-label
+          )->a( n = `press`
+                v = client->_event( val = ls_event-intent
+                                    arg = ls_intent-name ) ).
+    ENDLOOP.
+
     render_extension( spot         = cs_spot-toolbar
                       io_container = lo_toolbar
                       client       = client ).
+
+    render_export_button( io_toolbar = lo_toolbar
+                          client     = client ).
 
     lo_toolbar->tag( `Button`
         )->a( n = `icon`

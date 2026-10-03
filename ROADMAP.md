@@ -1,133 +1,115 @@
 # Roadmap
 
-What the 2026-09 and 2026-10 rounds implemented, and what is still open.
-Everything marked **done** passes the three offline gates (abaplint, the
-transpiled unit tests, the abap2UI5-linter); none of it has been clicked
-through in an SAP system yet — that is the first open item.
+What the 2026-09 and the two 2026-10 rounds implemented, and what is still
+open. Everything marked **done** passes the three offline gates (abaplint,
+the transpiled unit tests, the abap2UI5-linter); **none of it has been
+clicked through in an SAP system yet** - that is the first open item, and
+[docs/system-test.md](docs/system-test.md) is the checklist for it.
 
-> **Paused until the system test (section 0) is done.** Nothing below
-> "Next, after the system test" is started before it: most of it builds on
-> RAP behavior (derived type names, draft actions, MAPPED keys) that has only
-> been written from documentation so far. What the system test shows decides
-> the order.
+## Open
 
-## Next, after the system test
+1. **The system test** ([docs/system-test.md](docs/system-test.md)) - first,
+   and its findings before anything below. The RAP write path, the draft
+   handling, the derived type names (`\ASSOCIATION=...\TYPE=CREATE` for a
+   create by association), the host variables in dynamic WHERE clauses, the
+   DDL source read and the hand-written sidecar of `z2ui5_t_rap_var` were
+   written from documentation.
+2. **Feature control** (`GET PERMISSIONS`: actions disabled and fields
+   read-only per instance) - blocked by the tooling, see below.
+3. **Reading a draft back**: resume a draft of the user's own with its data,
+   and with it keep the draft when the user leaves the page (today leaving
+   discards it, and a draft left by another app can only be discarded) -
+   blocked the same way.
+4. **Late numbering through `CONVERT KEY`** - blocked the same way. A record
+   with `@Semantics.user.createdBy` and `.systemDateTime.createdAt` is found
+   again without it (done); one without them still returns to the list.
+5. **Flexible column layout** (list and object page side by side) - not
+   started: the floorplans are apps of their own, called with
+   `nav_app_call`; side by side the object page would have to render into a
+   nested view of the list report. A design decision first.
+6. **Microcharts** (`sap.suite.ui.microchart`) for the chart cards - the
+   cards draw with `sap.m`, because the microchart library is SAPUI5 only and
+   the view gate renders with OpenUI5.
+7. A **qualified `@UI.lineItem`** for the table card of a presentation
+   variant (it shows the unqualified columns today).
+8. German through a **translation of the text pool** instead of the built-in
+   German texts (needs the I18N part of the sidecar, best exported from a
+   system).
+9. The **overview page and value help** in the transpiled unit run (the
+   overview's test runs in a system only).
 
-Collected from the sections below, roughly by value:
+### Why 2-4 are blocked
 
-1. fix whatever the system test of section 0 finds
-2. association targets found automatically (today only through
-   `z2ui5_if_rap_ext~resolve_association`)
-3. child entities written (create by association, update of items)
-4. late numbering: read the key back after save (`CONVERT KEY`) instead of
-   returning to the list
-5. RAW (UUID) keys in `reload_data` - a host variable instead of a
-   character literal, if the system test shows the literal fails
-6. feature control (`GET PERMISSIONS`: disabled actions, read-only fields per instance)
-7. draft editing across roundtrips: keep a draft, Discard, show another
-   user's unsaved changes
-8. value help with its own filter fields, typeahead suggestions
-9. deep link / bookmark of an object page (the page can already be opened by key)
-10. more chart types, cards from `@UI.presentationVariant`
-11. a text pool for the built-in texts (translatable in SE63; English and
-    German are built in today)
-12. unit tests for the floorplans (they need the core in the transpiled run)
+They need EML in its dynamic form - `GET PERMISSIONS ... OPERATIONS`,
+`READ ENTITIES OPERATIONS`, `CONVERT KEY` - because the entity is only known
+at runtime. abaplint (2.120.65, the newest release on 2026-10-03) parses only
+the static forms, so the statements fail the `parser_error` gate, and no
+offline tool checks their exact syntax. The ways out, each a maintainer
+decision:
 
-## 0 · Verify in a system (open, first)
+- a small class per statement, its `.abap` file in `global.noIssues` of
+  `abaplint.jsonc`, called dynamically (`CALL METHOD (class)=>(method)` in a
+  `TRY`) so that a system where it does not activate only loses the feature -
+  at the price of code no gate reads and an activation error on the pull of
+  such a system;
+- the grammar contributed to abaplint, then the statements in
+  `z2ui5_cl_rap_eml` like the others.
 
-Install via abapGit on a system with the /DMO/ flight reference scenario and
-click through `z2ui5_cl_rap_test`. In this order, because these were written
-without a system:
+## Done
 
-1. `GET_ANNOS` answers (`z2ui5_cl_rap_util=>read_raw_annotations( )-with_metadata_extensions`
-   is `abap_true`) and a RAP projection shows its metadata-extension columns
-2. DDIC keys and data element texts arrive (`read_entity( )-keys`)
-3. `/DMO/C_TRAVEL_PROCESSOR_M`: Create, Edit, Delete, an action with and one
-   without parameter - messages of a rejected save
-4. the value help returns its selection (single and multi) into the dialog,
-   the filter bar and the object page
-5. a `#LINEITEM_REFERENCE` facet with `resolve_association`
-6. `/DMO/C_TRAVEL_A_D` (draft): a change and a create go through Edit/Activate and
-   leave no draft behind; a change while another user holds a draft is refused with
-   the business object's message
-7. sorting and "more" in the list report, the worklist tabs of a `@UI.selectionVariant`
+### 2026-10, second round
 
-## 1 · Hygiene — done
+- **Database tables read-only by default**: their writes are switched on per
+  entity (`z2ui5_if_rap_ext~adjust_capabilities`), and then checked against
+  `S_TABU_NAM`, locked (`ENQUEUE_E_TABLE`) and refused when the row changed
+  meanwhile. Every write and action is checked on the server, and only
+  annotated actions run.
+- **Child entities**: written through the BDEF of their root
+  (`ty_s_rap_context`); create by association from a composition's table; a
+  change of a child of a draft business object edits and activates the root.
+- **Associations from the DDL source** (`read_associations`, unit-tested
+  parser): the target of a `#LINEITEM_REFERENCE` facet and the ON condition
+  of its rows without `resolve_association`.
+- **Draft editing across roundtrips**: Edit, Save (into the draft, then
+  Activate - a refused activation keeps the draft and the edit mode),
+  Cancel and Back discard, an existing own draft can be discarded.
+- **Keys as typed host variables** (RAW/UUID keys), late numbering by the
+  administrative fields, the fields of RAP messages marked in edit mode.
+- **`@Consumption.filter`** (mandatory, single value, hidden) and the link
+  types of **`@UI.lineItem`** (`#WITH_URL`, `#WITH_NAVIGATION_PATH`, the
+  intent-based navigations of the launchpad).
+- **Value help**: a filter bar of the value help entity's selection fields;
+  suggestions while typing.
+- **Deep links**: `z2ui5_cl_rap_start` opens floorplans from a URL (an
+  allow-list per subclass), the object page copies a link to its record.
+- **Views per user** (`z2ui5_cl_rap_variant`, table `z2ui5_t_rap_var`), a
+  columns dialog, the **CSV export**.
+- **Overview**: shares (`#DONUT`, `#PIE`) and trends (`#LINE`, `#AREA`) next
+  to the bars, cards from `@UI.presentationVariant`.
+- **Text pool** for the English texts (translatable in SE63); the list report
+  and object page **tested transpiled** against the core's public API.
 
-- core pinned to its release tag, `bump-core.yml`, the weekly canary against `main`
-- linter 0.8.5, bumped by hand
-- unit tests transpiled in CI (`npm run unit`)
+### 2026-10, first round
 
-## 2 · Value help — done
+- drafts written (Edit, change, Activate in one request), sorting and paging
+  in the database, `@UI.selectionVariant` tabs, `@UI.presentationVariant`
+  sort, `#DATAPOINT_REFERENCE` header facets, `@UI.textArrangement`, a titled
+  group per `@UI.fieldGroup` in the action dialog, the KPI card colored by
+  `criticalityCalculation`, `extend_view`, German texts
 
-- the selection comes back (it never did: the confirm read an argument that was not sent)
-- search in the database, multi-select, `additionalBinding` with usage FILTER and RESULT
-- one value help for every floorplan: filter bar, object page (edit), action dialog
-- dropdown for `sizeCategory #XS`, bound to a public attribute
+### 2026-09
 
-Open: a value help with its own filter fields (`@Consumption.valueHelpDefinition`
-with a view that has selection fields), typeahead (suggestions while typing).
-
-## 3 · Popup / action dialog — done
-
-- mandatory fields checked before confirm, date/time value formats
-- the parameter dialog of RAP actions
-
-- 2026-10: a titled group per `@UI.fieldGroup`
-
-## 4 · Detail page (object page) — done
-
-- facets: `#COLLECTION` with subsections, `#FIELDGROUP_REFERENCE`,
-  `#IDENTIFICATION_REFERENCE`, `#LINEITEM_REFERENCE` (child table, row → child page)
-- Edit/Delete only where allowed, keys read-only on change, required fields,
-  value helps in edit mode, reload after save, open by key
-
-Open:
-- the target entity of an association is not read from the system — it comes
-  from `resolve_association` (extension or subclass); find it automatically
-- ~~`#DATAPOINT_REFERENCE` header facets, `@UI.textArrangement`~~ — done 2026-10
-- a deep link / bookmark (the page can be opened by key — the URL part is missing)
-
-## 5 · RAP write path — done (root entities, draft included)
-
-- capabilities from the BDEF derived types, dynamic EML create/update/delete,
-  actions (toolbar, inline, header) with parameters, REPORTED/FAILED messages
-
-Open:
-- ~~draft~~ — done 2026-10: Edit → change the draft → Activate, create a draft → Activate, one commit
-- draft *editing* in the UI (keep a draft across roundtrips, Discard, "unsaved changes" of another user) —
-  today a change is drafted and activated within one request
-- child entities (create by association, update of items)
-- late numbering: the key a BO assigns only on save is not read back (`CONVERT KEY`) —
-  the page returns to the list instead (early numbering is read from `MAPPED`)
-- RAW (UUID) keys: `reload_data` compares them with a character literal in a dynamic
-  WHERE — verify in a system, a host variable may be needed
-- feature control (`GET PERMISSIONS`: disabled actions, read-only fields per instance)
-
-## 6 · Worklist — done
-
-- a subclass of the list report: search, segments (`segment_field`), actions, navigation
-
-- 2026-10: tabs from `@UI.selectionVariant` when no `segment_field` is given, sort from `@UI.presentationVariant`
-
-## 7 · Overview page — done
-
-- `sap.f` cards, aggregated KPI (SUM/AVG/MIN/MAX/COUNT), chart card from `@UI.chart`, navigation
-
-- 2026-10: KPI card colored by `@UI.dataPoint.criticalityCalculation`
-
-Open: more chart types (the bars are one type for all), cards from `@UI.presentationVariant`.
-
-## 8 · Extension points — done
-
-- `z2ui5_if_rap_ext` (`set_extension( )`): metadata, WHERE, rows, save, events, texts, associations
-- `z2ui5_cl_rap_floorplan`: shared protected steps for every floorplan
-
-- 2026-10: `extend_view` adds controls at fixed places (`cs_spot`) without a subclass
-
-## Cross-cutting — open
-
-- ~~server-side sorting and paging~~ — done 2026-10 (list report and worklist)
-- i18n of the built-in texts: English and German are built in (2026-10); other
-  languages through `get_text` — a text pool would make them translatable in SE63
-- unit tests for more than `z2ui5_cl_rap_util` (the floorplans need the core in the transpiled run)
+- core pinned to its release tag (`bump-core.yml`, the weekly canary),
+  linter bumped by hand, unit tests transpiled in CI
+- value help: the selection comes back, search in the database,
+  multi-select, `additionalBinding`, one value help for every floorplan,
+  dropdowns for `sizeCategory #XS`
+- action dialog: mandatory fields, date/time formats, the parameter dialog
+  of RAP actions
+- object page: facets (`#COLLECTION`, `#FIELDGROUP_REFERENCE`,
+  `#IDENTIFICATION_REFERENCE`, `#LINEITEM_REFERENCE`), Edit/Delete only where
+  allowed, value helps in edit mode, open by key
+- RAP write path: capabilities from the BDEF derived types, dynamic EML,
+  actions with parameters, REPORTED/FAILED messages
+- worklist as a subclass of the list report; overview page with `sap.f`
+  cards; the extension interface and the shared floorplan superclass

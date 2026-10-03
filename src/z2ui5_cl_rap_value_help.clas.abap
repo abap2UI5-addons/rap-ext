@@ -11,6 +11,11 @@
 "! The search field searches in the database (the searchable text fields,
 "! see build_search_condition), not only in the rows already loaded.
 "!
+"! A value help entity with @UI.selectionField fields gets filter fields of
+"! its own (since 2026-10): the dialog is then a sap.m.Dialog with a filter
+"! bar and a table instead of the TableSelectDialog, which has no room for
+"! them. The filter syntax is the list report's.
+"!
 "! The escape hatch is plain inheritance: the class is deliberately not
 "! FINAL and every rendering and event step is a protected method a
 "! subclass can redefine with ordinary abap2UI5 view code. Events the
@@ -29,7 +34,19 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
         confirm TYPE string VALUE `VH_CONFIRM`,
         cancel  TYPE string VALUE `VH_CANCEL`,
         search  TYPE string VALUE `VH_SEARCH`,
+        "added 2026-10: Go of the filter bar
+        go      TYPE string VALUE `VH_GO`,
       END OF cs_event.
+
+    " a filter field of the dialog - one per @UI.selectionField
+    TYPES:
+      BEGIN OF ty_s_filter,
+        name  TYPE string,
+        label TYPE string,
+        value TYPE string,
+      END OF ty_s_filter.
+
+    TYPES ty_t_filter TYPE STANDARD TABLE OF ty_s_filter WITH EMPTY KEY.
 
     METHODS constructor
       IMPORTING
@@ -83,6 +100,11 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
     "! as a public attribute - the caller reads it after nav_app_leave( )
     DATA mr_result_table TYPE REF TO data.
 
+    "! the filter fields of the dialog (@UI.selectionField of the entity)
+    DATA mt_filter TYPE ty_t_filter.
+    "! the search field of the filter bar
+    DATA mv_filter_search TYPE string.
+
   PROTECTED SECTION.
     DATA mv_cds_view   TYPE string.
     DATA mv_element    TYPE string.
@@ -112,6 +134,11 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
         VALUE(result) TYPE string.
 
     METHODS render_dialog
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    "! the dialog with a filter bar - when the entity has filter fields
+    METHODS render_filter_dialog
       IMPORTING
         client TYPE REF TO z2ui5_if_client.
 
@@ -151,6 +178,12 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
                            THEN ms_entity-header_info-type_name_plural
                            ELSE ms_entity-name ).
       ENDIF.
+      LOOP AT ms_entity-fields INTO DATA(ls_field)
+        WHERE is_selection_field = abap_true AND filter_hidden = abap_false AND is_hidden = abap_false.
+        APPEND VALUE #( name  = ls_field-name
+                        label = ls_field-label
+                        value = ls_field-filter_default ) TO mt_filter.
+      ENDLOOP.
       IF mv_element IS INITIAL.
         "the key is what a value help returns - the first field otherwise
         IF ms_entity-keys IS NOT INITIAL.
@@ -170,13 +203,26 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
 
     IF client->check_on_event( cs_event-confirm ).
       on_confirm( client ).
+      "a sap.m.Dialog does not close itself, the TableSelectDialog does
+      IF mt_filter IS NOT INITIAL.
+        client->popup_destroy( ).
+      ENDIF.
       client->nav_app_leave( ).
       RETURN.
     ENDIF.
 
     IF client->check_on_event( cs_event-cancel ).
       mv_confirmed = abap_false.
+      IF mt_filter IS NOT INITIAL.
+        client->popup_destroy( ).
+      ENDIF.
       client->nav_app_leave( ).
+      RETURN.
+    ENDIF.
+
+    IF client->check_on_event( cs_event-go ).
+      mv_search = mv_filter_search.
+      load_data( ).
       RETURN.
     ENDIF.
 
@@ -217,6 +263,19 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
       ENDIF.
       DATA(lv_cond) = build_filter_condition( is_field = ls_field
                                               value    = |={ ls_filter-value }| ).
+      IF lv_cond IS NOT INITIAL.
+        APPEND lv_cond TO lt_and.
+      ENDIF.
+    ENDLOOP.
+
+    "the user's filter fields - the list report's syntax
+    LOOP AT mt_filter INTO DATA(ls_user) WHERE value IS NOT INITIAL.
+      READ TABLE ms_entity-fields INTO ls_field WITH KEY name = ls_user-name.
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
+      lv_cond = build_filter_condition( is_field = ls_field
+                                        value    = ls_user-value ).
       IF lv_cond IS NOT INITIAL.
         APPEND lv_cond TO lt_and.
       ENDIF.
@@ -289,6 +348,11 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    IF mt_filter IS NOT INITIAL.
+      render_filter_dialog( client ).
+      RETURN.
+    ENDIF.
+
     ASSIGN mr_data->* TO <lt_data>.
 
     DATA(lo_popup) = z2ui5_cl_ui5_view_builder=>factory( ).
@@ -356,6 +420,120 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
                   v = lv_text_path ).
       ENDIF.
     ENDLOOP.
+
+    client->popup_display( lo_popup->stringify( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD render_filter_dialog.
+
+    FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
+    ASSIGN mr_data->* TO <lt_data>.
+
+    DATA(lv_mode) = `SingleSelectLeft`.
+    IF mv_multi = abap_true.
+      lv_mode = `MultiSelect`.
+    ENDIF.
+
+    DATA(lo_popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+
+    DATA(lo_dialog) = lo_popup->ele( n  = `FragmentDefinition`
+                                      ns = `core`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+
+        )->ele( `Dialog`
+            )->a( n = `title`
+                  t = mv_title
+            )->a( n = `contentWidth`
+                  v = `60rem`
+            )->a( n = `resizable`
+                  v = `true`
+            )->a( n = `draggable`
+                  v = `true` ).
+
+    "the filter bar: search, one input per filter field, Go
+    DATA(lo_bar) = lo_dialog->ele( `subHeader`
+        )->ele( `OverflowToolbar` ).
+    lo_bar->tag( `SearchField`
+        )->a( n = `value`
+              v = client->_bind( mv_filter_search )
+        )->a( n = `search`
+              v = client->_event( cs_event-go )
+        )->a( n = `width`
+              v = `12rem` ).
+    lo_bar->ele( `HBox`
+        )->a( n = `items`
+              v = client->_bind( mt_filter )
+        )->a( n = `alignItems`
+              v = `Center`
+        )->tag( `Input`
+            )->a( n = `value`
+                  v = `{VALUE}`
+            )->a( n = `placeholder`
+                  v = `{LABEL}`
+            )->a( n = `tooltip`
+                  t = get_text( cs_text-filter_hint )
+            )->a( n = `submit`
+                  v = client->_event( cs_event-go )
+            )->a( n = `width`
+                  v = `10rem`
+            )->a( n = `class`
+                  v = `sapUiTinyMarginBegin` ).
+    lo_bar->tag( `ToolbarSpacer` ).
+    lo_bar->tag( `Button`
+        )->a( n = `text`
+              t = get_text( cs_text-go )
+        )->a( n = `type`
+              v = `Emphasized`
+        )->a( n = `press`
+              v = client->_event( cs_event-go ) ).
+
+    DATA(lo_table) = lo_dialog->ele( `content`
+        )->ele( `Table`
+            )->a( n = `items`
+                  v = `{path:'` && client->_bind( val  = <lt_data>
+                                                  path = abap_true ) && `'}`
+            )->a( n = `mode`
+                  v = lv_mode
+            )->a( n = `growing`
+                  v = `true` ).
+
+    DATA(lo_columns) = lo_table->ele( `columns` ).
+    DATA(lo_cells) = lo_table->ele( `items`
+        )->ele( `ColumnListItem`
+            )->a( n = `selected`
+                  v = |\{{ cv_select_column }\}|
+            )->ele( `cells` ).
+    LOOP AT ms_entity-fields INTO DATA(ls_field)
+      WHERE is_visible = abap_true AND is_hidden = abap_false.
+      lo_columns->ele( `Column`
+          )->tag( `Text`
+              )->a( n = `text`
+                    t = ls_field-label ).
+      DATA(lv_path) = |\{{ ls_field-name }\}|.
+      lo_cells->tag( `Text`
+          )->a( n = `text`
+                v = lv_path ).
+    ENDLOOP.
+
+    lo_dialog->ele( `beginButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-ok )
+            )->a( n = `type`
+                  v = `Emphasized`
+            )->a( n = `press`
+                  v = client->_event( cs_event-confirm ) ).
+    lo_dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-cancel )
+            )->a( n = `press`
+                  v = client->_event( cs_event-cancel ) ).
 
     client->popup_display( lo_popup->stringify( ) ).
 

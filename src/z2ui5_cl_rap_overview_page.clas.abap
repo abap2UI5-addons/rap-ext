@@ -3,9 +3,15 @@
 "! - TABLE: the first rows of the view; a row opens its object page
 "! - KPI: one aggregated number - SUM (or kpi_aggregation) of kpi_field,
 "!   else of the first numeric @UI.dataPoint field, else the row count
-"! - CHART: a bar per value of the first dimension of @UI.chart, the
-"!   measure summed up - drawn with sap.m.ProgressIndicator, which every
-"!   UI5 runtime has (the microchart library is SAPUI5 only)
+"! - CHART: one entry per value of the first dimension of @UI.chart, the
+"!   measure summed up - drawn with sap.m controls, which every UI5 runtime
+"!   has (the microchart library is SAPUI5 only, and the view gate renders
+"!   with OpenUI5): #BAR and #COLUMN as bars against the largest value,
+"!   #DONUT and #PIE as each value's share of the total, #LINE and #AREA as
+"!   a trend - each value against the one before it
+"! A card with presentation_variant takes its content from that
+"! @UI.presentationVariant: a chart (#AS_CHART) or the table of the line
+"! item, sorted and as many rows as the variant says (since 2026-10).
 "! Every card links to the list report of its view.
 "!
 "! The escape hatch is plain inheritance: the class is deliberately not
@@ -44,6 +50,11 @@ CLASS z2ui5_cl_rap_overview_page DEFINITION
         kpi_unit        TYPE string,
         "CHART: the @UI.chart to draw - the first one when empty
         chart_qualifier TYPE string,
+        "added 2026-10
+        "the @UI.presentationVariant (its qualifier) the card shows
+        presentation_variant TYPE string,
+        "CHART: BAR, SHARE or TREND instead of what @UI.chart says
+        chart_type      TYPE string,
       END OF ty_s_card.
 
     TYPES ty_t_card TYPE STANDARD TABLE OF ty_s_card WITH DEFAULT KEY.
@@ -69,6 +80,10 @@ CLASS z2ui5_cl_rap_overview_page DEFINITION
         "added 2026-10: the KPI's sap.m.ValueColor (Good, Critical, Error,
         "Neutral) by @UI.dataPoint.criticalityCalculation
         kpi_state       TYPE string,
+        "TABLE, KPI or CHART - what the card is after its presentation variant
+        card_type       TYPE string,
+        "CHART: BAR, SHARE or TREND
+        chart_type      TYPE string,
       END OF ty_s_card_data.
 
     TYPES ty_t_card_data TYPE STANDARD TABLE OF ty_s_card_data WITH DEFAULT KEY.
@@ -80,6 +95,11 @@ CLASS z2ui5_cl_rap_overview_page DEFINITION
         measure   TYPE decfloat34,
         "the bar's length - measure against the largest measure
         percent   TYPE decfloat34,
+        "added 2026-10: the share of the total (SHARE), the text next to the
+        "bar, and the trend against the row before (TREND)
+        share      TYPE decfloat34,
+        display    TYPE string,
+        trend_icon TYPE string,
       END OF ty_s_chart_row.
 
     TYPES ty_t_chart_row TYPE STANDARD TABLE OF ty_s_chart_row WITH DEFAULT KEY.
@@ -325,13 +345,44 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
       ENDIF.
 
       DATA(lv_max) = ls_card-max_rows.
+      DATA(lv_order_by) = ``.
+      ls_cd-card_type = COND #( WHEN ls_card-card_type IS INITIAL THEN `TABLE` ELSE to_upper( ls_card-card_type ) ).
+
+      "a presentation variant decides chart or table, order and size
+      IF ls_card-presentation_variant IS NOT INITIAL.
+        READ TABLE ls_cd-entity-presentation_variants INTO DATA(ls_variant)
+          WITH KEY qualifier = ls_card-presentation_variant.
+        IF sy-subrc = 0.
+          IF ls_variant-visualization_type = `CHART`.
+            ls_cd-card_type = `CHART`.
+            IF ls_variant-visualization_qualifier IS NOT INITIAL.
+              ls_card-chart_qualifier = ls_variant-visualization_qualifier.
+            ENDIF.
+          ELSEIF ls_cd-card_type <> `KPI` AND ls_cd-card_type <> `NUMERIC`.
+            ls_cd-card_type = `TABLE`.
+          ENDIF.
+          IF lv_max <= 0 AND ls_variant-max_items > 0.
+            lv_max = ls_variant-max_items.
+          ENDIF.
+          DATA lt_order TYPE string_table.
+          CLEAR lt_order.
+          LOOP AT ls_variant-sort_order INTO DATA(ls_sort).
+            READ TABLE ls_cd-entity-fields INTO DATA(ls_sort_field) WITH KEY name = ls_sort-field.
+            IF sy-subrc = 0 AND ls_sort_field-type_kind <> `STRING` AND ls_sort_field-type_kind <> `RAW`.
+              APPEND |{ ls_sort-field }{ COND #( WHEN ls_sort-descending = abap_true THEN ` DESCENDING` ELSE `` ) }|
+                TO lt_order.
+            ENDIF.
+          ENDLOOP.
+          lv_order_by = concat_lines_of( table = lt_order sep = `, ` ).
+        ENDIF.
+      ENDIF.
       IF lv_max <= 0.
         lv_max = 5.
       ENDIF.
 
       ls_cd-count = count_rows( lv_view ).
 
-      CASE to_upper( ls_card-card_type ).
+      CASE ls_cd-card_type.
         WHEN `KPI` OR `NUMERIC`.
           load_kpi_value( EXPORTING is_card      = ls_card
                           CHANGING  cs_card_data = ls_cd ).
@@ -340,7 +391,8 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
                            CHANGING  cs_card_data = ls_cd ).
         WHEN OTHERS.
           ls_cd-data_ref = select_rows( entity_name = lv_view
-                                        max_rows    = lv_max ).
+                                        max_rows    = lv_max
+                                        order_by    = lv_order_by ).
       ENDCASE.
 
       APPEND ls_cd TO mt_card_data.
@@ -417,6 +469,15 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
 
     cs_card_data-chart_dimension = ls_chart-dimensions[ 1 ].
     cs_card_data-chart_measure = ls_chart-measures[ 1 ].
+    "how it is drawn: the card's choice, else the annotation's
+    DATA(lv_chart_type) = to_upper( replace( val = COND string( WHEN is_card-chart_type IS NOT INITIAL
+                                                                THEN is_card-chart_type ELSE ls_chart-chart_type )
+                                             sub = `#` with = `` ) ).
+    cs_card_data-chart_type = COND #( WHEN lv_chart_type = `SHARE` OR lv_chart_type CS `DONUT` OR lv_chart_type CS `PIE`
+                                      THEN `SHARE`
+                                      WHEN lv_chart_type = `TREND` OR lv_chart_type CS `LINE` OR lv_chart_type CS `AREA`
+                                      THEN `TREND`
+                                      ELSE `BAR` ).
     IF NOT line_exists( cs_card_data-entity-fields[ name = cs_card_data-chart_dimension ] )
       OR NOT line_exists( cs_card_data-entity-fields[ name = cs_card_data-chart_measure ] ).
       RETURN.
@@ -436,15 +497,31 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
         RETURN.
     ENDTRY.
 
+    DATA lv_total TYPE decfloat34.
     LOOP AT lt_rows INTO DATA(ls_row).
       IF ls_row-measure > cs_card_data-chart_max.
         cs_card_data-chart_max = ls_row-measure.
       ENDIF.
+      lv_total = lv_total + ls_row-measure.
     ENDLOOP.
+    DATA lv_previous TYPE decfloat34.
     LOOP AT lt_rows ASSIGNING FIELD-SYMBOL(<ls_row>).
       IF cs_card_data-chart_max > 0.
         <ls_row>-percent = <ls_row>-measure * 100 / cs_card_data-chart_max.
       ENDIF.
+      IF lv_total > 0.
+        <ls_row>-share = round( val = <ls_row>-measure * 100 / lv_total dec = 1 ).
+      ENDIF.
+      <ls_row>-display = SWITCH #( cs_card_data-chart_type
+        WHEN `SHARE` THEN |{ <ls_row>-share } % ({ <ls_row>-measure })|
+        ELSE |{ <ls_row>-measure }| ).
+      "the trend against the value before - the first has none
+      IF sy-tabix > 1.
+        <ls_row>-trend_icon = COND #( WHEN <ls_row>-measure > lv_previous THEN `sap-icon://trend-up`
+                                      WHEN <ls_row>-measure < lv_previous THEN `sap-icon://trend-down`
+                                      ELSE `sap-icon://less` ).
+      ENDIF.
+      lv_previous = <ls_row>-measure.
     ENDLOOP.
 
     CREATE DATA cs_card_data-data_ref TYPE ty_t_chart_row.
@@ -560,9 +637,10 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
       mv_card_index = lv_card_idx.
       READ TABLE mt_cards INDEX lv_card_idx INTO DATA(ls_card_cfg).
 
-      DATA(lv_type) = `TABLE`.
-      IF ls_card_cfg-card_type IS NOT INITIAL.
-        lv_type = to_upper( ls_card_cfg-card_type ).
+      "the type after the presentation variant, else the configured one
+      DATA(lv_type) = ls_cd-card_type.
+      IF lv_type IS INITIAL.
+        lv_type = COND #( WHEN ls_card_cfg-card_type IS INITIAL THEN `TABLE` ELSE to_upper( ls_card_cfg-card_type ) ).
       ENDIF.
 
       CASE lv_type.
@@ -781,22 +859,41 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
             )->a( n = `class`
                   v = `sapUiSmallMargin` ).
 
-    "one bar per dimension value - the largest measure is the full bar
     DATA(lo_bars) = lo_content->ele( `VBox`
         )->a( n = `items`
               v = `{path:'` && client->_bind( val  = <lt_data>
                                               path = abap_true ) && `'}` ).
-    DATA(lo_bar) = lo_bars->ele( `VBox` ).
-    lo_bar->tag( `Label`
-        )->a( n = `text`
-              v = `{DIMENSION}` ).
-    lo_bar->tag( `ProgressIndicator`
-        )->a( n = `percentValue`
-              v = `{PERCENT}`
-        )->a( n = `displayValue`
-              v = `{MEASURE}`
-        )->a( n = `displayOnly`
-              v = `true` ).
+
+    IF is_card-chart_type = `TREND`.
+      "one line per dimension value: its measure and the trend against
+      "the value before it
+      lo_bars->ele( `HBox`
+          )->a( n = `justifyContent`
+                v = `SpaceBetween`
+          )->tag( `Label`
+              )->a( n = `text`
+                    v = `{DIMENSION}`
+          )->tag( `ObjectStatus`
+              )->a( n = `text`
+                    v = `{DISPLAY}`
+              )->a( n = `icon`
+                    v = `{TREND_ICON}` ).
+    ELSE.
+      "one bar per dimension value - against the largest measure, or for
+      "SHARE the value's share of the total
+      DATA(lv_percent) = COND string( WHEN is_card-chart_type = `SHARE` THEN `{SHARE}` ELSE `{PERCENT}` ).
+      DATA(lo_bar) = lo_bars->ele( `VBox` ).
+      lo_bar->tag( `Label`
+          )->a( n = `text`
+                v = `{DIMENSION}` ).
+      lo_bar->tag( `ProgressIndicator`
+          )->a( n = `percentValue`
+                v = lv_percent
+          )->a( n = `displayValue`
+                v = `{DISPLAY}`
+          )->a( n = `displayOnly`
+                v = `true` ).
+    ENDIF.
 
     render_card_link( io_container = lo_content
                       is_card      = is_card

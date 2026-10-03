@@ -89,6 +89,30 @@ INTERFACE z2ui5_if_rap_ext
       container TYPE REF TO z2ui5_cl_ui5_view_builder
       client    TYPE REF TO z2ui5_if_client.
 
+  "! what the floorplans offer to write for entity_name - the operations
+  "! its BDEF defines, and nothing for a database table. Set can_create,
+  "! can_update and can_delete of a table to switch its writes on (the
+  "! user still needs S_TABU_NAM for it), clear one of a business object to
+  "! withhold it; is_rap_bo and is_table are what the entity is and stay.
+  "! An operation the BDEF lacks cannot be added here
+  METHODS adjust_capabilities DEFAULT IGNORE
+    IMPORTING
+      floorplan   TYPE string
+      entity_name TYPE string
+    CHANGING
+      caps        TYPE z2ui5_cl_rap_floorplan=>ty_s_capabilities.
+
+  "! the class of a z2ui5_cl_rap_start subclass: the link the object page
+  "! copies then opens the record through it - a link that outlives the
+  "! abap2UI5 draft. Without one the link restores the app's state, which
+  "! lasts as long as its draft
+  METHODS get_start_app DEFAULT IGNORE
+    IMPORTING
+      floorplan   TYPE string
+      entity_name TYPE string
+    CHANGING
+      start_app   TYPE string.
+
   "! the CDS entity an association of entity_name leads to - needed for a
   "! #LINEITEM_REFERENCE facet, whose target the annotations do not name
   METHODS resolve_association DEFAULT IGNORE

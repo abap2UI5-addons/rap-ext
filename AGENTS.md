@@ -14,12 +14,15 @@ views and their UI annotations, rendered with abap2UI5.
 | --- | --- |
 | `z2ui5_cl_rap_floorplan` | superclass of every floorplan: reading, filter/search, input controls, value help, writing, texts, extension calls |
 | `z2ui5_cl_rap_list_report`, `_worklist` (a subclass of it), `_object_page`, `_overview_page`, `_value_help`, `_action_dialog` | the floorplans - each an abap2UI5 app |
-| `z2ui5_cl_rap_util` | the metadata: RTTI, DDIC keys/texts, annotations (`read_entity`, `apply_annotations`), the filter/search syntax - no UI, unit-tested |
+| `z2ui5_cl_rap_util` | the metadata: RTTI, DDIC keys/texts, annotations (`read_entity`, `apply_annotations`), the associations of the DDL source (`read_associations`, `parse_ddl_associations`), the filter/search syntax, CSV/UTF-8/Base64/URL helpers - no UI, needs no other class of the addon, unit-tested |
 | `z2ui5_cl_rap_eml` | the RAP write path - the only class with EML |
 | `z2ui5_if_rap_ext` | the extension points (`set_extension( )`) |
-| `z2ui5_cl_rap_test`, `z2ui5_dd_rap_test_*` | the demo app and its abstract entities |
+| `z2ui5_cl_rap_start` | opens a floorplan from a URL (deep links) - opens nothing unless a subclass allows the entity |
+| `z2ui5_cl_rap_variant`, table `z2ui5_t_rap_var` | the views a user saves of a list, reached by table name only |
+| `z2ui5_cl_rap_test`, `z2ui5_cl_rap_test_start`, `z2ui5_dd_rap_test_*` | the demo app, its deep links and its abstract entities |
 | `scripts/` | `core-pin.mjs` (the core release abaplint checks against), `unit.mjs` (the transpiled unit run) |
 | `ROADMAP.md` | what is done and what is open |
+| `docs/system-test.md` | what to click through in a system - the part no gate can show |
 
 ## Build & verify
 
@@ -46,12 +49,22 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   the core's `main` as the canary. Do not drop the key: abaplint then clones
   `main` silently.
 - `npm run unit` (`scripts/unit.mjs`) transpiles the classes listed in its
-  `UNITS` with open-abap-core and runs their ABAP Unit tests. Today that is
-  `z2ui5_cl_rap_util`: the annotation parsing (`apply_annotations`) and the
-  filter/search syntax that ends up in dynamic WHERE clauses. Logic that
-  needs no system belongs there (static, on plain tables) so it can be
-  tested; an SAP object the runtime lacks compiles to a runtime error in the
-  code that uses it, so a test must not reach one.
+  `UNITS` with open-abap-core, together with the public API (`src/02`) of the
+  abap2UI5 release `abaplint.jsonc` pins (cloned at that tag), and runs their
+  ABAP Unit tests: `z2ui5_cl_rap_util` (annotations, the DDL association
+  parser, the filter/search syntax, the export and URL helpers) and the list
+  report and object page (order, filters, views, columns, sections, the rows
+  and the context of a child - on metadata set by hand, through `LOCAL
+  FRIENDS`). Logic that needs no system belongs there so it can be tested; an
+  SAP object the runtime lacks, and a class not in `UNITS`
+  (`z2ui5_cl_rap_eml` - the transpiler has no EML), compiles to a runtime
+  error in the code that uses it, so a test must not reach one. Three
+  transpiler traps found on the way, all green in abaplint: a declaration
+  inside an `IF` or `LOOP` is scoped to that block in the generated JS
+  (declare at the top of the method when it is used after the block),
+  `VALUE #( ( LINES OF itab ) )` does not transpile, and `z2ui5_cl_rap_util`
+  must not name a type of another class of the addon (it ran alone once and
+  failed with "Void type").
 - The **abap2UI5-linter** checks every view the floorplans build: unknown,
   deprecated or too-new controls and members, binding mistakes, malformed
   builder trees, and a real headless `XMLView.create`. Its settings (paths,
@@ -99,7 +112,11 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   are not released.
 - **`z2ui5_cl_rap_eml` is the only class with EML statements** (dynamic
   `MODIFY ENTITIES OPERATIONS`, `COMMIT ENTITIES RESPONSES`, `ROLLBACK
-  ENTITIES`). Every call into it is guarded by
+  ENTITIES`). abaplint parses only the static forms of `GET PERMISSIONS`,
+  `READ ENTITIES` and `CONVERT KEY` - their dynamic forms fail
+  `parser_error`, which is why feature control, reading a draft back and
+  `CONVERT KEY` are open (ROADMAP.md, "Why 2-4 are blocked"). Do not add one
+  of them here; that is a maintainer decision. Every call into it is guarded by
   `z2ui5_cl_rap_floorplan=>eml_available( )`, which answers from RTTI, so a
   system that cannot activate it still runs every floorplan read-only. Keep
   EML out of every other class. BDEF derived types are created from their
@@ -111,7 +128,12 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   draft and Activate it by the key the create `MAPPED` (not by `%cid_ref`,
   which a draft action's type may not carry) - each step its own `MODIFY
   ENTITIES OPERATIONS`, one `COMMIT ENTITIES`, `ROLLBACK ENTITIES` on the
-  first failure (`run_steps`).
+  first failure (`run_steps`). The object page edits across roundtrips
+  instead: `run_root_action` (Edit, Activate, Discard - each committed) and
+  `update_draft` (the changes into the draft, committed). A child entity is
+  written through the BDEF of its root (`ty_s_rap_context-bdef`), a draft
+  step of a child runs on the root (`root_keys`), and a create by
+  association uses `\BDEF=<root>\ENTITY=<parent>\ASSOCIATION=<assoc>\TYPE=CREATE`.
 - `z2ui5_cl_rap_util` reads types via **classic RTTI** (`cl_abap_typedescr`),
   not the XCO library. Do not rewrite RTTI to XCO or swap the annotation API
   "for cloud readiness" — that changes the supported platform and is a
@@ -142,7 +164,7 @@ stored in an instance attribute, or a hook called through a dynamic
 dispatch. When a change makes the linter report *fewer* documents than the
 class actually builds, that is the signal.
 
-Four things learned the hard way with the floorplan base class:
+Five things learned the hard way with the floorplan base class:
 
 - **The shared input controls are invisible to it.**
   `z2ui5_cl_rap_floorplan->render_field_input( )` lives in a class that is no
@@ -157,6 +179,11 @@ Four things learned the hard way with the floorplan base class:
   render - which is right: it is what the browser gets when the name is
   empty. Bind fixed paths instead (the overview's chart rows have fixed
   columns for that reason).
+- **A local variable is one variable to the replay across render methods.**
+  `DATA(lv_state) = ``.` in `render_section_fields` made the header's
+  `ObjectStatus` (`state t = lv_state`, another method) replay with an empty
+  state and fail the render gate. Give a variable that feeds an attribute a
+  name no other render method uses.
 - **An inherited `cs_event` is taken for the client's frontend actions**
   (`frontend-action-as-backend-event`) in a class that does not declare its
   own - the worklist reads its events into a local `ls_event` for that
@@ -208,8 +235,20 @@ classes, so those method names and signatures are a **public contract**:
   may no longer have the previous app). Use `check_app_prev_stack( )` only for
   the back button.
 - **The core rolls back the LUW after `main( )`** for every non-sticky app, so
-  a database write in a floorplan commits itself (`write_row`'s table
-  branch); `COMMIT ENTITIES` does so for RAP.
+  a database write in a floorplan commits itself (`write_table_row`,
+  `z2ui5_cl_rap_variant`); `COMMIT ENTITIES` does so for RAP.
+- **Nothing a floorplan offers is trusted from the browser.** Every write and
+  action is checked against `get_entity_capabilities( )` on the server, an
+  action must be one the annotations offer, a database table is read-only
+  until `adjust_capabilities` allows it (and then checked against
+  `S_TABU_NAM`, locked and compared with what the user saw), and
+  `z2ui5_cl_rap_start` opens only the entities a subclass allows - a URL can
+  name any entity. Keep each of these when changing the code around it.
+- **Keys are compared with typed host variables**: `create_host( )` builds a
+  structure of the entity, `build_key_condition( )` the WHERE that names its
+  components as `@<LS_HOST>-field`, and `select_rows( host = ... )` assigns
+  it to the field symbol of that name. A literal does not compare with a RAW
+  key.
 - **A generic `REF TO data` whose target has an RTTI-created type must be a
   PUBLIC attribute.** The core detaches public data references before the
   draft is serialized and re-creates them from S-RTTI; a protected one is
@@ -228,8 +267,19 @@ classes, so those method names and signatures are a **public contract**:
   from a system.
 - Line endings are **LF only** (a CRLF import once broke the `.asddls`
   round-trip — enforced by `.gitattributes`), UTF-8, final newline.
-- `z2ui5_cl_rap_util.clas.xml` carries `WITH_UNIT_TESTS` - a class that gets
-  a `.testclasses.abap` needs it in its sidecar too.
+- `z2ui5_cl_rap_util.clas.xml`, `_list_report` and `_object_page` carry
+  `WITH_UNIT_TESTS` - a class that gets a `.testclasses.abap` needs it in its
+  sidecar too, and a test class that calls a protected member needs `CLASS
+  <class> DEFINITION LOCAL FRIENDS <test class>`.
+- The English built-in texts are the text pool of `z2ui5_cl_rap_floorplan`
+  (`TPOOL` in its sidecar, the format of an exported one: `LENGTH` is the
+  text's length). A new text: a `cs_text` constant, its German in
+  `get_default_text`, and `'Text'(nnn)` with the next free number - in the
+  code and in the sidecar. The literal stands in where a system has no text
+  pool.
+- `z2ui5_t_rap_var.tabl.xml` was written by hand after the core's exported
+  `z2ui5_t_01` - replace it with what abapGit serializes once the table
+  exists in a system.
 - Every artifact carries the `Z2UI5_<type>_RAP_` prefix — the same scheme the
   [samples](https://github.com/abap2UI5/samples) repo uses with its `SMP` token
   (`Z2UI5_CL_SMP_…`, `Z2UI5_T_SMP_…`). Here: `Z2UI5_CL_RAP_…` for classes,
