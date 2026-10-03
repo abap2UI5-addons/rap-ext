@@ -1008,3 +1008,69 @@ CLASS ltcl_associations IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+" the export of the list report: CSV, UTF-8 and Base64 - what becomes the
+" data: URL of the download
+CLASS ltcl_export DEFINITION FINAL
+  FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+
+  PRIVATE SECTION.
+    TYPES:
+      BEGIN OF ty_s_row,
+        id    TYPE c LENGTH 4,
+        name  TYPE string,
+        day   TYPE d,
+        price TYPE p LENGTH 8 DECIMALS 2,
+      END OF ty_s_row.
+
+    METHODS csv_lines       FOR TESTING RAISING cx_static_check.
+    METHODS base64_padding  FOR TESTING RAISING cx_static_check.
+    METHODS utf8_with_bom   FOR TESTING RAISING cx_static_check.
+
+ENDCLASS.
+
+
+CLASS ltcl_export IMPLEMENTATION.
+
+  METHOD csv_lines.
+
+    DATA lt_rows TYPE STANDARD TABLE OF ty_s_row WITH EMPTY KEY.
+    lt_rows = VALUE #( ( id = `A1` name = `Say "hi"` day = '20240115' price = '12.50' )
+                       ( id = `B2` name = `x;y`      day = '00000000' price = 0 ) ).
+
+    DATA(lv_csv) = z2ui5_cl_rap_util=>to_csv(
+      data      = REF #( lt_rows )
+      it_fields = VALUE #( ( name = `ID`    label = `Id`         type_kind = `CHAR` )
+                           ( name = `NAME`  label = `Name`       type_kind = `STRING` )
+                           ( name = `DAY`   label = `Day`        type_kind = `DATS` )
+                           ( name = `PRICE` label = `Price "EUR"` type_kind = `DEC` ) ) ).
+
+    DATA(lv_crlf) = cl_abap_char_utilities=>cr_lf.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_csv
+      exp = |"Id";"Name";"Day";"Price ""EUR"""{ lv_crlf }| &&
+            |"A1";"Say ""hi""";"2024-01-15";"12.50"{ lv_crlf }| &&
+            |"B2";"x;y";"";"0.00"{ lv_crlf }| ).
+
+  ENDMETHOD.
+
+
+  METHOD base64_padding.
+    cl_abap_unit_assert=>assert_equals( act = z2ui5_cl_rap_util=>base64_encode( `4D616E` )
+                                        exp = `TWFu` ).
+    cl_abap_unit_assert=>assert_equals( act = z2ui5_cl_rap_util=>base64_encode( `4D61` )
+                                        exp = `TWE=` ).
+    cl_abap_unit_assert=>assert_equals( act = z2ui5_cl_rap_util=>base64_encode( `4D` )
+                                        exp = `TQ==` ).
+    cl_abap_unit_assert=>assert_equals( act = z2ui5_cl_rap_util=>base64_encode( `FFFEFD` )
+                                        exp = `//79` ).
+  ENDMETHOD.
+
+
+  METHOD utf8_with_bom.
+    cl_abap_unit_assert=>assert_equals( act = z2ui5_cl_rap_util=>to_utf8( val = |ä| bom = abap_true )
+                                        exp = CONV xstring( `EFBBBFC3A4` ) ).
+  ENDMETHOD.
+
+ENDCLASS.

@@ -50,7 +50,11 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         "added 2026-10
         nav_path   TYPE string VALUE `NAV_PATH`,
         intent     TYPE string VALUE `INTENT`,
+        export     TYPE string VALUE `EXPORT`,
       END OF cs_event.
+
+    "! the most rows an export writes
+    CONSTANTS cv_export_max TYPE i VALUE 10000.
 
     METHODS constructor
       IMPORTING
@@ -211,6 +215,18 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       RETURNING
         VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_action.
 
+    "! every row that matches the filters (up to cv_export_max) with the
+    "! visible columns, as a CSV file the browser downloads
+    METHODS on_export
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    "! the export button - in the table's toolbar
+    METHODS render_export_button
+      IMPORTING
+        io_toolbar TYPE REF TO z2ui5_cl_ui5_view_builder
+        client     TYPE REF TO z2ui5_if_client.
+
     "! the labels of the mandatory filters (@Consumption.filter.mandatory)
     "! that have no value
     METHODS get_missing_filters
@@ -365,6 +381,11 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     IF client->check_on_event( cs_event-intent ).
       on_intent( client ).
+      RETURN.
+    ENDIF.
+
+    IF client->check_on_event( cs_event-export ).
+      on_export( client ).
       RETURN.
     ENDIF.
 
@@ -647,6 +668,45 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       WHERE source = `LINEITEM` AND semantic_object IS NOT INITIAL.
       APPEND ls_action TO result.
     ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD on_export.
+
+    IF get_missing_filters( ) IS NOT INITIAL.
+      RETURN.
+    ENDIF.
+    "every matching row, not only the loaded ones - in the list's order
+    DATA(lr_rows) = select_rows( entity_name = mv_cds_view
+                                 where       = get_where_clause( )
+                                 max_rows    = cv_export_max
+                                 order_by    = get_order_by( ) ).
+    IF lr_rows IS NOT BOUND.
+      client->message_box_display( text = |{ get_text( cs_text-load_error ) }: { mv_cds_view }|
+                                   type = `error` ).
+      RETURN.
+    ENDIF.
+
+    DATA(lv_csv) = z2ui5_cl_rap_util=>to_csv( data      = lr_rows
+                                              it_fields = get_line_item_fields( ) ).
+    DATA(lv_base64) = z2ui5_cl_rap_util=>base64_encode( z2ui5_cl_rap_util=>to_utf8( val = lv_csv
+                                                                                    bom = abap_true ) ).
+    DATA(lv_name) = replace( val = mv_cds_view sub = `/` with = `_` occ = 0 ).
+    client->follow_up_action( val   = client->cs_event-download_b64_file
+                              t_arg = VALUE #( ( |data:text/csv;charset=utf-8;base64,{ lv_base64 }| )
+                                               ( |{ to_lower( lv_name ) }.csv| ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD render_export_button.
+    io_toolbar->tag( `Button`
+        )->a( n = `icon`
+              v = `sap-icon://excel-attachment`
+        )->a( n = `tooltip`
+              t = get_text( cs_text-export )
+        )->a( n = `press`
+              v = client->_event( cs_event-export ) ).
   ENDMETHOD.
 
 
@@ -1135,6 +1195,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     render_extension( spot         = cs_spot-toolbar
                       io_container = lo_toolbar
                       client       = client ).
+
+    render_export_button( io_toolbar = lo_toolbar
+                          client     = client ).
 
     lo_toolbar->tag( `Button`
         )->a( n = `icon`

@@ -503,6 +503,33 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! The rows of data (a table) as CSV: a header line with the labels of
+    "! it_fields, then one line per row with the values of those fields -
+    "! separated by ;, every value in double quotes (doubled inside), dates
+    "! as 2024-01-15, lines ended by CR LF. What spreadsheets open as a table
+    CLASS-METHODS to_csv
+      IMPORTING
+        data          TYPE REF TO data
+        it_fields     TYPE ty_t_field_info
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! val as UTF-8 bytes, with the byte order mark when bom is set - so a
+    "! spreadsheet reads umlauts right
+    CLASS-METHODS to_utf8
+      IMPORTING
+        val           TYPE string
+        bom           TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(result) TYPE xstring.
+
+    "! val in Base64 (RFC 4648, with padding)
+    CLASS-METHODS base64_encode
+      IMPORTING
+        val           TYPE xstring
+      RETURNING
+        VALUE(result) TYPE string.
+
     "! val as the content of a JSON string - quotes, backslashes and control
     "! characters escaped
     CLASS-METHODS json_escape
@@ -2280,6 +2307,97 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     result = replace( val = result sub = cl_abap_char_utilities=>cr_lf(1) with = `\r` occ = 0 ).
     result = replace( val = result sub = cl_abap_char_utilities=>newline with = `\n` occ = 0 ).
     result = replace( val = result sub = cl_abap_char_utilities=>horizontal_tab with = `\t` occ = 0 ).
+  ENDMETHOD.
+
+  METHOD to_csv.
+
+    FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+    DATA lt_lines TYPE string_table.
+    DATA lt_cells TYPE string_table.
+
+    DATA(lv_crlf) = cl_abap_char_utilities=>cr_lf.
+    LOOP AT it_fields INTO DATA(ls_field).
+      APPEND |"{ replace( val = ls_field-label sub = `"` with = `""` occ = 0 ) }"| TO lt_cells.
+    ENDLOOP.
+    APPEND concat_lines_of( table = lt_cells sep = `;` ) TO lt_lines.
+
+    IF data IS BOUND.
+      ASSIGN data->* TO <lt_rows>.
+      LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+        CLEAR lt_cells.
+        LOOP AT it_fields INTO ls_field.
+          DATA(lv_text) = ``.
+          UNASSIGN <lv_value>.
+          ASSIGN COMPONENT ls_field-name OF STRUCTURE <ls_row> TO <lv_value>.
+          IF <lv_value> IS ASSIGNED.
+            IF ls_field-type_kind = `DATS` AND <lv_value> IS NOT INITIAL.
+              DATA(lv_date) = CONV string( <lv_value> ).
+              lv_text = |{ lv_date(4) }-{ lv_date+4(2) }-{ lv_date+6(2) }|.
+            ELSEIF ls_field-type_kind = `TIMS`.
+              DATA(lv_time) = CONV string( <lv_value> ).
+              lv_text = |{ lv_time(2) }:{ lv_time+2(2) }:{ lv_time+4(2) }|.
+            ELSEIF ls_field-type_kind = `DATS`.
+              lv_text = ``.
+            ELSE.
+              lv_text = condense( CONV string( <lv_value> ) ).
+            ENDIF.
+          ENDIF.
+          APPEND |"{ replace( val = lv_text sub = `"` with = `""` occ = 0 ) }"| TO lt_cells.
+        ENDLOOP.
+        APPEND concat_lines_of( table = lt_cells sep = `;` ) TO lt_lines.
+      ENDLOOP.
+    ENDIF.
+
+    result = concat_lines_of( table = lt_lines sep = lv_crlf ) && lv_crlf.
+
+  ENDMETHOD.
+
+
+  METHOD to_utf8.
+    result = cl_abap_conv_codepage=>create_out( )->convert( val ).
+    IF bom = abap_true.
+      result = `EFBBBF` && result.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD base64_encode.
+
+    CONSTANTS lc_alphabet TYPE string VALUE `ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/`.
+    DATA lv_byte TYPE x LENGTH 1.
+    DATA lv_b1 TYPE i.
+    DATA lv_b2 TYPE i.
+    DATA lv_b3 TYPE i.
+
+    DATA(lv_length) = xstrlen( val ).
+    DATA(lv_offset) = 0.
+    WHILE lv_offset < lv_length.
+      DATA(lv_rest) = lv_length - lv_offset.
+      lv_byte = val+lv_offset(1).
+      lv_b1 = lv_byte.
+      CLEAR: lv_b2, lv_b3.
+      IF lv_rest > 1.
+        DATA(lv_next) = lv_offset + 1.
+        lv_byte = val+lv_next(1).
+        lv_b2 = lv_byte.
+      ENDIF.
+      IF lv_rest > 2.
+        lv_next = lv_offset + 2.
+        lv_byte = val+lv_next(1).
+        lv_b3 = lv_byte.
+      ENDIF.
+      DATA(lv_triple) = lv_b1 * 65536 + lv_b2 * 256 + lv_b3.
+      DATA(lv_c1) = lv_triple DIV 262144.
+      DATA(lv_c2) = ( lv_triple DIV 4096 ) MOD 64.
+      DATA(lv_c3) = ( lv_triple DIV 64 ) MOD 64.
+      DATA(lv_c4) = lv_triple MOD 64.
+      result = result && lc_alphabet+lv_c1(1) && lc_alphabet+lv_c2(1).
+      result = result && COND string( WHEN lv_rest > 1 THEN lc_alphabet+lv_c3(1) ELSE `=` ).
+      result = result && COND string( WHEN lv_rest > 2 THEN lc_alphabet+lv_c4(1) ELSE `=` ).
+      lv_offset = lv_offset + 3.
+    ENDWHILE.
+
   ENDMETHOD.
 
 ENDCLASS.

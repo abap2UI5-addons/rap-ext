@@ -60,6 +60,7 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         draft_kept     TYPE string VALUE `DRAFT_KEPT`,
         no_launchpad   TYPE string VALUE `NO_LAUNCHPAD`,
         not_found      TYPE string VALUE `NOT_FOUND`,
+        export         TYPE string VALUE `EXPORT`,
       END OF cs_text.
 
     " Where z2ui5_if_rap_ext~extend_view may add controls
@@ -705,6 +706,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-draft_kept   THEN `Entwurf gesichert`
         WHEN cs_text-no_launchpad THEN `Diese Navigation gibt es nur im Fiori Launchpad`
         WHEN cs_text-not_found    THEN `Kein Eintrag gefunden`
+        WHEN cs_text-export       THEN `Exportieren`
         ELSE key ).
     ELSE.
       result = SWITCH #( key
@@ -741,6 +743,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       WHEN cs_text-draft_kept   THEN `Draft saved`
       WHEN cs_text-no_launchpad THEN `This navigation is only available in the Fiori launchpad`
       WHEN cs_text-not_found    THEN `No record found`
+      WHEN cs_text-export       THEN `Export`
       ELSE key ).
     ENDIF.
 

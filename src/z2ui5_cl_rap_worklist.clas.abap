@@ -334,6 +334,9 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
                       io_container = lo_toolbar
                       client       = client ).
 
+    render_export_button( io_toolbar = lo_toolbar
+                          client     = client ).
+
     lo_toolbar->tag( `Button`
         )->a( n = `icon`
               v = `sap-icon://refresh`
