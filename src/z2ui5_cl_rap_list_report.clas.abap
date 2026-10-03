@@ -1180,7 +1180,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                                            arg_offset = 1 ).
     IF lr_row IS BOUND.
       ASSIGN lr_row->* TO <ls_row>.
-      LOOP AT VALUE string_table( ( ls_col-name ) ( LINES OF mt_row_key ) ) INTO DATA(lv_name).
+      DATA(lt_names) = VALUE string_table( ( ls_col-name ) ).
+      APPEND LINES OF mt_row_key TO lt_names.
+      LOOP AT lt_names INTO DATA(lv_name).
         IF line_exists( lt_params[ name = lv_name ] ).
           CONTINUE.
         ENDIF.

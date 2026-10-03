@@ -698,8 +698,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD get_default_text.
 
-    "German for a German logon, English otherwise - every other language
-    "goes through z2ui5_if_rap_ext~get_text
+    "German for a German logon, the text pool (English, translatable in
+    "SE63) otherwise - and z2ui5_if_rap_ext~get_text changes any of them
     IF sy-langu = 'D'.
       result = SWITCH #( key
         WHEN cs_text-create       THEN `Anlegen`
@@ -747,51 +747,53 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-columns      THEN `Spalten`
         ELSE key ).
     ELSE.
+      "the text pool of this class, original language English - translate
+      "it in SE63; the literal stands in when a system has no text pool
       result = SWITCH #( key
-      WHEN cs_text-create       THEN `Create`
-      WHEN cs_text-edit         THEN `Edit`
-      WHEN cs_text-delete       THEN `Delete`
-      WHEN cs_text-save         THEN `Save`
-      WHEN cs_text-cancel       THEN `Cancel`
-      WHEN cs_text-ok           THEN `OK`
-      WHEN cs_text-go           THEN `Go`
-      WHEN cs_text-refresh      THEN `Refresh`
-      WHEN cs_text-search       THEN `Search`
-      WHEN cs_text-yes          THEN `Yes`
-      WHEN cs_text-no           THEN `No`
-      WHEN cs_text-all          THEN `All`
-      WHEN cs_text-general      THEN `General`
-      WHEN cs_text-items        THEN `items`
-      WHEN cs_text-saved        THEN `Data saved`
-      WHEN cs_text-deleted      THEN `Data deleted`
-      WHEN cs_text-refreshed    THEN `Data refreshed`
-      WHEN cs_text-action_done  THEN `Action executed`
-      WHEN cs_text-required     THEN `Fill in all required fields`
-      WHEN cs_text-read_only    THEN `This entity cannot be changed`
-      WHEN cs_text-load_error   THEN `Could not load data`
-      WHEN cs_text-no_selection THEN `Select at least one row`
-      WHEN cs_text-filter_hint  THEN `abc, a*c, =abc, !abc, a..z, >x - separate several with ;`
-      WHEN cs_text-create_title THEN `Create`
-      WHEN cs_text-sort         THEN `Sort`
-      WHEN cs_text-more         THEN `More`
-      WHEN cs_text-no_authority THEN `No authorization`
-      WHEN cs_text-locked       THEN `The record is locked`
-      WHEN cs_text-changed      THEN `The record was changed meanwhile - read it again`
-      WHEN cs_text-discard_draft THEN `Discard draft`
-      WHEN cs_text-draft_kept   THEN `Draft saved`
-      WHEN cs_text-no_launchpad THEN `This navigation is only available in the Fiori launchpad`
-      WHEN cs_text-not_found    THEN `No record found`
-      WHEN cs_text-export       THEN `Export`
-      WHEN cs_text-copy_link    THEN `Copy link`
-      WHEN cs_text-link_copied  THEN `Link copied`
-      WHEN cs_text-standard     THEN `Standard`
-      WHEN cs_text-save_view    THEN `Save view`
-      WHEN cs_text-delete_view  THEN `Delete view`
-      WHEN cs_text-view_name    THEN `Name`
-      WHEN cs_text-as_default   THEN `Use as default`
-      WHEN cs_text-view_saved   THEN `View saved`
-      WHEN cs_text-columns      THEN `Columns`
-      ELSE key ).
+        WHEN cs_text-create        THEN 'Create'(001)
+        WHEN cs_text-edit          THEN 'Edit'(002)
+        WHEN cs_text-delete        THEN 'Delete'(003)
+        WHEN cs_text-save          THEN 'Save'(004)
+        WHEN cs_text-cancel        THEN 'Cancel'(005)
+        WHEN cs_text-ok            THEN 'OK'(006)
+        WHEN cs_text-go            THEN 'Go'(007)
+        WHEN cs_text-refresh       THEN 'Refresh'(008)
+        WHEN cs_text-search        THEN 'Search'(009)
+        WHEN cs_text-yes           THEN 'Yes'(010)
+        WHEN cs_text-no            THEN 'No'(011)
+        WHEN cs_text-all           THEN 'All'(012)
+        WHEN cs_text-general       THEN 'General'(013)
+        WHEN cs_text-items         THEN 'items'(014)
+        WHEN cs_text-saved         THEN 'Data saved'(015)
+        WHEN cs_text-deleted       THEN 'Data deleted'(016)
+        WHEN cs_text-refreshed     THEN 'Data refreshed'(017)
+        WHEN cs_text-action_done   THEN 'Action executed'(018)
+        WHEN cs_text-required      THEN 'Fill in all required fields'(019)
+        WHEN cs_text-read_only     THEN 'This entity cannot be changed'(020)
+        WHEN cs_text-load_error    THEN 'Could not load data'(021)
+        WHEN cs_text-no_selection  THEN 'Select at least one row'(022)
+        WHEN cs_text-filter_hint   THEN 'abc, a*c, =abc, !abc, a..z, >x - separate several with ;'(023)
+        WHEN cs_text-create_title  THEN 'Create'(024)
+        WHEN cs_text-sort          THEN 'Sort'(025)
+        WHEN cs_text-more          THEN 'More'(026)
+        WHEN cs_text-no_authority  THEN 'No authorization'(027)
+        WHEN cs_text-locked        THEN 'The record is locked'(028)
+        WHEN cs_text-changed       THEN 'The record was changed meanwhile - read it again'(029)
+        WHEN cs_text-discard_draft THEN 'Discard draft'(030)
+        WHEN cs_text-draft_kept    THEN 'Draft saved'(031)
+        WHEN cs_text-no_launchpad  THEN 'This navigation is only available in the Fiori launchpad'(032)
+        WHEN cs_text-not_found     THEN 'No record found'(033)
+        WHEN cs_text-export        THEN 'Export'(034)
+        WHEN cs_text-copy_link     THEN 'Copy link'(035)
+        WHEN cs_text-link_copied   THEN 'Link copied'(036)
+        WHEN cs_text-standard      THEN 'Standard'(037)
+        WHEN cs_text-save_view     THEN 'Save view'(038)
+        WHEN cs_text-delete_view   THEN 'Delete view'(039)
+        WHEN cs_text-view_name     THEN 'Name'(040)
+        WHEN cs_text-as_default    THEN 'Use as default'(041)
+        WHEN cs_text-view_saved    THEN 'View saved'(042)
+        WHEN cs_text-columns       THEN 'Columns'(043)
+        ELSE key ).
     ENDIF.
 
   ENDMETHOD.

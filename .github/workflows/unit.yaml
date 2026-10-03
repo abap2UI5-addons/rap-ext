@@ -1,6 +1,9 @@
 # The ABAP Unit tests that need no system (scripts/unit.mjs), transpiled with
-# open-abap-core - the parsing of the annotations and the filter and search
-# syntax the floorplans put into their dynamic SELECTs. Zero failures is the gate - see AGENTS.md "Build & verify".
+# open-abap-core - the parsing of the annotations, the DDL associations and
+# the filter and search syntax the floorplans put into their dynamic
+# SELECTs, and the steps of the list report and the object page, against
+# the public API of the pinned abap2UI5 release. Zero failures is the gate -
+# see AGENTS.md "Build & verify".
 name: unit
 
 on:
