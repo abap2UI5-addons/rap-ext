@@ -1027,6 +1027,8 @@ CLASS ltcl_export DEFINITION FINAL
     METHODS csv_lines       FOR TESTING RAISING cx_static_check.
     METHODS base64_padding  FOR TESTING RAISING cx_static_check.
     METHODS utf8_with_bom   FOR TESTING RAISING cx_static_check.
+    METHODS url_round_trip  FOR TESTING RAISING cx_static_check.
+    METHODS url_query       FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -1071,6 +1073,25 @@ CLASS ltcl_export IMPLEMENTATION.
   METHOD utf8_with_bom.
     cl_abap_unit_assert=>assert_equals( act = z2ui5_cl_rap_util=>to_utf8( val = |ä| bom = abap_true )
                                         exp = CONV xstring( `EFBBBFC3A4` ) ).
+  ENDMETHOD.
+
+  METHOD url_round_trip.
+    cl_abap_unit_assert=>assert_equals( act = z2ui5_cl_rap_util=>url_encode( `/DMO/C_TRAVEL a&b=ä` )
+                                        exp = `%2FDMO%2FC_TRAVEL%20a%26b%3D%C3%A4` ).
+    cl_abap_unit_assert=>assert_equals( act = z2ui5_cl_rap_util=>url_decode( `%2FDMO%2FC_TRAVEL+a%26b%3D%C3%A4` )
+                                        exp = `/DMO/C_TRAVEL a&b=ä` ).
+    "a lone % is text
+    cl_abap_unit_assert=>assert_equals( act = z2ui5_cl_rap_util=>url_decode( `50%` )
+                                        exp = `50%` ).
+  ENDMETHOD.
+
+
+  METHOD url_query.
+    cl_abap_unit_assert=>assert_equals(
+      act = z2ui5_cl_rap_util=>parse_url_query( `?app_start=zcl_x&entity=%2FDMO%2FC_TRAVEL&TravelID=42` )
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_name_value( ( name = `app_start` value = `zcl_x` )
+                                                           ( name = `entity`    value = `/DMO/C_TRAVEL` )
+                                                           ( name = `TravelID`  value = `42` ) ) ).
   ENDMETHOD.
 
 ENDCLASS.

@@ -21,6 +21,16 @@ CLASS z2ui5_cl_rap_util DEFINITION
 
   PUBLIC SECTION.
 
+    "! a name and its value - the same as z2ui5_cl_rap_floorplan's, here so
+    "! that this class needs no other class of the addon
+    TYPES:
+      BEGIN OF ty_s_name_value,
+        name  TYPE string,
+        value TYPE string,
+      END OF ty_s_name_value.
+
+    TYPES ty_t_name_value TYPE STANDARD TABLE OF ty_s_name_value WITH DEFAULT KEY.
+
     "======= FIELD-LEVEL TYPES =======
 
     TYPES:
@@ -529,6 +539,28 @@ CLASS z2ui5_cl_rap_util DEFINITION
         val           TYPE xstring
       RETURNING
         VALUE(result) TYPE string.
+
+    "! val percent-encoded for a URL query (UTF-8; letters, digits and
+    "! - _ . ~ stay as they are)
+    CLASS-METHODS url_encode
+      IMPORTING
+        val           TYPE clike
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! a percent-encoded URL component as text (UTF-8; + is a blank)
+    CLASS-METHODS url_decode
+      IMPORTING
+        val           TYPE clike
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the parameters of a URL query (?a=1&b=2), names and values decoded
+    CLASS-METHODS parse_url_query
+      IMPORTING
+        query         TYPE clike
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
 
     "! val as the content of a JSON string - quotes, backslashes and control
     "! characters escaped
@@ -2397,6 +2429,79 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       result = result && COND string( WHEN lv_rest > 2 THEN lc_alphabet+lv_c4(1) ELSE `=` ).
       lv_offset = lv_offset + 3.
     ENDWHILE.
+
+  ENDMETHOD.
+
+  METHOD url_encode.
+
+    CONSTANTS lc_unreserved TYPE string VALUE `ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~`.
+    DATA lv_byte TYPE x LENGTH 1.
+    DATA lv_char TYPE string.
+
+    DATA(lv_bytes) = to_utf8( CONV string( val ) ).
+    DATA(lv_offset) = 0.
+    WHILE lv_offset < xstrlen( lv_bytes ).
+      lv_byte = lv_bytes+lv_offset(1).
+      "a byte below 128 is the ASCII character itself - a string, so that
+      "a blank is a blank and not an empty pattern
+      IF lv_byte < '80'.
+        lv_char = cl_abap_conv_codepage=>create_in( )->convert( CONV xstring( lv_byte ) ).
+        IF lv_char <> ` ` AND lc_unreserved CS lv_char.
+          result = result && lv_char.
+          lv_offset = lv_offset + 1.
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+      result = |{ result }%{ lv_byte }|.
+      lv_offset = lv_offset + 1.
+    ENDWHILE.
+
+  ENDMETHOD.
+
+
+  METHOD url_decode.
+
+    DATA lv_bytes TYPE xstring.
+    DATA lv_byte TYPE x LENGTH 1.
+
+    DATA(lv_text) = CONV string( val ).
+    DATA(lv_length) = strlen( lv_text ).
+    DATA(lv_pos) = 0.
+    WHILE lv_pos < lv_length.
+      DATA(lv_char) = substring( val = lv_text off = lv_pos len = 1 ).
+      IF lv_char = `%` AND lv_pos + 2 < lv_length.
+        DATA(lv_hex) = to_upper( substring( val = lv_text off = lv_pos + 1 len = 2 ) ).
+        IF lv_hex CO `0123456789ABCDEF`.
+          lv_byte = lv_hex.
+          CONCATENATE lv_bytes lv_byte INTO lv_bytes IN BYTE MODE.
+          lv_pos = lv_pos + 3.
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+      IF lv_char = `+`.
+        lv_char = ` `.
+      ENDIF.
+      DATA(lv_char_bytes) = to_utf8( lv_char ).
+      CONCATENATE lv_bytes lv_char_bytes INTO lv_bytes IN BYTE MODE.
+      lv_pos = lv_pos + 1.
+    ENDWHILE.
+    result = cl_abap_conv_codepage=>create_in( )->convert( lv_bytes ).
+
+  ENDMETHOD.
+
+
+  METHOD parse_url_query.
+
+    DATA(lv_query) = CONV string( query ).
+    IF lv_query IS NOT INITIAL AND lv_query(1) = `?`.
+      lv_query = substring( val = lv_query off = 1 ).
+    ENDIF.
+    SPLIT lv_query AT `&` INTO TABLE DATA(lt_pairs).
+    LOOP AT lt_pairs INTO DATA(lv_pair) WHERE table_line IS NOT INITIAL.
+      SPLIT lv_pair AT `=` INTO DATA(lv_name) DATA(lv_value).
+      APPEND VALUE #( name  = url_decode( lv_name )
+                      value = url_decode( lv_value ) ) TO result.
+    ENDLOOP.
 
   ENDMETHOD.
 

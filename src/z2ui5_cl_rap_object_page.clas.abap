@@ -55,6 +55,7 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         child_create   TYPE string VALUE `CHILD_CREATE`,
         draft_decision TYPE string VALUE `DRAFT_DECISION`,
         intent         TYPE string VALUE `INTENT`,
+        copy_link      TYPE string VALUE `COPY_LINK`,
       END OF cs_event.
 
     "! val: the record, any structure typed after the CDS entity. Or,
@@ -336,6 +337,15 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
+    "! the link to this record: through the start app the extension names
+    "! (z2ui5_if_rap_ext~get_start_app) - a link that outlives the draft -
+    "! else the link of the app's current state
+    METHODS get_link
+      IMPORTING
+        client        TYPE REF TO z2ui5_if_client
+      RETURNING
+        VALUE(result) TYPE string.
+
     "! the key fields of the record with their values
     METHODS get_own_keys
       RETURNING
@@ -609,6 +619,13 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     IF client->check_on_event( cs_event-action ).
       on_action( client ).
+      RETURN.
+    ENDIF.
+
+    IF client->check_on_event( cs_event-copy_link ).
+      client->follow_up_action( val   = client->cs_event-clipboard_copy
+                                t_arg = VALUE #( ( get_link( client ) ) ) ).
+      client->message_toast_display( get_text( cs_text-link_copied ) ).
       RETURN.
     ENDIF.
 
@@ -899,6 +916,27 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ENDIF.
       APPEND VALUE #( name = lv_key value = |{ <lv_value> }| ) TO et_values.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_link.
+
+    DATA(lv_start_app) = ``.
+    IF mo_ext IS BOUND.
+      mo_ext->get_start_app( EXPORTING floorplan   = mv_floorplan
+                                       entity_name = mv_entity_name
+                             CHANGING  start_app   = lv_start_app ).
+    ENDIF.
+    IF lv_start_app IS INITIAL.
+      result = client->app_state_get_href( ).
+      RETURN.
+    ENDIF.
+    result = z2ui5_cl_rap_start=>get_link( client      = client
+                                           start_class = lv_start_app
+                                           floorplan   = mv_floorplan
+                                           entity_name = mv_entity_name
+                                           keys        = get_own_keys( ) ).
 
   ENDMETHOD.
 
@@ -1542,6 +1580,16 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                   v = client->_event( val = cs_event-intent
                                       arg = ls_intent-name ) ).
       ENDLOOP.
+      "a link to this record - a saved one only
+      IF mv_is_create = abap_false.
+        io_actions->tag( `Button`
+            )->a( n = `icon`
+                  v = `sap-icon://chain-link`
+            )->a( n = `tooltip`
+                  t = get_text( cs_text-copy_link )
+            )->a( n = `press`
+                  v = client->_event( cs_event-copy_link ) ).
+      ENDIF.
       IF ms_caps-can_update = abap_true.
         io_actions->tag( `Button`
             )->a( n = `text`

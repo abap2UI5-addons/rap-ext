@@ -61,6 +61,8 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         no_launchpad   TYPE string VALUE `NO_LAUNCHPAD`,
         not_found      TYPE string VALUE `NOT_FOUND`,
         export         TYPE string VALUE `EXPORT`,
+        copy_link      TYPE string VALUE `COPY_LINK`,
+        link_copied    TYPE string VALUE `LINK_COPIED`,
       END OF cs_text.
 
     " Where z2ui5_if_rap_ext~extend_view may add controls
@@ -180,6 +182,14 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         context       TYPE ty_s_rap_context OPTIONAL
       RETURNING
         VALUE(result) TYPE ty_s_capabilities.
+
+    "! the built-in text for a key of cs_text, in the logon language - what
+    "! get_text( ) answers before the extension changes it
+    CLASS-METHODS get_default_text
+      IMPORTING
+        key           TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
 
     "! RAP is there (IF_ABAP_BEHV exists) - answered from RTTI, so asking
     "! never loads z2ui5_cl_rap_eml
@@ -669,6 +679,18 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD get_text.
 
+    result = get_default_text( key ).
+
+    IF mo_ext IS BOUND.
+      mo_ext->get_text( EXPORTING key  = key
+                        CHANGING  text = result ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD get_default_text.
+
     "German for a German logon, English otherwise - every other language
     "goes through z2ui5_if_rap_ext~get_text
     IF sy-langu = 'D'.
@@ -707,6 +729,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-no_launchpad THEN `Diese Navigation gibt es nur im Fiori Launchpad`
         WHEN cs_text-not_found    THEN `Kein Eintrag gefunden`
         WHEN cs_text-export       THEN `Exportieren`
+        WHEN cs_text-copy_link    THEN `Link kopieren`
+        WHEN cs_text-link_copied  THEN `Link kopiert`
         ELSE key ).
     ELSE.
       result = SWITCH #( key
@@ -744,12 +768,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       WHEN cs_text-no_launchpad THEN `This navigation is only available in the Fiori launchpad`
       WHEN cs_text-not_found    THEN `No record found`
       WHEN cs_text-export       THEN `Export`
+      WHEN cs_text-copy_link    THEN `Copy link`
+      WHEN cs_text-link_copied  THEN `Link copied`
       ELSE key ).
-    ENDIF.
-
-    IF mo_ext IS BOUND.
-      mo_ext->get_text( EXPORTING key  = key
-                        CHANGING  text = result ).
     ENDIF.
 
   ENDMETHOD.

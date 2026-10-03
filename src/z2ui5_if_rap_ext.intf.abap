@@ -102,6 +102,17 @@ INTERFACE z2ui5_if_rap_ext
     CHANGING
       caps        TYPE z2ui5_cl_rap_floorplan=>ty_s_capabilities.
 
+  "! the class of a z2ui5_cl_rap_start subclass: the link the object page
+  "! copies then opens the record through it - a link that outlives the
+  "! abap2UI5 draft. Without one the link restores the app's state, which
+  "! lasts as long as its draft
+  METHODS get_start_app DEFAULT IGNORE
+    IMPORTING
+      floorplan   TYPE string
+      entity_name TYPE string
+    CHANGING
+      start_app   TYPE string.
+
   "! the CDS entity an association of entity_name leads to - needed for a
   "! #LINEITEM_REFERENCE facet, whose target the annotations do not name
   METHODS resolve_association DEFAULT IGNORE
