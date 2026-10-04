@@ -21,9 +21,9 @@ CLASS z2ui5_cl_rap_util DEFINITION
 
   PUBLIC SECTION.
 
-    "! a name and its value - the same as z2ui5_cl_rap_floorplan's, here so
-    "! that this class needs no other class of the addon
     TYPES:
+      "! a name and its value - the same as z2ui5_cl_rap_floorplan's, here so
+      "! that this class needs no other class of the addon
       BEGIN OF ty_s_name_value,
         name  TYPE string,
         value TYPE string,

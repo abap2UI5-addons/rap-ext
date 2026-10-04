@@ -115,8 +115,8 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
 
     TYPES ty_t_name_value TYPE STANDARD TABLE OF ty_s_name_value WITH DEFAULT KEY.
 
-    "! one message of a write, as RAP reported it
     TYPES:
+      "! one message of a write, as RAP reported it
       BEGIN OF ty_s_message,
         text   TYPE string,
         "error, warning, success or information
@@ -137,11 +137,11 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         details  TYPE ty_t_message,
       END OF ty_s_result.
 
-    "! Where a record sits in a RAP business object. Empty for the root
-    "! entity, which is its own behavior definition; set for a child, which
-    "! is written through the BDEF of its root - and, for a create by
-    "! association, with the parent the new child is created under
     TYPES:
+      "! Where a record sits in a RAP business object. Empty for the root
+      "! entity, which is its own behavior definition; set for a child, which
+      "! is written through the BDEF of its root - and, for a create by
+      "! association, with the parent the new child is created under
       BEGIN OF ty_s_rap_context,
         "the behavior definition - the name of its root entity
         bdef        TYPE string,
@@ -216,7 +216,7 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     DATA mt_suggest_text TYPE ty_t_name_value.
 
     "! the name select_rows( ) gives the host structure - a dynamic WHERE
-    "! compares with its components as @<LS_HOST>-name
+    "! compares with its components as @&lt;LS_HOST&gt;-name
     CONSTANTS cv_host TYPE string VALUE `<LS_HOST>`.
 
     "! what this floorplan lets the user write to entity_name: the

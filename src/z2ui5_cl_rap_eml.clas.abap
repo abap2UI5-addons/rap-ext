@@ -112,10 +112,10 @@ CLASS z2ui5_cl_rap_eml DEFINITION
 
   PRIVATE SECTION.
 
-    "! one MODIFY ENTITIES OPERATIONS of a request. keys_from_mapped: the
-    "! key fields of its instances are set from what the previous step
-    "! MAPPED - the draft a create just made, for its Activate
     TYPES:
+      "! one MODIFY ENTITIES OPERATIONS of a request. keys_from_mapped: the
+      "! key fields of its instances are set from what the previous step
+      "! MAPPED - the draft a create just made, for its Activate
       BEGIN OF ty_s_step,
         ops              TYPE abp_behv_changes_tab,
         keys_from_mapped TYPE abap_bool,

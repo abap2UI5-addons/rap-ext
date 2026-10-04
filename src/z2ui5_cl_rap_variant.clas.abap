@@ -98,8 +98,8 @@ CLASS z2ui5_cl_rap_variant IMPLEMENTATION.
     IF is_available( ) = abap_false.
       RETURN.
     ENDIF.
-    DATA(lv_uname) = CONV syuname( sy-uname ).
-    DATA(lv_entity) = CONV string( to_upper( entity_name ) ).
+    DATA(lv_uname) = sy-uname.
+    DATA(lv_entity) = to_upper( entity_name ).
 
     TRY.
         CREATE DATA lr_rows TYPE STANDARD TABLE OF (cv_table).
@@ -142,8 +142,8 @@ CLASS z2ui5_cl_rap_variant IMPLEMENTATION.
     IF is_available( ) = abap_false OR variant-name IS INITIAL.
       RETURN.
     ENDIF.
-    DATA(lv_uname) = CONV syuname( sy-uname ).
-    DATA(lv_entity) = CONV string( to_upper( entity_name ) ).
+    DATA(lv_uname) = sy-uname.
+    DATA(lv_entity) = to_upper( entity_name ).
 
     TRY.
         CALL TRANSFORMATION id SOURCE data = variant-data RESULT XML lv_xml.
@@ -185,8 +185,8 @@ CLASS z2ui5_cl_rap_variant IMPLEMENTATION.
     IF is_available( ) = abap_false.
       RETURN.
     ENDIF.
-    DATA(lv_uname) = CONV syuname( sy-uname ).
-    DATA(lv_entity) = CONV string( to_upper( entity_name ) ).
+    DATA(lv_uname) = sy-uname.
+    DATA(lv_entity) = to_upper( entity_name ).
     DATA(lv_name) = CONV string( name ).
     DATA(lv_where) = |{ cv_owner_where } AND NAME = @LV_NAME|.
 

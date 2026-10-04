@@ -9,8 +9,8 @@
 "!   with OpenUI5): #BAR and #COLUMN as bars against the largest value,
 "!   #DONUT and #PIE as each value's share of the total, #LINE and #AREA as
 "!   a trend - each value against the one before it
-"! A card with presentation_variant takes its content from that
-"! @UI.presentationVariant: a chart (#AS_CHART) or the table of the line
+"! A card with presentation_variant takes its content from
+"! that @UI.presentationVariant: a chart (#AS_CHART) or the table of the line
 "! item, sorted and as many rows as the variant says (since 2026-10).
 "! Every card links to the list report of its view.
 "!

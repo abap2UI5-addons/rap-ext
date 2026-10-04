@@ -292,8 +292,8 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         io_container TYPE REF TO z2ui5_cl_ui5_view_builder
         client       TYPE REF TO z2ui5_if_client.
 
-    "! the value of a field as the page displays it - with its text by
-    "! @ObjectModel.text.element and @UI.textArrangement
+    "! the value of a field as the page displays it - with its text
+    "! by @ObjectModel.text.element and @UI.textArrangement
     METHODS get_display_text
       IMPORTING
         is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
@@ -378,8 +378,8 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
 
     "! a created record whose key the business object assigned only on save
     "! (late numbering): the newest record created by this user since
-    "! since_ts / since_utc, found by its @Semantics.user.createdBy and
-    "! @Semantics.systemDateTime.createdAt fields - abap_false when the
+    "! since_ts / since_utc, found by its @Semantics.user.createdBy
+    "! and @Semantics.systemDateTime.createdAt fields - abap_false when the
     "! entity has neither or nothing was found
     METHODS find_created_record
       IMPORTING
