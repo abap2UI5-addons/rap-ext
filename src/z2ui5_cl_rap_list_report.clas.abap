@@ -109,8 +109,8 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
 
     TYPES ty_t_sort_field TYPE STANDARD TABLE OF ty_s_sort_field WITH DEFAULT KEY.
 
-    "! the field the rows are sorted by (in the database) - the first of
-    "! @UI.presentationVariant's sortOrder until the user picks another
+    "! the field the rows are sorted by (in the database) - the first
+    "! of @UI.presentationVariant's sortOrder until the user picks another
     DATA mv_sort_field TYPE string.
     "! the fields the sort select offers - the columns
     DATA mt_sort_field TYPE ty_t_sort_field.
@@ -164,6 +164,13 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     METHODS load_data.
 
     METHODS get_where_clause
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the WHERE of the filter bar alone - what get_where_clause( ) returns
+    "! here; a subclass that redefines get_where_clause( ) reads it to get
+    "! the filters without its own additions
+    METHODS get_filter_where_clause
       RETURNING
         VALUE(result) TYPE string.
 
@@ -598,6 +605,13 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
 
   METHOD get_where_clause.
+
+    result = get_filter_where_clause( ).
+
+  ENDMETHOD.
+
+
+  METHOD get_filter_where_clause.
 
     DATA lt_and TYPE string_table.
 
@@ -1116,7 +1130,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD get_missing_filters.
     LOOP AT mt_filter INTO DATA(ls_filter) WHERE mandatory = abap_true.
-      IF condense( ls_filter-value ) IS INITIAL.
+      IF condense( ls_filter-value ) = ``.
         READ TABLE ms_entity-fields INTO DATA(ls_field) WITH KEY name = ls_filter-name.
         APPEND COND string( WHEN sy-subrc = 0 THEN ls_field-label ELSE ls_filter-name ) TO result.
       ENDIF.

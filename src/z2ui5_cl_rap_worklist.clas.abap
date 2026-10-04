@@ -137,7 +137,7 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
 
     super->load_data( ).
     "the counts of every tab, whatever tab is selected
-    load_segments( super->get_where_clause( ) ).
+    load_segments( get_filter_where_clause( ) ).
 
   ENDMETHOD.
 
