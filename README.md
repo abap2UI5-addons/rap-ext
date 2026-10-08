@@ -1,18 +1,81 @@
-![ABAP](https://img.shields.io/badge/ABAP-7.58%20%E2%86%92%20Standard-blue)
-[![namespace](https://img.shields.io/badge/namespace-z2ui5__cl__rap-blue)](abaplint.jsonc)
-[![dependency](https://img.shields.io/badge/dependency-abap2UI5-blue)](https://github.com/abap2UI5/abap2UI5)
-[![abap2UI5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fabap2UI5-addons%2Frap-ext%2Fbadges%2Fabap2ui5.json)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check-abap2ui5.yaml)
-<br><br>
-[![abap-standard](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/abap-standard.yaml/badge.svg)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/abap-standard.yaml)
+# rap-ext
+
+[![abap2UI5-addons](https://img.shields.io/badge/abap2UI5--addons-library-1873b4)](https://github.com/abap2UI5-addons)
+[![ABAP](https://img.shields.io/badge/ABAP-Standard%20%E2%89%A5%207.58-blue)](#installation)
+[![abap2UI5](https://img.shields.io/badge/requires-abap2UI5-blue)](https://github.com/abap2UI5/abap2UI5)
+[![License](https://img.shields.io/github/license/abap2UI5-addons/rap-ext)](LICENSE)
 <br>
+[![ABAP Standard](https://img.shields.io/github/actions/workflow/status/abap2UI5-addons/rap-ext/abap-standard.yaml?branch=main&label=ABAP%20Standard)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/abap-standard.yaml)
+[![ABAP Unit](https://img.shields.io/github/actions/workflow/status/abap2UI5-addons/rap-ext/unit.yaml?branch=main&label=ABAP%20Unit)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/unit.yaml)
 [![check-abap2UI5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fabap2UI5-addons%2Frap-ext%2Fbadges%2Fcheck-abap2ui5.json)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check-abap2ui5.yaml)
-[![unit](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/unit.yaml/badge.svg)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/unit.yaml)
+[![abap2UI5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fabap2UI5-addons%2Frap-ext%2Fbadges%2Fabap2ui5.json)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check-abap2ui5.yaml)
 
-# rap-extension
+**Fiori-Elements-style apps for your CDS views, generated at runtime and
+rendered with abap2UI5.** rap-ext reads a CDS entity and its UI annotations
+(metadata extensions included) and builds a list report, worklist, object
+page, overview page, value help or action dialog from them - writing through
+RAP where the entity is a business object. It is for ABAP developers on a
+standard ABAP system who want such a UI with one line of code and can still
+redefine any step of it with plain abap2UI5 view code.
 
-Display RAP and CDS artifacts with abap2UI5 - Fiori-Elements-style floorplans
-generated at runtime from a CDS entity and its UI annotations (metadata
-extensions included), rendered with abap2UI5, writing through RAP.
+> Part of [abap2UI5-addons](https://github.com/abap2UI5-addons) - addons and apps for [abap2UI5](https://github.com/abap2UI5/abap2UI5), installed with [abapGit](https://abapgit.org).
+
+## Why
+
+A CDS view with `@UI` annotations already says what its list, its filter bar
+and its object page look like. rap-ext turns those annotations into abap2UI5
+apps at runtime: create a floorplan with the name of the entity, call it with
+`nav_app_call`, and the screen is there. Every floorplan is a normal class -
+not FINAL, every rendering and event step a protected method - so where the
+generated screen is not enough, a subclass replaces that one step with its
+own view code ([The Escape Hatch](#the-escape-hatch)).
+
+Good for:
+
+- **CDS views and RAP business objects** that need a list, a detail page or
+  a dashboard inside an abap2UI5 app.
+- **Value helps and parameter dialogs** in your own abap2UI5 apps, driven by a
+  CDS view or an abstract CDS entity.
+
+What it is not:
+
+- **Not for ABAP Cloud.** The annotations are read through on-premise DDIC
+  APIs (`CL_DD_DDL_ANNOTATION_SERVICE`) that are not released for ABAP Cloud.
+- **Not for a plain internal table.** This addon renders from **CDS
+  annotations**. For a list report over a plain internal table there is no
+  counterpart in the abap2UI5 core today — an RTTI-based
+  `z2ui5_cl_fp_list_report` existed there briefly and was removed again, so
+  do not rely on it; build such a view with `z2ui5_cl_ui5_view_builder`
+  directly.
+
+## Installation
+
+**Requirements**
+
+- Standard ABAP 7.58 or higher - the release the code is checked against;
+  not ABAP Cloud
+- [abap2UI5](https://github.com/abap2UI5/abap2UI5) - the checks run against
+  the release pinned in `abaplint.jsonc`
+- UI5 1.77 or higher in the browser (the object page uses
+  `sap.uxap.ObjectPageSubSection.showTitle`)
+- for the RAP parts of the demo: the `/DMO/` flight reference scenario
+
+**Steps** - with [abapGit](https://abapgit.org), in this order:
+
+1. [abap2UI5](https://github.com/abap2UI5/abap2UI5)
+2. this repository (branch `main`)
+
+**Start** - run the demo app like any abap2UI5 app,
+`?app_start=z2ui5_cl_rap_test`; it shows every floorplan. Its deep links
+come from `z2ui5_cl_rap_test_start` (see [Deep links](#deep-links)).
+
+> [!NOTE]
+> Everything passes the offline checks, but none of it has been clicked
+> through in an SAP system yet - the RAP write path and the reading of
+> metadata extensions were written without one. The checklist for that is
+> [docs/system-test.md](docs/system-test.md); see also [ROADMAP.md](ROADMAP.md).
+
+## Usage
 
 | Floorplan | Class |
 | --- | --- |
@@ -28,7 +91,15 @@ All of them inherit from `z2ui5_cl_rap_floorplan`, which holds what they share
 texts, extension points). `z2ui5_cl_rap_util` reads the metadata,
 `z2ui5_cl_rap_eml` writes through RAP.
 
-### The Escape Hatch
+The shortest call - a list report for a CDS view:
+
+```abap
+client->nav_app_call( NEW z2ui5_cl_rap_list_report(
+  cds_view_name = `I_COUNTRY`
+  title         = `Countries` ) ).
+```
+
+## The Escape Hatch
 
 Every floorplan in this addon is deliberately **not FINAL**: all rendering
 and event steps are `PROTECTED` methods a subclass can redefine with
@@ -45,7 +116,7 @@ breakout — it is just another view method.
 > `TYPE REF TO z2ui5_cl_ui5_view_builder`, and a redefining subclass has to
 > be updated to the verbs `ele` / `tag` / `a` / `end` shown below. Parameter
 > names and the set of hooks are unchanged. In return the views are now
-> checkable without an SAP system — see "Validate".
+> checkable without an SAP system — see [Development](#development).
 >
 > An earlier version of this note named the builder `z2ui5_cl_ai_xml` and the
 > verbs `open` / `leaf` / `shut`. No such class ever shipped in the core, so
@@ -110,7 +181,7 @@ Overridable steps per floorplan:
 - **Action Dialog**: `render_action_dialog`, `get_control_for_field`, `render_value_help`, `handle_value_help_confirm`, `apply_default_values`, `get_missing_fields`, `on_event`
 - **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `navigate_to_intent`, `read_association_target`, `get_text`, ...
 
-### Extension points without a subclass
+## Extension points without a subclass
 
 `z2ui5_if_rap_ext` changes a floorplan's data, metadata, texts and events;
 hand an implementation to any floorplan with `set_extension( )`. Every method
@@ -183,35 +254,7 @@ SE63); `get_text` changes any of them.
 The extension travels with the app through the abap2UI5 draft: the interface
 includes `if_serializable_object`, so keep its attributes serializable.
 
-Scope: this addon renders from **CDS annotations**. For a list report over a
-plain internal table there is no counterpart in the abap2UI5 core today — an
-RTTI-based `z2ui5_cl_fp_list_report` existed there briefly and was removed
-again, so do not rely on it; build such a view with `z2ui5_cl_ui5_view_builder`
-directly.
-
-### Validate
-
-Three gates run offline, no SAP system needed (CI runs the same on every push
-and PR):
-
-```bash
-npm ci                          # the pinned toolchain, linter and render runtime
-npm run lint                    # abaplint: syntax/style, 0 issues expected
-npm run unit                    # ABAP Unit tests that need no system, transpiled -
-                                # the util and the list report and object page
-npx abap2ui5lint                # every generated view: UI5 metadata + headless render
-npx abap2ui5lint --no-render    # fast loop, no browser
-npm run check                   # all three
-```
-
-abaplint checks against the abap2UI5 release pinned in `abaplint.jsonc`
-(`scripts/core-pin.mjs`, moved weekly by `bump-core.yml`); the weekly run of
-`abap-standard.yaml` is the canary against the core's `main`.
-
-End-to-end still needs a system: install via abapGit and run
-`z2ui5_cl_rap_test`.
-
-### Metadata
+## Metadata
 
 `z2ui5_cl_rap_util=>read_entity( )` reads the fields (RTTI), the keys and the
 data element texts (DDIC), the associations and every annotation - through
@@ -253,7 +296,7 @@ ON condition from the child's association to parent. The object page reads
 the rows of a `#LINEITEM_REFERENCE` table by that ON condition (else by the
 keys under the same names), and `resolve_association` still decides first.
 
-### Writing - RAP, tables, read-only
+## Writing - RAP, tables, read-only
 
 What an entity lets the user do is asked from its BDEF
 (`z2ui5_cl_rap_floorplan=>get_capabilities`): a business object whose root is
@@ -321,7 +364,7 @@ list. The fields a RAP message names (`%element`) are marked in edit mode.
 Not yet: feature control (`GET PERMISSIONS`) and reading a draft back -
 see [ROADMAP.md](ROADMAP.md).
 
-### Filter syntax
+## Filter syntax
 
 The filter bar (and `build_filter_condition`) understands:
 
@@ -338,11 +381,11 @@ The filter bar (and `build_filter_condition`) understands:
 Dates can be typed as `2024-01-15`. A value help in the filter bar fills
 exact values (`=US;=DE`).
 
-### CDS Action Dialog (Popup)
+## CDS Action Dialog (Popup)
 
 Renders a popup dialog for an abstract CDS entity, driven by its annotations (labels, tooltips, default values, value helps, dropdowns, multiline texts, hidden and mandatory fields). The list report and the object page use it for the parameter of a RAP action.
 
-##### Popup Definition
+### Popup Definition
 ```cds
 @EndUserText.label: 'Entity for popup'
 define abstract entity z2ui5_dd_rap_test_popup
@@ -362,7 +405,7 @@ define abstract entity z2ui5_dd_rap_test_popup
 }
 ```
 
-##### abap2UI5 Popup Call
+### abap2UI5 Popup Call
 ```abap
   METHOD z2ui5_if_app~main.
 
@@ -384,7 +427,7 @@ define abstract entity z2ui5_dd_rap_test_popup
   ENDMETHOD.
 ```
 
-### CDS Value Help
+## CDS Value Help
 
 Renders a table select dialog for any CDS view. Visible columns come from the
 entity metadata; `@ObjectModel.text.element` adds description columns. The
@@ -397,7 +440,7 @@ An input with a value help (object page, action dialog) **suggests values
 while the user types**: the rows whose element starts with the text or whose
 text fields contain it.
 
-##### abap2UI5 Value Help Call
+### abap2UI5 Value Help Call
 ```abap
   DATA(lo_vh) = NEW z2ui5_cl_rap_value_help(
     cds_view_name = `I_COUNTRY`
@@ -416,7 +459,7 @@ On return, read the selection:
   ENDIF.
 ```
 
-### CDS List Report
+## CDS List Report
 
 Renders a Fiori-Elements-style list report for any CDS view, driven entirely by its annotations:
 - Columns from `@UI.lineItem` (position, label, importance-based responsive popin)
@@ -430,7 +473,7 @@ Renders a Fiori-Elements-style list report for any CDS view, driven entirely by 
 - Views per user (filters, search, sort order, hidden columns; one the default), a columns dialog, and the export of every matching row as a CSV file
 - Create where the entity allows it; row navigation to a generated object page
 
-##### abap2UI5 List Report Call
+### abap2UI5 List Report Call
 ```abap
 client->nav_app_call( NEW z2ui5_cl_rap_list_report(
   cds_view_name = `I_COUNTRY`
@@ -438,7 +481,7 @@ client->nav_app_call( NEW z2ui5_cl_rap_list_report(
   max_rows      = 500 ) ).
 ```
 
-### CDS Object Page
+## CDS Object Page
 
 Renders an object page for a single record of a CDS entity:
 - Header title/description from `@UI.headerInfo`
@@ -449,7 +492,7 @@ Renders an object page for a single record of a CDS entity:
 - A button that copies a link to the record (see "Deep links")
 - User-format dates/times, Yes/No booleans, amounts/quantities with unit via `@Semantics`
 
-##### abap2UI5 Object Page Call
+### abap2UI5 Object Page Call
 ```abap
 "val: any structure typed after the CDS entity
 client->nav_app_call( NEW z2ui5_cl_rap_object_page( val = ls_row ) ).
@@ -460,7 +503,7 @@ client->nav_app_call( NEW z2ui5_cl_rap_object_page(
   keys          = VALUE #( ( name = `Country` value = `DE` ) ) ) ).
 ```
 
-### Deep links
+## Deep links
 
 `z2ui5_cl_rap_start` opens a floorplan from its URL - or the startup
 parameters of a launchpad tile - so a link outlives the abap2UI5 draft:
@@ -493,7 +536,7 @@ ENDCLASS.
 button copies one when `z2ui5_if_rap_ext~get_start_app` names the subclass,
 else the link of the app's current state (valid while its draft lives).
 
-### CDS Worklist
+## CDS Worklist
 
 The items to work through: a table with `@UI.lineItem` columns, a search
 field, sorting, the actions and row navigation. With `segment_field`, a tab
@@ -507,7 +550,7 @@ client->nav_app_call( NEW z2ui5_cl_rap_worklist(
   segment_field = `Status` ) ).
 ```
 
-### CDS Overview Page
+## CDS Overview Page
 
 Renders a grid of cards for multiple CDS views - `TABLE` (the first rows), `KPI`
 (an aggregated number) or `CHART` (the first `@UI.chart`: bars for `#BAR` and
@@ -539,7 +582,9 @@ and points the card's `data_ref` there. A redefined `render_table_card` binds
 `is_card-data_ref->*` the way the shipped one does, and a redefined
 `load_all_cards` only has to fill `mt_card_data`.
 
-### Changes in 2026-09
+## Changes
+
+### 2026-09
 
 Additive for callers and subclasses, with these exceptions a subclass may notice:
 
@@ -561,7 +606,7 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   instead of panels and tiles in a layout grid; `count` is the number of rows
   of the view.
 
-### Changes in 2026-10
+### 2026-10
 
 - New protected members in the floorplans (`render_sort_controls`,
   `get_order_by`, `render_header_facets`, `get_display_text`,
@@ -575,7 +620,7 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   instead of the table growing over the loaded ones; the object page header
   follows the header facets when there are any.
 
-### Changes in 2026-10, second round
+### 2026-10, second round
 
 - **A database table is read-only** until an extension allows its writes
   (`adjust_capabilities`, see "Writing") - an app that changed a table through
@@ -595,8 +640,34 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
 - The object page of a draft business object edits in a committed draft; the
   value help of an entity with selection fields is a `sap.m.Dialog`.
 
-### Demo
+## Development
 
-See `z2ui5_cl_rap_test` for a demo app that showcases all components, and
-`z2ui5_cl_rap_test_start` for its deep links. The checklist of what to click
-through in a system is [docs/system-test.md](docs/system-test.md).
+Three gates run offline, no SAP system needed (CI runs the same on every push
+and PR):
+
+```bash
+npm ci                          # the pinned toolchain, linter and render runtime
+npm run lint                    # abaplint: syntax/style, 0 issues expected
+npm run unit                    # ABAP Unit tests that need no system, transpiled -
+                                # the util and the list report and object page
+npx abap2ui5lint                # every generated view: UI5 metadata + headless render
+npx abap2ui5lint --no-render    # fast loop, no browser
+npm run check                   # all three
+```
+
+abaplint checks against the abap2UI5 release pinned in `abaplint.jsonc`
+(`scripts/core-pin.mjs`, moved weekly by `bump-core.yml`); the weekly run of
+`abap-standard.yaml` is the canary against the core's `main`.
+
+End-to-end still needs a system: install via abapGit and run
+`z2ui5_cl_rap_test`.
+
+## Contributing
+
+Issues and pull requests are welcome - see [CONTRIBUTING.md](CONTRIBUTING.md)
+and, for the rules of the code, [AGENTS.md](AGENTS.md). Security issues:
+[SECURITY.md](SECURITY.md).
+
+## License
+
+MIT - see [LICENSE](LICENSE).
