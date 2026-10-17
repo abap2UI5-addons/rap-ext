@@ -20,7 +20,7 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
       the columns `IS_PUBLIC` and `AUTO_APPLY` were appended in 2026-10,
       third round - an existing table is adjusted, check SE14)
 - [ ] the text pool of `z2ui5_cl_rap_floorplan` arrived (SE24 > Goto > Text
-      Elements, 88 entries); an English logon shows its texts
+      Elements, 98 entries); an English logon shows its texts
 - [ ] **unverified syntax**: `z2ui5_cl_rap_eml_perm` (`GET PERMISSIONS
       OPERATIONS ... FAILED ... REPORTED`, operand `ABP_BEHV_PERMISSIONS_TAB`),
       `z2ui5_cl_rap_eml_read` (`READ ENTITIES OPERATIONS ... FAILED ...
@@ -427,3 +427,65 @@ and a projection with a virtual element
       display mode
 - [ ] the object page's link button copies a link that opens the record again
       (the app state link without `get_start_app`, the start app's with it)
+
+## 11 · Tree, analytical list, grid table, column layout (2026-10, third round)
+
+Needs an entity with a hierarchy - e.g. a view with `@Hierarchy.parentChild`
+or `@OData.hierarchy.recursiveHierarchy` and its `define hierarchy` - and
+one with `@Aggregation.default` fields.
+
+- [ ] `z2ui5_cl_rap_util=>read_hierarchy( )` of the entity names the node
+      and the parent field: from `@Hierarchy.parentChild` (note the keys
+      `GET_ANNOS` hands over for `recurse.parent`, `recurseBy`,
+      `siblingsOrder` - the reading assumes `HIERARCHY.PARENTCHILD$1$...`),
+      from the CDS hierarchy's DDL source (`DDDDLSRC` holds a `define
+      hierarchy` like a view's source?) and from a parent association
+- [ ] `z2ui5_cl_rap_tree`: the nodes are indented under their parents, the
+      expand button opens and closes a node without a read (the
+      `ColumnListItem`'s `visible` bound to `ZZROW_VISIBLE` hides the
+      rows; the label's `width` bound to the indent), Expand all and
+      Collapse all work, a node whose parent is filtered away is a root
+- [ ] Create child opens the object page with the parent field filled; the
+      new node appears under its parent after the save
+- [ ] Delete with each delete mode on a RAP BO and on a table whose writes
+      are allowed: `SUBTREE` deletes the descendants first (check a
+      composition or a foreign key that refuses the order), `MOVE_UP`
+      updates the children's parent field and deletes the node, `LEAF`
+      refuses a node with children; a refused write stops and its message
+      is shown
+- [ ] analytical list report (`analytical = abap_true`, a group field
+      chosen): the dynamic `SELECT ... GROUP BY` with `SUM( X ) AS X`,
+      `COUNT( DISTINCT Y ) AS Y`, `AVG( Z ) AS Z` runs (`INTO CORRESPONDING
+      FIELDS` of a table of the entity) - note which aggregate the release
+      refuses for which type (an `AVG` into an integer, a `SUM` of a
+      `CURR` field) and that the fallback from the rows then shows the
+      value; a group header row shows "Label: value" with the subtotals, the
+      total row the totals of every matching row (not only the loaded ones)
+- [ ] group and total rows: not navigable (`type` Inactive), an action or
+      an intent with one of them selected ignores it
+- [ ] the analytical list on a custom entity: the aggregates are computed
+      from at most 5000 rows
+- [ ] grid table (`table_type = GRID`): `sap.ui.table` loads (the
+      `xmlns:table` of the view), the check box selects a row for the
+      toolbar actions (the toolbar follows the selection), the navigation
+      column opens the object page, the "More" button and `noData` work, the
+      columns keep their widths
+- [ ] `z2ui5_cl_rap_fcl` with `/DMO/C_TRAVEL_A_D` (demo app button): the
+      list in the first column, a row opens the object page in the second
+      (`TwoColumnsMidExpanded`), a booking row the third; every event
+      reaches its column (Edit, Save, the filter bar's Go, a value help in
+      the first and in the second column, an action dialog)
+- [ ] the bindings of the columns resolve through the host's public
+      attributes (`MO_BEGIN->MR_DATA`, `MO_MID->...`) - typed `REF TO
+      z2ui5_if_app`; check that the core dissolves them (else the columns
+      are empty)
+- [ ] the object page's back button closes its column, and after a save
+      the list in the first column is read again; a new row press replaces
+      the second column and closes the third
+- [ ] the draft: reload the browser on an open object page - the host is
+      restored with its columns (or note what is lost)
+- [ ] a fuzzy search: an extension implementing
+      `z2ui5_if_rap_ext~build_search_condition` with
+      `z2ui5_cl_rap_util=>build_fuzzy_search` through `CL_SQL_STATEMENT` on
+      HANA - the native `CONTAINS( ( "F" ), 'text', FUZZY( 0.8 ) )` runs
+      against the entity's SQL view or table and its keys filter the list

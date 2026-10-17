@@ -8,7 +8,12 @@
  *     association parser, export and URL helpers) and, since 2026-10, the
  *     list report and the object page (the steps that decide order, filters,
  *     views, columns, sections and the place of a child in its business
- *     object - on metadata set by hand, no row read).
+ *     object - on metadata set by hand, no row read), and since 2026-10,
+ *     third round, the tree (the order of its rows, expand and collapse) and
+ *     the flexible column layout (which column an event reaches, what opens
+ *     and closes a column - with test doubles of the floorplans and the
+ *     client). The view builder's runtime is not reached: it needs the
+ *     core's context class, which is not transpiled here.
  *   - CORE, the public API of the abap2UI5 release abaplint.jsonc pins
  *     (src/02: the app and client interfaces, the view builder) - what the
  *     floorplans are written against. Its own test classes are left out.

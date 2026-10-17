@@ -13,7 +13,8 @@ views and their UI annotations, rendered with abap2UI5.
 | Object | Role |
 | --- | --- |
 | `z2ui5_cl_rap_floorplan` | superclass of every floorplan: reading, filter/search, input controls, value help, writing, texts, extension calls |
-| `z2ui5_cl_rap_list_report`, `_worklist` (a subclass of it), `_object_page`, `_overview_page`, `_value_help`, `_action_dialog` | the floorplans - each an abap2UI5 app |
+| `z2ui5_cl_rap_list_report`, `_worklist` and `_tree` (subclasses of it), `_object_page`, `_overview_page`, `_value_help`, `_action_dialog` | the floorplans - each an abap2UI5 app |
+| `z2ui5_cl_rap_fcl`, `z2ui5_cl_rap_fcl_client` | the flexible column layout: a host app that calls the floorplans with a client of its own and puts their views into the columns of one view (README, "Flexible Column Layout") - the client implements every method of the pinned core's `z2ui5_if_client` |
 | `z2ui5_cl_rap_util` | the metadata: RTTI, DDIC keys/texts, annotations (`read_entity`, `apply_annotations`), the associations of the DDL source (`read_associations`, `parse_ddl_associations`), the filter/search syntax, CSV/UTF-8/Base64/URL helpers - no UI, needs no other class of the addon, unit-tested |
 | `z2ui5_cl_rap_eml` | the RAP write path - the only class with EML abaplint parses |
 | `z2ui5_cl_rap_eml_perm`, `_read`, `_key` | one dynamic EML statement each (`GET PERMISSIONS OPERATIONS`, `READ ENTITIES OPERATIONS`, `CONVERT KEY`) - in `global.noIssues`, called dynamically from `z2ui5_cl_rap_eml`, unverified syntax |
@@ -57,14 +58,17 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   parser, the filter/search syntax, the export and URL helpers) and the list
   report and object page (order, filters, views, columns, sections, the rows
   and the context of a child - on metadata set by hand, through `LOCAL
-  FRIENDS`). Logic that needs no system belongs there so it can be tested; an
-  SAP object the runtime lacks, and a class not in `UNITS`
+  FRIENDS`), the tree and the column layout's routing (with test doubles of
+  a floorplan and of the client). Logic that needs no system belongs there
+  so it can be tested; an SAP object the runtime lacks, and a class not in `UNITS`
   (`z2ui5_cl_rap_eml` - the transpiler has no EML), compiles to a runtime
-  error in the code that uses it, so a test must not reach one. Three
+  error in the code that uses it, so a test must not reach one. Four
   transpiler traps found on the way, all green in abaplint: a declaration
   inside an `IF` or `LOOP` is scoped to that block in the generated JS
   (declare at the top of the method when it is used after the block),
-  `VALUE #( ( LINES OF itab ) )` does not transpile, and `z2ui5_cl_rap_util`
+  `VALUE #( ( LINES OF itab ) )` does not transpile, `MOVE-CORRESPONDING`
+  of one generic table into another fails at runtime ("table, no header
+  line" - move row by row), and `z2ui5_cl_rap_util`
   must not name a type of another class of the addon (it ran alone once and
   failed with "Void type").
 - The **abap2UI5-linter** checks every view the floorplans build: unknown,
@@ -181,7 +185,7 @@ stored in an instance attribute, or a hook called through a dynamic
 dispatch. When a change makes the linter report *fewer* documents than the
 class actually builds, that is the signal.
 
-Five things learned the hard way with the floorplan base class:
+Six things learned the hard way with the floorplan base class:
 
 - **The floorplan base class is judged too.** Since 2026-10 (third round)
   `z2ui5_cl_rap_floorplan` builds popups of its own (the message view, the
@@ -193,6 +197,10 @@ Five things learned the hard way with the floorplan base class:
   `render_field_input( )` look like inside the object page's form only a
   system shows - its callers pass their own handle, so check a change
   there against the UI5 API of the 1.77 floor as well.
+- **A builder handle copied into a local variable** (`DATA(lo_toolbar) =
+  io_toolbar.` in a render hook) made the replay skip the list report's
+  whole render gate (2026-10, third round - "built in helper methods").
+  Work on the parameter itself.
 - **A builder call inside a parameter** (`io_container = lo_card->ele( ... )`)
   makes it skip the whole document's render gate ("built in helper
   methods"). Put the handle in a variable first.

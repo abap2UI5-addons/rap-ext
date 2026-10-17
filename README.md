@@ -81,6 +81,8 @@ come from `z2ui5_cl_rap_test_start` (see [Deep links](#deep-links)).
 | --- | --- |
 | List Report | `z2ui5_cl_rap_list_report` |
 | Worklist | `z2ui5_cl_rap_worklist` |
+| Tree (a list report of a hierarchy) | `z2ui5_cl_rap_tree` |
+| Flexible Column Layout (list and object pages side by side) | `z2ui5_cl_rap_fcl` |
 | Object Page | `z2ui5_cl_rap_object_page` |
 | Overview Page | `z2ui5_cl_rap_overview_page` |
 | Value Help | `z2ui5_cl_rap_value_help` |
@@ -173,8 +175,10 @@ ENDCLASS.
 ```
 
 Overridable steps per floorplan:
-- **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `on_action`, `execute_action`, `render_action_buttons`, `open_created`, `on_navigated`, `load_data`, `get_where_clause`, `get_line_item_fields`, `get_selection_fields`, `get_row_key_fields`, `get_line_item_actions`, `get_line_item_intents`, `get_visible_columns`, `get_missing_filters`, `on_nav_path`, `on_intent`, `on_export`, `render_export_button`, `init_variants`, `get_action_rows`, `apply_filter_presets`, `render_variant_controls`, `render_variant_popup`, `render_column_popup`, `on_variant_event`, `capture_variant`, `apply_variant`, `apply_row_states`, `fill_draft_status`, `update_action_state`, `get_action_enabled`, `has_row_column`, `create_filter`, `update_filter_tokens`, `take_filter_inputs`, `apply_presentation_variants`, `on_filter_event`, `render_condition_popup`, `render_adapt_popup`, `get_adaptable_fields`, `clear_rows`, `is_initial_load`, `apply_text_columns`, `get_text_column`, `has_selection`, `get_condition_operators`, `get_ordered_columns`, `get_variant_key`, `on_event`
+- **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `on_action`, `execute_action`, `render_action_buttons`, `open_created`, `on_navigated`, `load_data`, `get_where_clause`, `get_line_item_fields`, `get_selection_fields`, `get_row_key_fields`, `get_line_item_actions`, `get_line_item_intents`, `get_visible_columns`, `get_missing_filters`, `on_nav_path`, `on_intent`, `on_export`, `render_export_button`, `init_variants`, `get_action_rows`, `apply_filter_presets`, `render_variant_controls`, `render_variant_popup`, `render_column_popup`, `on_variant_event`, `capture_variant`, `apply_variant`, `apply_row_states`, `fill_draft_status`, `update_action_state`, `get_action_enabled`, `has_row_column`, `create_filter`, `update_filter_tokens`, `take_filter_inputs`, `apply_presentation_variants`, `on_filter_event`, `render_condition_popup`, `render_adapt_popup`, `get_adaptable_fields`, `clear_rows`, `is_initial_load`, `apply_text_columns`, `get_text_column`, `has_selection`, `get_condition_operators`, `get_ordered_columns`, `get_variant_key`, `render_toolbar_content`, `render_grid_table`, `render_grid_column`, `apply_analytics`, `read_aggregates`, `add_row_columns`, `get_selected_rows`, `on_event`
 - **Worklist**: everything of the list report (it is a subclass of it), plus `load_segments`
+- **Tree**: everything of the list report (it is a subclass of it), plus `get_hierarchy`, `get_delete_mode`, `build_tree_rows`, `refresh_tree_state`, `get_node_key`, `get_node_row`, `get_selected_node`, `on_create_child`, `render_delete_popup`, `delete_node`
+- **Flexible Column Layout** (`z2ui5_cl_rap_fcl`): `dispatch`, `open_column`, `close_column`, `render`, `render_skeleton`, `update_layout`, `get_column_app`
 - **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_content`, `render_section_form`, `render_section_fields`, `render_section_table`, `get_sections`, `save_data`, `delete_data`, `reload_data`, `load_child_rows`, `get_association_target`, `get_child_filter`, `get_child_context`, `on_child_create`, `get_bdef`, `get_root_keys`, `get_own_keys`, `start_draft`, `save_draft`, `find_created_record`, `get_link`, `on_action`, `execute_action`, `get_record_actions`, `get_identification_fields`, `render_section_actions`, `render_action_buttons`, `on_child_action`, `execute_child_action`, `open_created`, `on_child_row`, `format_value`, `load_permissions`, `get_field_for_edit`, `read_own_draft`, `read_draft_status`, `resume_draft`, `render_draft_info`, `get_disabled_actions`, `apply_start_mode`, `get_custom_sections`, `render_section`, `render_custom_section`, `get_side_effect_fields`, `on_side_effect`, `get_admin_fields`, `render_admin_fields`, `get_change_documents`, `get_path_children`, `render_path_input`, `add_path_token`, `delete_path_token`, `get_path_as_child`, `get_token_key`, `get_token_keys`, `read_child_rows`, `add_row_flags`, `render_child_cell`, `on_child_row_add`, `on_child_row_delete`, `get_child_original`, `write_children`, `on_event`
 - **Overview Page**: `render_page`, `render_table_card`, `render_kpi_card`, `render_chart_card`, `render_card_link`, `load_all_cards`, `load_kpi_value`, `load_chart_rows`, `collect_card_rows`, `display`, `on_card`, `on_card_row`, `on_event`
 - **Value Help**: `render_dialog`, `render_filter_dialog`, `load_data`, `get_where_clause`, `on_confirm`, `on_event`
@@ -251,6 +255,8 @@ client->nav_app_call( lo_report ).
 | `get_custom_sections` | sections of the object page with their place: `id`, `title`, `anchor` (the id of a `@UI.facet`) and `placement` `BEFORE` or `AFTER` (default); no anchor, or one the page does not show, is the end - the content comes from `extend_view` |
 | `get_side_effect_fields` | the fields whose change updates the draft at once (`*` every field) - default `*` with draft, none without (see "Object page: children, side effects, sections") |
 | `get_change_documents` | the CDS entity of the record's change documents and its filter (its field = the record's field; empty: the keys) - a read-only section "Changes" |
+| `build_search_condition` | the WHERE of a free-text search instead of the `LIKE` - e.g. the keys a HANA fuzzy search found (see "CDS List Report") |
+| `adjust_hierarchy` | the hierarchy of a tree: node and parent field, the order of the siblings, the delete mode (see "CDS Tree") |
 
 The built-in texts are German for a German logon (`sy-langu` `D`) and
 otherwise the text pool of `z2ui5_cl_rap_floorplan` (English, translatable in
@@ -295,7 +301,10 @@ and qualifiers are read per entry:
 | domain fixed values | a field without an annotated value help whose domain has fixed values gets a dropdown of them (edit mode, action dialog) and a list in the filter bar (`CL_ABAP_ELEMDESCR->GET_DDIC_FIXED_VALUES`, called dynamically) |
 | `@Consumption.valueHelpDefinition` | value helps, with `additionalBinding` (usage `#FILTER` and `#RESULT`) |
 | `@Consumption.filter` | filter bar: `defaultValue`, `mandatory` (no rows until it has a value), `selectionType: #SINGLE` / `multipleSelections: false` (the value help selects one), `hidden` |
-| `@Search.searchable`, `@Search.defaultSearchElement` | the search field and what it searches: the `defaultSearchElement` fields (also when `@UI.hidden`), else every visible text and string field; `@Search.fuzzinessThreshold` is read (`search_fuzziness`), the search stays a case-insensitive `LIKE` |
+| `@Search.searchable`, `@Search.defaultSearchElement` | the search field and what it searches: the `defaultSearchElement` fields (also when `@UI.hidden`), else every visible text and string field; a case-insensitive `LIKE` |
+| `@Search.fuzzinessThreshold` | read (`search_fuzziness`); the threshold `z2ui5_if_rap_ext~build_search_condition` is handed - a fuzzy search is HANA SQL (`CONTAINS ... FUZZY`, `z2ui5_cl_rap_util=>build_fuzzy_search`), which ABAP SQL has not: without the hook the search stays a `LIKE` |
+| `@Aggregation.default` | `#SUM`, `#MIN`, `#MAX`, `#AVG`, `#COUNT_DISTINCT`: the subtotals and the total of an analytical list report (`analytical = abap_true`) |
+| `@Hierarchy.parentChild` (`recurse.parent` / `.child`, `recurseBy`, `siblingsOrder`), `@ObjectModel.hierarchy.association`, `@OData.hierarchy.recursiveHierarchy` | the hierarchy of a tree (`z2ui5_cl_rap_tree`): the parent and node fields, or the association to the parent (its ON condition), or the CDS hierarchy (`define hierarchy ... as parent child hierarchy( source ... child to parent association ... siblings order by ... )`, read from its DDL source); without any of them a to-one association of the entity to itself whose target fields are keys |
 | `@ObjectModel.query.implementedBy` | a custom entity - read through its query provider (see "Reading") |
 | `@ObjectModel.virtualElementCalculatedBy` | a virtual element - calculated after each read; not a filter field, not searched, sortable only with `@ObjectModel.sort.transformedBy` (see "Reading") |
 | `@Semantics.amount.currencyCode`, `.quantity.unitOfMeasure`, `.booleanIndicator` | numbers with units, Yes/No |
@@ -642,6 +651,9 @@ Renders a Fiori-Elements-style list report for any CDS view, driven entirely by 
 - Row highlight by the entity's `@UI.lineItem.criticality`, criticality icons, `#AS_FIELDGROUP` cells, images, icons, the semantic key bold, texts of a text association, links to semantic objects
 - Create where the entity allows it; row navigation to a generated object page
 - RAP feature control: an inline action enabled per row, a toolbar action by the selected rows; a draft business object shows the editing status of each row (own draft, locked by another user) and filters by it
+- A **grid table** (`table_type = cs_table_type-grid`, a `sap.ui.table.Table` for long lists - a check box column for the selection, a navigation column, the inline actions as button columns, the toolbar in its extension; no annotation needed). The `sap.ui.table` library is declared only then
+- An **analytical list** (`analytical = abap_true`): the fields with `@Aggregation.default` summed up (`SUM`, `MIN`, `MAX`, `AVG`, `COUNT_DISTINCT`) over every row that matches the filters - a group header row per value of the group field ("Status: Open" with the subtotals) and a total row at the end. Aggregated by `GROUP BY` in the database; a custom entity, a virtual element or an aggregate the database refuses is computed from the rows (at most 5000, `aggregate_rows`). Group and total rows do not navigate and are never selected. Works with both tables
+- **Fuzzy search**: `z2ui5_if_rap_ext~build_search_condition` replaces the `LIKE` of the search with a condition of its own. HANA's fuzzy search (`@Search.fuzzinessThreshold`) is no ABAP SQL - run `z2ui5_cl_rap_util=>build_fuzzy_search` (`CONTAINS( ( "NAME", "CITY" ), 'text', FUZZY( 0.8 ) )`) through ADBC or an AMDP and answer the keys it found
 
 ### abap2UI5 List Report Call
 ```abap
@@ -650,6 +662,27 @@ client->nav_app_call( NEW z2ui5_cl_rap_list_report(
   title         = `Countries`
   max_rows      = 500
   initial_load  = z2ui5_cl_rap_list_report=>cs_initial_load-disabled ) ).
+
+"a grid table with subtotals per group and a total
+client->nav_app_call( NEW z2ui5_cl_rap_list_report(
+  cds_view_name = `ZC_SALES_ORDER`
+  table_type    = z2ui5_cl_rap_list_report=>cs_table_type-grid
+  analytical    = abap_true ) ).
+```
+
+```abap
+"a fuzzy search through ADBC - the keys it found as the search's WHERE
+METHOD z2ui5_if_rap_ext~build_search_condition.
+  IF entity_name <> `ZC_CUSTOMER` OR threshold IS INITIAL.
+    RETURN.
+  ENDIF.
+  DATA(lv_sql) = |SELECT "ID" FROM "ZCUSTOMER" WHERE |
+              && z2ui5_cl_rap_util=>build_fuzzy_search( it_fields  = fields
+                                                        search    = search
+                                                        threshold = threshold ).
+  "... run lv_sql with cl_sql_statement, then e.g.
+  condition = |ID IN ( { lv_ids } )|.
+ENDMETHOD.
 ```
 
 A view can be **public** (every user sees it with its owner's name; only
@@ -658,6 +691,96 @@ read as soon as it is chosen; one that does not sets its filters and waits
 for Go. Both need the columns `IS_PUBLIC` and `AUTO_APPLY` of
 `z2ui5_t_rap_var` (added 2026-10, third round); a system whose table lacks
 them keeps private views that always apply.
+
+## CDS Tree
+
+`z2ui5_cl_rap_tree` (added 2026-10, third round) is a list report whose rows
+are the nodes of the entity's hierarchy - each under its parent, indented by
+its level, with a button that expands and collapses it; Expand all and
+Collapse all in the toolbar. The hierarchy comes from the annotations
+(`z2ui5_cl_rap_util=>read_hierarchy`, see "Metadata"), from the constructor
+or from `z2ui5_if_rap_ext~adjust_hierarchy`:
+
+```abap
+client->nav_app_call( NEW z2ui5_cl_rap_tree(
+  cds_view_name = `ZC_ORG_UNIT`
+  "only where the annotations do not say it
+  hierarchy     = VALUE #( node_field = `ORGUNIT` parent_field = `PARENTUNIT` )
+  delete_mode   = z2ui5_cl_rap_util=>cs_tree_delete-move_up
+  expand_levels = 2 ) ).
+```
+
+- The nodes are read at once, up to `max_rows` (default 1000), sorted by the
+  order of the siblings (`siblingsOrder`, `siblings order by`), then by the
+  list report's order. Expanding and collapsing is a roundtrip that reads
+  nothing - a collapsed node's descendants stay in the rows, hidden
+  (`ZZROW_VISIBLE`; the table does not grow then). The rows are read again
+  after a filter, a search, a save on the object page and a delete.
+- A node whose parent is not among the rows read (filtered away, beyond
+  `max_rows`) is shown as a root; a cycle does not loop. The CDS hierarchy's
+  `start where` is read, not applied - the roots are the nodes without a
+  parent.
+- **Create child** opens the object page of a new record with the parent
+  field set to the selected node. **Delete** asks, then deletes by the
+  delete mode (`cs_tree_delete`): `SUBTREE` (default) the node's
+  descendants first, then the node; `MOVE_UP` gives the children the
+  node's parent, then deletes it; `LEAF` deletes only a node without
+  children. Every write goes through `write_row` (RAP, or a table whose
+  writes the extension allowed) and stops at the first that fails. The
+  delete mode comes from the constructor, the hierarchy (`adjust_hierarchy`)
+  and, per node, `get_delete_mode`.
+- The filter bar, the search, the views, the actions and the object page are
+  the list report's; the tree uses the responsive table.
+
+## Flexible Column Layout
+
+`z2ui5_cl_rap_fcl` (added 2026-10, third round) shows the list report and
+the object page side by side in a `sap.f.FlexibleColumnLayout` (1.46): the
+list in the first column, the object page a row opens in the second, the
+object page of a child in the third.
+
+```abap
+client->nav_app_call( NEW z2ui5_cl_rap_fcl(
+  cds_view_name = `/DMO/C_TRAVEL_A_D`
+  title         = `Travels` ) ).
+
+"any list report - a worklist, a tree, a subclass - as the first column
+client->nav_app_call( NEW z2ui5_cl_rap_fcl(
+  list = NEW z2ui5_cl_rap_worklist( cds_view_name = `/DMO/I_TRAVEL_U`
+                                    segment_field = `Status` ) ) ).
+```
+
+**The design decision.** The floorplans are apps of their own and call each
+other with `nav_app_call` - that stays the default, nothing changes without
+this class. For the column layout they are not rewritten: the host keeps
+them as public attributes (`mo_begin`, `mo_mid`, `mo_end` - the core resolves
+their bindings through them, `MO_BEGIN->MR_DATA`) and calls their `main( )`
+with a client of its own, `z2ui5_cl_rap_fcl_client`, which hands every call
+to the real client except these:
+
+- `view_display` keeps the floorplan's view; the host puts the content of
+  each column's view (its `Page`, without the `Shell`) into its column of one
+  view and declares their namespaces on its root
+  (`z2ui5_cl_rap_util=>compose_view`). Nested views were the other way - the core has two
+  (`nest_view_display`, `nest2_view_display`), a third column has none.
+- `_event` puts the column in front of the event (`MID~SAVE`); the host
+  routes the event to that column's floorplan, which sees `SAVE`.
+- `nav_app_call` of an object page opens it in the next column (from the
+  third: the third again); any other app (a value help, an action dialog)
+  is called as before and returns to the column that called it.
+- `nav_app_leave` in the second or third column closes it (the page's back
+  button), and the floorplan to its left is called as if the page had
+  returned - `check_on_navigated( )`, `get_app_prev( )` the closed page - so
+  the list report reads its rows again after a save. In the first column it
+  leaves the host.
+
+The layout (`OneColumn`, `TwoColumnsMidExpanded`,
+`ThreeColumnsMidExpanded`) follows the open columns; the user resizes them
+with the layout's own arrows. The client is created for each call and never
+kept, so it does not travel through the draft. A floorplan that keeps the
+client it was called with, or names a new member of `z2ui5_if_client`, needs
+the client class extended - it implements every method of the pinned core's
+interface.
 
 ## CDS Object Page
 
@@ -1064,6 +1187,33 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   `side_effect`). Appended: `ty_s_child` (`can_update`, `can_delete`,
   `read_only`), `cs_text` (2 texts, text pool 087-088). New protected
   members (see the lists above) - the rename rule applies to a subclass.
+- **Tree, analytical list, grid table, column layout, fuzzy search**: new
+  classes `z2ui5_cl_rap_tree`, `z2ui5_cl_rap_fcl` and
+  `z2ui5_cl_rap_fcl_client`. The list report's constructor has the new
+  optional `table_type` and `analytical`, `cs_table_type` is new and
+  `cs_row_column` has the appended `row_kind`, `row_label` and
+  `row_visible`. `render_toolbar` now calls the new `render_toolbar_content`
+  with the toolbar it opened - a subclass that redefined `render_toolbar`
+  keeps its own toolbar, one that wants to add to the shipped one redefines
+  `render_toolbar_content` (the grid table calls only that one). The table's
+  `growing` is off when the rows have `ZZROW_VISIBLE`. New protected:
+  `render_grid_table`, `render_grid_column`, `apply_analytics`,
+  `read_aggregates`, `add_row_columns`, and `get_selected_rows` redefined
+  (group and total rows are never selected). `build_search_condition` of the
+  floorplan has the new optional `entity_name`. New:
+  `z2ui5_if_rap_ext~build_search_condition` and `~adjust_hierarchy` (`DEFAULT IGNORE`),
+  `cs_floorplan-tree` and `-fcl`; the util's `get_hierarchy`,
+  `get_hierarchy_fields`, `parse_ddl_hierarchy`, `read_hierarchy`,
+  `build_tree`, `get_tree_descendants`, `get_tree_children`,
+  `get_tree_indent`, `normalize_aggregation`, `get_aggregations`,
+  `build_aggregate_select`, `get_fcl_layout`, `get_view_namespaces`,
+  `get_view_body`, `compose_view`, `to_column_event`,
+  `split_column_event`, `get_search_fuzziness`, `build_fuzzy_search`,
+  `get_search_fields`, the types `ty_s_hierarchy`, `ty_s_tree_node`,
+  `ty_s_aggregation` and the constants `cs_tree_delete`, `cs_row_kind`;
+  `aggregate_rows` knows `COUNT_DISTINCT`. Appended:
+  `ty_s_field_info-aggregation_default`, `cs_text` (10 texts, text pool
+  089-098).
 
 ## Development
 

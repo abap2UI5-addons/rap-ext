@@ -24,6 +24,9 @@ CLASS z2ui5_cl_rap_test DEFINITION
         open_rap_draft     TYPE string VALUE `OPEN_RAP_DRAFT`,
         open_op_by_key     TYPE string VALUE `OPEN_OP_BY_KEY`,
         open_overview_page TYPE string VALUE `OPEN_OVERVIEW_PAGE`,
+        "added 2026-10, third round
+        open_fcl           TYPE string VALUE `OPEN_FCL`,
+        open_grid          TYPE string VALUE `OPEN_GRID`,
       END OF cs_event.
 
     "! build and display the view - called on init and again on every return
@@ -168,6 +171,20 @@ CLASS z2ui5_cl_rap_test IMPLEMENTATION.
               v = client->_event( cs_event-open_overview_page )
         )->a( n = `icon`
               v = `sap-icon://overview-chart` ).
+    lo_hbox2->tag( `Button`
+        )->a( n = `text`
+              v = `Flexible Column Layout (/DMO/ draft)`
+        )->a( n = `press`
+              v = client->_event( cs_event-open_fcl )
+        )->a( n = `icon`
+              v = `sap-icon://screen-split-three` ).
+    lo_hbox2->tag( `Button`
+        )->a( n = `text`
+              v = `Grid table, analytical (/DMO/)`
+        )->a( n = `press`
+              v = client->_event( cs_event-open_grid )
+        )->a( n = `icon`
+              v = `sap-icon://grid` ).
 
     "=== Current Values ===
     DATA(lo_panel3) = lo_page->ele( `Panel`
@@ -332,6 +349,22 @@ CLASS z2ui5_cl_rap_test IMPLEMENTATION.
         cds_view_name = `/DMO/C_TRAVEL_A_D`
         title         = `Travels (RAP, draft)` ).
       client->nav_app_call( lo_draft ).
+      RETURN.
+    ENDIF.
+
+    "=== list and object page side by side (added 2026-10, third round) ===
+    IF client->check_on_event( cs_event-open_fcl ).
+      client->nav_app_call( NEW z2ui5_cl_rap_fcl( cds_view_name = `/DMO/C_TRAVEL_A_D`
+                                                  title         = `Travels (column layout)` ) ).
+      RETURN.
+    ENDIF.
+
+    "=== the grid table, grouped with subtotals and a total ===
+    IF client->check_on_event( cs_event-open_grid ).
+      client->nav_app_call( NEW z2ui5_cl_rap_list_report( cds_view_name = `/DMO/I_TRAVEL_U`
+                                                          title         = `Travels (grid, analytical)`
+                                                          table_type    = `GRID`
+                                                          analytical    = abap_true ) ).
       RETURN.
     ENDIF.
 

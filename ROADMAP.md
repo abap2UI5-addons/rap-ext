@@ -29,10 +29,18 @@ clicked through in an SAP system yet** - that is the first open item, and
    action or Edit only. And whose draft a row has is decided by the draft's
    `@Semantics.user.lastChangedBy` - the draft administrative data (in
    process by user) is not read.
-5. **Flexible column layout** (list and object page side by side) - not
-   started: the floorplans are apps of their own, called with
-   `nav_app_call`; side by side the object page would have to render into a
-   nested view of the list report. A design decision first.
+5. **What the tree, the analytical list and the column layout cannot do
+   yet** (the flexible column layout, the former item 5, is done - 2026-10,
+   third round): the tree reads every node at once (up to `max_rows`), not
+   the children of a node when it is expanded, applies no `start where` of
+   the CDS hierarchy, takes one field pair of the parent association (a
+   composite node key is not compared) and is a responsive table only;
+   the analytical list sums an amount over every currency (no group per
+   unit) and an `AVG` into an integer field is computed from the rows; the
+   column layout keeps no column of its own in a bookmark (a restored host
+   shows its list), offers no full-screen button of its own (the layout's
+   arrows resize) and needs `z2ui5_cl_rap_fcl_client` extended when the
+   pinned core's `z2ui5_if_client` grows.
 6. **Microcharts** (`sap.suite.ui.microchart`) for the chart cards - the
    cards draw with `sap.m`, because the microchart library is SAPUI5 only and
    the view gate renders with OpenUI5.
@@ -51,9 +59,14 @@ clicked through in an SAP system yet** - that is the first open item, and
 10. **`@ObjectModel.filter.transformedBy`** of a virtual element: its
     `IF_SADL_EXIT_FILTER_TRANSFORM` builds conditions with SADL condition
     objects (`IF_SADL_SIMPLE_COND_FACTORY`) that the abaplint API set does
-    not have - a virtual element stays no filter field. Likewise a
-    **fuzzy search** (`@Search.fuzzinessThreshold`, HANA only) and
-    **parameters of a custom entity** (`get_parameters` answers none).
+    not have - a virtual element stays no filter field. Likewise the
+    **parameters of a custom entity** (`get_parameters` answers none). The
+    **fuzzy search** (`@Search.fuzzinessThreshold`, HANA only) is a hook
+    since 2026-10, third round: `CONTAINS ... FUZZY` is no ABAP SQL, so
+    an extension runs it through ADBC or an AMDP
+    (`z2ui5_if_rap_ext~build_search_condition`,
+    `z2ui5_cl_rap_util=>build_fuzzy_search`) - nothing is shipped that
+    runs native SQL.
 11. **XLSX export** next to the CSV export: no spreadsheet writer is part of
     every release - `CL_XLSX_DOCUMENT` is on-premise only and
     `XCO_CP_XLSX` is not in the API set abaplint checks against, so either
@@ -96,6 +109,38 @@ like the others - is still the better one; the classes go when it lands.
 ## Done
 
 ### 2026-10, third round
+
+- **Tree** (`z2ui5_cl_rap_tree`): the nodes of a hierarchy - from
+  `@Hierarchy.parentChild` (`recurse`, `recurseBy`, `siblingsOrder`),
+  `@ObjectModel.hierarchy.association`, the CDS hierarchy of
+  `@OData.hierarchy.recursiveHierarchy` (its DDL source parsed:
+  `source`, `child to parent association`, `start where`,
+  `siblings order by`) or a parent association of the entity to itself -
+  in a responsive table, indented under their parents, expanded and
+  collapsed by a roundtrip, read at once up to `max_rows`; Create child,
+  Delete with a configurable delete mode (subtree, children moved up, leaf
+  only - constructor, `z2ui5_if_rap_ext~adjust_hierarchy`,
+  `get_delete_mode`); the object page by row press.
+- **Analytical list** (`analytical = abap_true`): `@Aggregation.default`
+  (`#SUM`, `#MIN`, `#MAX`, `#AVG`, `#COUNT_DISTINCT`) aggregated by
+  `GROUP BY` in the database (from the rows for a custom entity, a virtual
+  element or a refused aggregate - `aggregate_rows`, which learned
+  `COUNT_DISTINCT`), a group header row with the subtotals per value of
+  the group field ("Label: value" - the former limit of item 7 for this
+  mode) and a total row.
+- **Grid table** (`table_type = GRID`): a `sap.ui.table.Table` for long
+  lists, no annotation needed - selection by check box, navigation column,
+  inline actions, the toolbar in its extension.
+- **Flexible column layout** (formerly open item 5, `z2ui5_cl_rap_fcl`):
+  a host app with a `sap.f.FlexibleColumnLayout` - the list report, its
+  object page, a child's object page side by side. The floorplans are not
+  changed: the host calls them with a client of its own
+  (`z2ui5_cl_rap_fcl_client`) that keeps their views, names the column in
+  their events, opens an object page in the next column and closes a
+  column on its back button; the views become one view. The
+  `nav_app_call` path stays the default. The decision is described in the
+  README ("Flexible Column Layout").
+- **Fuzzy search** as a hook (see open item 10).
 
 - **Object page, children**: an entry whose `value` is an association
   path (`'_Tags.TagId'`) is a `MultiInput` of the 1:n child's values -
