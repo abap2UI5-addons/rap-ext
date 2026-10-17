@@ -60,6 +60,8 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         "added 2026-10, third round: an action of a child table - args
         "the section's component and the action
         child_action   TYPE string VALUE `CHILD_ACTION`,
+        "the answer to "keep or discard your draft?" when leaving the page
+        leave_decision TYPE string VALUE `LEAVE_DECISION`,
       END OF cs_event.
 
     "! val: the record, any structure typed after the CDS entity. Or,
@@ -129,6 +131,8 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         "added 2026-10, third round: the toolbar actions of the child's
         "@UI.lineItem - on the selected rows of the table
         actions     TYPE z2ui5_cl_rap_util=>ty_t_action,
+        "the actions GET PERMISSIONS disables for the child entity
+        disabled_actions TYPE string_table,
       END OF ty_s_child.
 
     TYPES ty_t_child TYPE STANDARD TABLE OF ty_s_child WITH DEFAULT KEY.
@@ -154,6 +158,13 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
     "! the last action created a record and its object page was called -
     "! nothing else is rendered in this roundtrip
     DATA mv_opened_created TYPE abap_bool.
+    "! the permissions of the record - global, static and its own feature
+    "! control and authorization (load_permissions; added 2026-10, third
+    "! round)
+    DATA ms_perm TYPE ty_s_perm_set.
+    "! the draft of the record: the user's own (the page edits it) or
+    "! another user's, who holds the lock (read_draft_status)
+    DATA ms_draft TYPE z2ui5_cl_rap_util=>ty_s_draft_status.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app
@@ -269,7 +280,10 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         client       TYPE REF TO z2ui5_if_client
         event        TYPE string
         args_before  TYPE string_table OPTIONAL
-        row          TYPE data OPTIONAL.
+        row          TYPE data OPTIONAL
+        "the actions shown disabled (feature control) - added 2026-10,
+        "third round
+        disabled     TYPE string_table OPTIONAL.
 
     "! the object page of the record an action created (its MAPPED keys)
     METHODS open_created
@@ -455,6 +469,51 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
+    "! the permissions of the record into ms_perm - what GET PERMISSIONS
+    "! answers for it (on create: the global ones). Added 2026-10, third
+    "! round, like the methods below
+    METHODS load_permissions.
+
+    "! is_field as it is edited: read-only and mandatory by the annotations,
+    "! the static and the instance field control (ms_perm) and whether the
+    "! record is created - z2ui5_cl_rap_util=>get_field_control
+    METHODS get_field_for_edit
+      IMPORTING
+        is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_s_field_info.
+
+    "! the draft of the record, read back (READ ENTITIES with %is_draft) -
+    "! unbound when there is none or it cannot be read
+    METHODS read_own_draft
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
+    "! whose draft the record has (ms_draft): the user's own, another
+    "! user's (who changed it last, @Semantics.user.lastChangedBy), none
+    METHODS read_draft_status.
+
+    "! continue the user's own draft: its data on the page, edit mode -
+    "! abap_false when there is no draft to read
+    METHODS resume_draft
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! the strip above the header: the record is a draft, or locked by
+    "! another user
+    METHODS render_draft_info
+      IMPORTING
+        io_container TYPE REF TO z2ui5_cl_ui5_view_builder
+        client       TYPE REF TO z2ui5_if_client.
+
+    "! the actions of it_actions that ms_perm disables - their buttons are
+    "! shown disabled
+    METHODS get_disabled_actions
+      IMPORTING
+        it_actions    TYPE z2ui5_cl_rap_util=>ty_t_action
+      RETURNING
+        VALUE(result) TYPE string_table.
+
   PRIVATE SECTION.
 
 ENDCLASS.
@@ -519,6 +578,16 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         reload_data( ).
       ENDIF.
 
+      "a draft of the record: the user's own opens to be edited further,
+      "another user's locks it (since 2026-10, third round)
+      IF mv_is_create = abap_false AND mv_draft = abap_false AND is_draft_enabled( get_bdef( ) ) = abap_true.
+        read_draft_status( ).
+        IF ms_draft-state = z2ui5_cl_rap_util=>cs_editing_status-own_draft.
+          resume_draft( ).
+        ENDIF.
+      ENDIF.
+      load_permissions( ).
+
       "backup original data for cancel
       CREATE DATA ms_data_backup LIKE ms_data->*.
       ms_data_backup->* = ms_data->*.
@@ -549,21 +618,55 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
 
     IF client->check_on_event( cs_event-back ).
-      "leaving the page ends its draft: a draft kept here could only be
-      "discarded later, since the page cannot read one back (ROADMAP.md)
+      "leaving a draft: keep it (the page reads it back next time) or
+      "discard it - the user decides (since 2026-10, third round)
       IF mv_draft = abap_true.
-        run_draft_action( bdef      = get_bdef( )
-                          action    = `DISCARD`
-                          root_keys = get_root_keys( )
-                          is_draft  = abap_true ).
-        mv_draft = abap_false.
+        client->message_box_display(
+          text    = get_text( cs_text-leave_draft )
+          type    = `confirm`
+          actions = VALUE #( ( get_text( cs_text-keep_draft ) )
+                             ( get_text( cs_text-discard_draft ) )
+                             ( get_text( cs_text-cancel ) ) )
+          onclose = cs_event-leave_decision ).
+        RETURN.
       ENDIF.
       client->nav_app_leave( ).
       RETURN.
     ENDIF.
 
+    IF client->check_on_event( cs_event-leave_decision ).
+      DATA(lv_leave) = client->get_event_arg( ).
+      IF lv_leave = get_text( cs_text-discard_draft ).
+        DATA(ls_leave_discard) = run_draft_action( bdef      = get_bdef( )
+                                                   action    = `DISCARD`
+                                                   root_keys = get_root_keys( )
+                                                   is_draft  = abap_true ).
+        IF ls_leave_discard-success = abap_false.
+          show_messages( client   = client
+                         messages = ls_leave_discard-messages ).
+          RETURN.
+        ENDIF.
+        mv_draft = abap_false.
+      ELSEIF lv_leave <> get_text( cs_text-keep_draft ).
+        RETURN.
+      ENDIF.
+      "a kept draft is committed already - the list shows it as a draft
+      mv_saved = abap_true.
+      client->nav_app_leave( ).
+      RETURN.
+    ENDIF.
+
     IF client->check_on_event( cs_event-edit ).
+      "another user's draft locks the record
+      IF ms_draft-state = z2ui5_cl_rap_util=>cs_editing_status-locked.
+        client->message_box_display( text = replace( val  = get_text( cs_text-locked_by )
+                                                     sub  = `&1`
+                                                     with = ms_draft-user )
+                                     type = `error` ).
+        RETURN.
+      ENDIF.
       IF ms_caps-can_update = abap_false
+        OR ms_perm-can_update = abap_false
         OR is_hidden_by_annotation( value = ms_entity-update_hidden
                                     row   = ms_data->* ) = abap_true.
         client->message_box_display( text = get_text( cs_text-read_only )
@@ -580,7 +683,18 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
 
     IF client->check_on_event( cs_event-draft_decision ).
-      "the user's answer to "a draft exists": discard it and edit anew
+      "the user's answer to "a draft exists": continue it (since 2026-10,
+      "third round), or discard it and edit anew
+      IF client->get_event_arg( ) = get_text( cs_text-resume_draft ).
+        IF resume_draft( ) = abap_true.
+          load_permissions( ).
+          render_page( client ).
+        ELSE.
+          client->message_box_display( text = get_text( cs_text-not_found )
+                                       type = `error` ).
+        ENDIF.
+        RETURN.
+      ENDIF.
       IF client->get_event_arg( ) = get_text( cs_text-discard_draft ).
         DATA(ls_discard) = run_draft_action( bdef      = get_bdef( )
                                              action    = `DISCARD`
@@ -670,8 +784,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
 
     IF client->check_on_event( cs_event-delete ).
-      IF is_hidden_by_annotation( value = ms_entity-delete_hidden
-                                  row   = ms_data->* ) = abap_true.
+      IF ms_perm-can_delete = abap_false
+        OR is_hidden_by_annotation( value = ms_entity-delete_hidden
+                                    row   = ms_data->* ) = abap_true.
         RETURN.
       ENDIF.
       IF delete_data( client ).
@@ -778,8 +893,12 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD get_missing_fields.
     FIELD-SYMBOLS <fld> TYPE any.
-    LOOP AT ms_entity-fields INTO DATA(ls_field)
-      WHERE is_mandatory = abap_true AND is_hidden = abap_false.
+    "mandatory by the annotations and by the field control (ms_perm)
+    LOOP AT ms_entity-fields INTO DATA(ls_any_field) WHERE is_hidden = abap_false.
+      DATA(ls_field) = get_field_for_edit( ls_any_field ).
+      IF ls_field-is_mandatory = abap_false.
+        CONTINUE.
+      ENDIF.
       ASSIGN COMPONENT ls_field-name OF STRUCTURE ms_data->* TO <fld>.
       IF sy-subrc = 0 AND <fld> IS INITIAL.
         APPEND ls_field-label TO result.
@@ -881,6 +1000,24 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     READ TABLE <lt_rows> INDEX 1 ASSIGNING FIELD-SYMBOL(<ls_row>).
     IF sy-subrc = 0.
       MOVE-CORRESPONDING <ls_row> TO ms_data->*.
+      RETURN.
+    ENDIF.
+
+    "no active record by these keys: a draft that was never activated -
+    "what a factory action of a draft business object creates (since
+    "2026-10, third round). It opens to be edited
+    IF is_draft_enabled( get_bdef( ) ) = abap_false.
+      RETURN.
+    ENDIF.
+    DATA(lr_host) = create_host( entity_name = mv_entity_name
+                                 values      = lt_keys ).
+    IF lr_host IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_host->* TO FIELD-SYMBOL(<ls_host_row>).
+    MOVE-CORRESPONDING <ls_host_row> TO ms_data->*.
+    IF resume_draft( ) = abap_false.
+      CLEAR ms_data->*.
     ENDIF.
 
   ENDMETHOD.
@@ -954,6 +1091,18 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
           WHERE source = `LINEITEM` AND inline = abap_false AND semantic_object IS INITIAL.
           APPEND ls_child_action TO ls_child-actions.
         ENDLOOP.
+        "what the child entity's global feature control and authorization
+        "disable - an instance's own is checked when the action runs
+        IF ls_child-actions IS NOT INITIAL.
+          DATA(ls_child_perm) = get_permissions( entity_name = lv_target
+                                                 context     = get_child_context( ls_child-association ) ).
+          LOOP AT ls_child-actions INTO ls_child_action.
+            IF z2ui5_cl_rap_util=>is_permitted( ops  = ls_child_perm-global-actions
+                                                name = ls_child_action-name ) = abap_false.
+              APPEND ls_child_action-name TO ls_child-disabled_actions.
+            ENDIF.
+          ENDLOOP.
+        ENDIF.
       ENDIF.
 
       DATA(lr_rows) = select_rows( entity_name    = lv_target
@@ -1075,7 +1224,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     client->message_box_display(
       text    = concat_lines_of( table = ls_result-messages sep = cl_abap_char_utilities=>newline )
       type    = `warning`
-      actions = VALUE #( ( get_text( cs_text-discard_draft ) ) ( get_text( cs_text-cancel ) ) )
+      actions = VALUE #( ( get_text( cs_text-resume_draft ) )
+                         ( get_text( cs_text-discard_draft ) )
+                         ( get_text( cs_text-cancel ) ) )
       onclose = cs_event-draft_decision ).
 
   ENDMETHOD.
@@ -1517,6 +1668,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
           lo_menu->tag( `MenuItem`
               )->a( n = `text`
                     t = ls_item-label
+              )->a( n = `enabled`
+                    b = xsdbool( NOT line_exists( disabled[ table_line = ls_item-name ] ) )
               )->a( n = `press`
                     v = client->_event( val   = event
                                         t_arg = lt_arg ) ).
@@ -1555,6 +1708,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                 t = ls_entry-action-label
           )->a( n = `type`
                 v = lv_button_type
+          )->a( n = `enabled`
+                b = xsdbool( NOT line_exists( disabled[ table_line = ls_entry-action-name ] ) )
           )->a( n = `press`
                 v = client->_event( val   = event
                                     t_arg = lt_arg ) ).
@@ -1906,7 +2061,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                it_groups    = lt_header_groups
                                client       = client
                                event        = cs_event-action
-                               row          = ms_data->* ).
+                               row          = ms_data->*
+                               disabled     = get_disabled_actions( lt_header_actions ) ).
       ENDIF.
       "and of type #FOR_INTENT_BASED_NAVIGATION - to another app
       LOOP AT ms_entity-actions INTO DATA(ls_intent)
@@ -1928,8 +2084,11 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
             )->a( n = `press`
                   v = client->_event( cs_event-copy_link ) ).
       ENDIF.
-      "@UI.updateHidden / .deleteHidden - true, or a field of the record
+      "@UI.updateHidden / .deleteHidden - true, or a field of the record;
+      "the record's feature control, another user's draft
       IF ms_caps-can_update = abap_true
+        AND ms_perm-can_update = abap_true
+        AND ms_draft-state <> z2ui5_cl_rap_util=>cs_editing_status-locked
         AND is_hidden_by_annotation( value = ms_entity-update_hidden
                                      row   = ms_data->* ) = abap_false.
         io_actions->tag( `Button`
@@ -1943,6 +2102,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                   v = `sap-icon://edit` ).
       ENDIF.
       IF ms_caps-can_delete = abap_true
+        AND ms_perm-can_delete = abap_true
+        AND ms_draft-state <> z2ui5_cl_rap_util=>cs_editing_status-locked
         AND is_hidden_by_annotation( value = ms_entity-delete_hidden
                                      row   = ms_data->* ) = abap_false.
         io_actions->tag( `Button`
@@ -2078,6 +2239,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     DATA(lo_hc) = io_op->ele( n  = `headerContent`
                                ns = `uxap` ).
+    render_draft_info( io_container = lo_hc
+                       client       = client ).
     DATA(lo_hbox) = lo_hc->ele( `FlexBox`
         )->a( n = `wrap`
               v = `Wrap`
@@ -2282,7 +2445,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                            it_groups    = lt_groups
                            client       = client
                            event        = cs_event-action
-                           row          = ms_data->* ).
+                           row          = ms_data->*
+                           disabled     = get_disabled_actions( lt_actions ) ).
 
   ENDMETHOD.
 
@@ -2334,10 +2498,16 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         )->a( n = `columnsXL`
               v = `4` ).
 
-    LOOP AT it_fields INTO DATA(ls_field).
+    LOOP AT it_fields INTO DATA(ls_form_field).
       FIELD-SYMBOLS <field> TYPE any.
-      ASSIGN COMPONENT ls_field-name OF STRUCTURE ms_data->* TO <field>.
+      ASSIGN COMPONENT ls_form_field-name OF STRUCTURE ms_data->* TO <field>.
       CHECK sy-subrc = 0.
+      "read-only and mandatory by the field control in edit mode (since
+      "2026-10, third round)
+      DATA(ls_field) = ls_form_field.
+      IF mv_editable = abap_true.
+        ls_field = get_field_for_edit( ls_form_field ).
+      ENDIF.
 
       lo_form->tag( `Label`
           )->a( n = `text`
@@ -2365,12 +2535,12 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
           ENDIF.
         ENDLOOP.
 
-        "a key is set once - on create, never on change
+        "a key is set once - on create, never on change (get_field_for_edit)
         render_field_input( io_container     = lo_form
                             is_field         = ls_field
                             client           = client
                             value            = <field>
-                            editable         = xsdbool( ls_field-is_key = abap_false OR mv_is_create = abap_true )
+                            editable         = abap_true
                             vh_event         = cs_event-value_help
                             value_state      = lv_value_state
                             value_state_text = lv_value_state_text ).
@@ -2485,7 +2655,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                              it_groups    = ls_child-entity-action_groups
                              client       = client
                              event        = cs_event-child_action
-                             args_before  = VALUE #( ( ls_child-component ) ) ).
+                             args_before  = VALUE #( ( ls_child-component ) )
+                             disabled     = ls_child-disabled_actions ).
       IF ls_child-can_create = abap_true.
         lo_toolbar->tag( `Button`
             )->a( n = `text`
@@ -2546,6 +2717,142 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
+  ENDMETHOD.
+
+
+  METHOD load_permissions.
+
+    CLEAR ms_perm.
+    IF mv_is_create = abap_true.
+      ms_perm = z2ui5_cl_rap_util=>get_instance_permissions(
+                  get_permissions( entity_name = mv_entity_name
+                                   context     = ms_context ) ).
+    ELSE.
+      ms_perm = get_row_permissions( entity_name = mv_entity_name
+                                     context     = ms_context
+                                     row         = ms_data->* ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD get_field_for_edit.
+
+    result = is_field.
+    DATA(ls_control) = z2ui5_cl_rap_util=>get_field_control( is_field       = is_field
+                                                             it_perm_fields = ms_perm-fields
+                                                             is_create      = mv_is_create ).
+    result-is_readonly = ls_control-read_only.
+    result-is_mandatory = ls_control-mandatory.
+
+  ENDMETHOD.
+
+
+  METHOD read_own_draft.
+
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_drafts> TYPE STANDARD TABLE.
+
+    DATA(lr_rows) = create_entity_table( mv_entity_name ).
+    IF lr_rows IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_rows->* TO <lt_rows>.
+    APPEND INITIAL LINE TO <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+    MOVE-CORRESPONDING ms_data->* TO <ls_row>.
+
+    DATA(lr_drafts) = read_drafts( entity_name = mv_entity_name
+                                   context     = ms_context
+                                   rows        = lr_rows ).
+    IF lr_drafts IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_drafts->* TO <lt_drafts>.
+    READ TABLE <lt_drafts> INDEX 1 REFERENCE INTO result.
+
+  ENDMETHOD.
+
+
+  METHOD read_draft_status.
+
+    FIELD-SYMBOLS <lv_owner> TYPE any.
+
+    CLEAR ms_draft.
+    DATA(lr_draft) = read_own_draft( ).
+    IF lr_draft IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_draft->* TO FIELD-SYMBOL(<ls_draft>).
+    DATA(lv_owner) = ``.
+    READ TABLE ms_entity-fields INTO DATA(ls_by) WITH KEY admin_field = `LAST_CHANGED_BY`.
+    IF sy-subrc = 0.
+      ASSIGN COMPONENT ls_by-name OF STRUCTURE <ls_draft> TO <lv_owner>.
+      IF sy-subrc = 0.
+        lv_owner = |{ <lv_owner> }|.
+      ENDIF.
+    ENDIF.
+    ms_draft = z2ui5_cl_rap_util=>get_draft_status( has_draft = abap_true
+                                                    owner     = lv_owner
+                                                    user      = CONV #( sy-uname ) ).
+
+  ENDMETHOD.
+
+
+  METHOD resume_draft.
+
+    DATA(lr_draft) = read_own_draft( ).
+    IF lr_draft IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_draft->* TO FIELD-SYMBOL(<ls_draft>).
+    MOVE-CORRESPONDING <ls_draft> TO ms_data->*.
+    IF ms_data_backup IS BOUND.
+      ms_data_backup->* = ms_data->*.
+    ENDIF.
+    mv_draft = abap_true.
+    mv_editable = abap_true.
+    ms_draft = VALUE #( state = z2ui5_cl_rap_util=>cs_editing_status-own_draft
+                        user  = sy-uname ).
+    result = abap_true.
+
+  ENDMETHOD.
+
+
+  METHOD render_draft_info.
+
+    DATA(lv_draft_text) = ``.
+    DATA(lv_strip_type) = `Information`.
+    IF ms_draft-state = z2ui5_cl_rap_util=>cs_editing_status-locked.
+      lv_draft_text = replace( val  = get_text( cs_text-locked_by )
+                               sub  = `&1`
+                               with = ms_draft-user ).
+      lv_strip_type = `Warning`.
+    ELSEIF mv_draft = abap_true.
+      lv_draft_text = get_text( cs_text-own_draft ).
+    ENDIF.
+    IF lv_draft_text IS INITIAL.
+      RETURN.
+    ENDIF.
+    io_container->tag( `MessageStrip`
+        )->a( n = `text`
+              t = lv_draft_text
+        )->a( n = `type`
+              v = lv_strip_type
+        )->a( n = `showIcon`
+              v = `true`
+        )->a( n = `class`
+              v = `sapUiSmallMarginBottom` ).
+
+  ENDMETHOD.
+
+
+  METHOD get_disabled_actions.
+    LOOP AT it_actions INTO DATA(ls_action).
+      IF z2ui5_cl_rap_util=>is_permitted( ops  = ms_perm-actions
+                                          name = ls_action-name ) = abap_false.
+        APPEND ls_action-name TO result.
+      ENDIF.
+    ENDLOOP.
   ENDMETHOD.
 
 ENDCLASS.

@@ -38,6 +38,8 @@ CLASS ltcl_object_page DEFINITION FINAL
     METHODS action_entries_by_position FOR TESTING RAISING cx_static_check.
     METHODS action_button_type         FOR TESTING RAISING cx_static_check.
     METHODS record_actions             FOR TESTING RAISING cx_static_check.
+    METHODS field_control_in_edit      FOR TESTING RAISING cx_static_check.
+    METHODS disabled_actions           FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -324,6 +326,41 @@ CLASS ltcl_object_page IMPLEMENTATION.
     " no business object - no actions
     mo_cut->ms_caps-is_rap_bo = abap_false.
     cl_abap_unit_assert=>assert_initial( mo_cut->get_record_actions( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD field_control_in_edit.
+
+    "the static and instance field control of GET PERMISSIONS
+    mo_cut->ms_perm = VALUE #( can_update = abap_true
+                               fields     = VALUE #( ( name = `STATUS` mandatory = abap_true ) ) ).
+    DATA(ls_status) = mo_cut->get_field_for_edit( mo_cut->ms_entity-fields[ name = `STATUS` ] ).
+    cl_abap_unit_assert=>assert_true( ls_status-is_mandatory ).
+    cl_abap_unit_assert=>assert_false( ls_status-is_readonly ).
+    "a key is changed on create only
+    cl_abap_unit_assert=>assert_true( mo_cut->get_field_for_edit( mo_cut->ms_entity-fields[ name = `TRAVELID` ] )-is_readonly ).
+    mo_cut->mv_is_create = abap_true.
+    cl_abap_unit_assert=>assert_false( mo_cut->get_field_for_edit( mo_cut->ms_entity-fields[ name = `TRAVELID` ] )-is_readonly ).
+
+    "a mandatory field without a value is missing, the record's is set
+    cl_abap_unit_assert=>assert_initial( mo_cut->get_missing_fields( ) ).
+    mo_cut->ms_perm-fields = VALUE #( ( name = `TRAVELUUID` mandatory = abap_true )
+                                      ( name = `STATUS` read_only = abap_true mandatory = abap_true ) ).
+    cl_abap_unit_assert=>assert_initial( mo_cut->get_missing_fields( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD disabled_actions.
+
+    mo_cut->ms_perm-actions = VALUE #( ( name = `ACCEPTTRAVEL` enabled = abap_false )
+                                       ( name = `REJECTTRAVEL` enabled = abap_true ) ).
+    DATA(lt_disabled) = mo_cut->get_disabled_actions( VALUE #( ( name = `acceptTravel` )
+                                                               ( name = `rejectTravel` )
+                                                               ( name = `copyTravel` ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `acceptTravel` ) )
+                                        act = lt_disabled ).
 
   ENDMETHOD.
 
