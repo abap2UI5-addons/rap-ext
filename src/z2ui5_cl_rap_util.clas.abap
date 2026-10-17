@@ -178,6 +178,17 @@ CLASS z2ui5_cl_rap_util DEFINITION
         filter_transform_class    TYPE string,
         "@Search.fuzzinessThreshold - read, the search stays a LIKE
         search_fuzziness          TYPE string,
+        "added 2026-10, third round (files): @Semantics.largeObject - the
+        "field holds a file (a RAWSTRING); the fields of its MIME type and
+        "file name, the MIME types it accepts (image/png, image/*) and how
+        "it is opened (contentDispositionPreference: INLINE, ATTACHMENT).
+        "is_mime_type: the field is the MIME type of one (@Semantics.mimeType)
+        is_large_object           TYPE abap_bool,
+        lob_mime_field            TYPE string,
+        lob_file_name_field       TYPE string,
+        lob_mime_types            TYPE string_table,
+        lob_disposition           TYPE string,
+        is_mime_type              TYPE abap_bool,
       END OF ty_s_field_info.
 
     TYPES ty_t_field_info TYPE STANDARD TABLE OF ty_s_field_info WITH DEFAULT KEY.
@@ -548,6 +559,66 @@ CLASS z2ui5_cl_rap_util DEFINITION
         locked    TYPE string VALUE `LOCKED`,
         unchanged TYPE string VALUE `UNCHANGED`,
       END OF cs_editing_status.
+
+    "======= MESSAGES, FILES, NAVIGATION (added 2026-10, third round) =======
+
+    " one message of a write, as RAP reported it - what
+    " z2ui5_cl_rap_floorplan=>ty_s_message is
+    TYPES:
+      BEGIN OF ty_s_message,
+        text   TYPE string,
+        "error, warning, success or information
+        type   TYPE string,
+        "the fields the message is about (%element)
+        fields TYPE string_table,
+        "the entity the message is about - empty for a message of %other
+        target TYPE string,
+      END OF ty_s_message.
+
+    TYPES ty_t_message TYPE STANDARD TABLE OF ty_s_message WITH EMPTY KEY.
+
+    " one entry of a sap.m.MessageView (get_message_items)
+    TYPES:
+      BEGIN OF ty_s_message_item,
+        "a sap.ui.core.MessageType: Error, Warning, Success, Information
+        type        TYPE string,
+        title       TYPE string,
+        "the labels of the fields the message is about
+        subtitle    TYPE string,
+        description TYPE string,
+        "the entity - the view groups by it when there are several
+        group_name  TYPE string,
+      END OF ty_s_message_item.
+
+    TYPES ty_t_message_item TYPE STANDARD TABLE OF ty_s_message_item WITH EMPTY KEY.
+
+    " how messages are shown (get_message_display): nothing, a toast (only
+    " success and information), a message box (one message about no field
+    " and no entity) or a message view in a dialog (every other case)
+    CONSTANTS:
+      BEGIN OF cs_message_display,
+        none  TYPE string VALUE ``,
+        toast TYPE string VALUE `TOAST`,
+        box   TYPE string VALUE `BOX`,
+        view  TYPE string VALUE `VIEW`,
+      END OF cs_message_display.
+
+    " a file the user uploaded, or one to download (parse_data_uri)
+    TYPES:
+      BEGIN OF ty_s_file,
+        mime_type TYPE string,
+        file_name TYPE string,
+        content   TYPE xstring,
+      END OF ty_s_file.
+
+    " why an uploaded file is refused (check_file) - ok is empty
+    CONSTANTS:
+      BEGIN OF cs_file_check,
+        ok        TYPE string VALUE ``,
+        empty     TYPE string VALUE `EMPTY`,
+        too_large TYPE string VALUE `TOO_LARGE`,
+        type      TYPE string VALUE `TYPE`,
+      END OF cs_file_check.
 
     "======= PUBLIC METHODS =======
 
@@ -975,7 +1046,129 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! The messages as they are shown: the type in lower case (error,
+    "! warning, success, information - anything else is an error), no
+    "! empty text, each text and type once, and no success message when
+    "! there is an error - the success of a step does not count when the
+    "! request failed (added 2026-10, third round)
+    CLASS-METHODS prepare_messages
+      IMPORTING
+        messages      TYPE ty_t_message
+      RETURNING
+        VALUE(result) TYPE ty_t_message.
+
+    "! how prepared messages are shown (cs_message_display): a toast when
+    "! all of them are success or information, a message box for a single
+    "! message about no field and no entity (a refusal of the floorplan
+    "! itself), else a message view that lists each message with its type,
+    "! fields and entity
+    CLASS-METHODS get_message_display
+      IMPORTING
+        messages      TYPE ty_t_message
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the entries of a sap.m.MessageView: the text as title, the labels of
+    "! its fields (it_fields, else the field names) as subtitle, the entity
+    "! as group, the type as sap.ui.core.MessageType
+    CLASS-METHODS get_message_items
+      IMPORTING
+        messages      TYPE ty_t_message
+        it_fields     TYPE ty_t_field_info OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_t_message_item.
+
+    "! A data URI (data:image/png;base64,....) as a file: its MIME type -
+    "! taken from file_name when the URI names none or only
+    "! application/octet-stream - and its content. Empty when the URI is
+    "! none
+    CLASS-METHODS parse_data_uri
+      IMPORTING
+        uri           TYPE string
+        file_name     TYPE string OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_s_file.
+
+    "! content as a data URI of mime_type (application/octet-stream when
+    "! empty) - what the browser downloads
+    CLASS-METHODS to_data_uri
+      IMPORTING
+        content       TYPE xstring
+        mime_type     TYPE string OPTIONAL
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! val decoded from Base64 (RFC 4648; blanks and line breaks skipped)
+    CLASS-METHODS base64_decode
+      IMPORTING
+        val           TYPE string
+      RETURNING
+        VALUE(result) TYPE xstring.
+
+    "! the MIME type of a file name by its extension - empty when unknown
+    CLASS-METHODS mime_from_file_name
+      IMPORTING
+        file_name     TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! mime_type is one of accepted (@Semantics.largeObject
+    "! .acceptableMimeTypes): equal, or of the group of an entry with *
+    "! (image/*, */*), case-insensitive. Nothing accepted: every type
+    CLASS-METHODS is_mime_type_accepted
+      IMPORTING
+        mime_type     TYPE string
+        accepted      TYPE string_table
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! why a file is refused (cs_file_check): it is empty, larger than
+    "! max_size bytes (0: no limit), or not of an accepted type - ok when
+    "! it is none of these
+    CLASS-METHODS check_file
+      IMPORTING
+        file          TYPE ty_s_file
+        accepted      TYPE string_table OPTIONAL
+        max_size      TYPE i DEFAULT 0
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the file extensions of accepted (png,jpg,jpeg) - what the browser's
+    "! file dialog offers. Empty, so every file is offered, when a type has
+    "! a * or no known extension; the server checks the type anyway
+    CLASS-METHODS get_file_extensions
+      IMPORTING
+        accepted      TYPE string_table
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! The inbound parameters of a navigation that name a field of
+    "! it_fields - case-insensitive, by the field's name; the name becomes
+    "! the field's, a parameter that names none, a virtual element or a
+    "! file is left out, and of a field named twice the first value counts.
+    "! What z2ui5_cl_rap_start hands a list report as filter values
+    CLASS-METHODS match_inbound_parameters
+      IMPORTING
+        params        TYPE ty_t_name_value
+        it_fields     TYPE ty_t_field_info
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
+
+    "! the files (@Semantics.largeObject fields of it_fields) of every row
+    "! of data (a table) cleared - a list does not send them to the browser;
+    "! the object page reads its record again with them
+    CLASS-METHODS clear_large_objects
+      IMPORTING
+        data      TYPE REF TO data
+        it_fields TYPE ty_t_field_info.
+
   PRIVATE SECTION.
+
+    "! the MIME types of the file extensions get_file_extensions and
+    "! mime_from_file_name know - name the extension, value the type
+    CLASS-METHODS get_mime_map
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
 
     TYPES:
       BEGIN OF ty_s_cache,
@@ -1102,8 +1295,8 @@ CLASS z2ui5_cl_rap_util DEFINITION
         ct_action TYPE ty_t_action
         ct_group  TYPE ty_t_action_group.
 
-    "! @UI.createHidden and its siblings: TRUE, empty (false), or the field
-    "! that decides - #(Field), 'Field' or Field, upper case
+    "! the value of @UI.createHidden and its siblings: TRUE, empty (false),
+    "! or the field that decides - #(Field), 'Field' or Field, upper case
     CLASS-METHODS hidden_value
       IMPORTING
         val           TYPE string
@@ -1615,7 +1808,28 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           cs_field-filter_transform_class = annotation_class( lv_val ).
         WHEN `SEARCH.FUZZINESSTHRESHOLD`.
           cs_field-search_fuzziness = strip_quotes( lv_val ).
+        WHEN `SEMANTICS.LARGEOBJECT.MIMETYPE`.
+          cs_field-is_large_object = abap_true.
+          cs_field-lob_mime_field = to_upper( strip_quotes( lv_val ) ).
+        WHEN `SEMANTICS.LARGEOBJECT.FILENAME`.
+          cs_field-is_large_object = abap_true.
+          cs_field-lob_file_name_field = to_upper( strip_quotes( lv_val ) ).
+        WHEN `SEMANTICS.LARGEOBJECT.CONTENTDISPOSITIONPREFERENCE`.
+          cs_field-is_large_object = abap_true.
+          cs_field-lob_disposition = replace( val = strip_quotes( lv_val ) sub = `#` with = `` ).
+        WHEN `SEMANTICS.MIMETYPE`.
+          cs_field-is_mime_type = is_true( lv_val ).
       ENDCASE.
+
+      "@Semantics.largeObject.acceptableMimeTypes: ['image/png', ...] - an
+      "array, or a single value
+      IF lv_key CP `SEMANTICS.LARGEOBJECT.ACCEPTABLEMIMETYPES*`.
+        cs_field-is_large_object = abap_true.
+        DATA(lv_mime) = to_lower( strip_quotes( lv_val ) ).
+        IF lv_mime IS NOT INITIAL AND NOT line_exists( cs_field-lob_mime_types[ table_line = lv_mime ] ).
+          APPEND lv_mime TO cs_field-lob_mime_types.
+        ENDIF.
+      ENDIF.
 
       "@ObjectModel.text.element: ['Name'] - an array of one
       IF lv_key CP `OBJECTMODEL.TEXT.ELEMENT*`.
@@ -4220,6 +4434,308 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     IF sy-subrc = 0.
       result = ls_field-name.
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD prepare_messages.
+
+    DATA lv_has_error TYPE abap_bool.
+
+    LOOP AT messages INTO DATA(ls_message).
+      IF ls_message-text IS INITIAL.
+        CONTINUE.
+      ENDIF.
+      ls_message-type = to_lower( ls_message-type ).
+      IF ls_message-type <> `warning` AND ls_message-type <> `success` AND ls_message-type <> `information`.
+        ls_message-type = `error`.
+      ENDIF.
+      IF line_exists( result[ text = ls_message-text type = ls_message-type ] ).
+        CONTINUE.
+      ENDIF.
+      IF ls_message-type = `error`.
+        lv_has_error = abap_true.
+      ENDIF.
+      APPEND ls_message TO result.
+    ENDLOOP.
+
+    IF lv_has_error = abap_true.
+      DELETE result WHERE type = `success`.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD get_message_display.
+
+    IF messages IS INITIAL.
+      result = cs_message_display-none.
+      RETURN.
+    ENDIF.
+    result = cs_message_display-toast.
+    LOOP AT messages INTO DATA(ls_message) WHERE type <> `success` AND type <> `information`.
+      result = cs_message_display-view.
+      EXIT.
+    ENDLOOP.
+    IF result = cs_message_display-view AND lines( messages ) = 1.
+      ls_message = messages[ 1 ].
+      IF ls_message-fields IS INITIAL AND ls_message-target IS INITIAL.
+        result = cs_message_display-box.
+      ENDIF.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD get_message_items.
+
+    DATA lt_labels TYPE string_table.
+
+    LOOP AT messages INTO DATA(ls_message).
+      CLEAR lt_labels.
+      LOOP AT ls_message-fields INTO DATA(lv_field).
+        READ TABLE it_fields INTO DATA(ls_field) WITH KEY name = to_upper( lv_field ).
+        APPEND COND string( WHEN sy-subrc = 0 AND ls_field-label IS NOT INITIAL THEN ls_field-label
+                            ELSE lv_field ) TO lt_labels.
+      ENDLOOP.
+      APPEND VALUE #( type       = SWITCH #( to_lower( ls_message-type )
+                                     WHEN `warning`     THEN `Warning`
+                                     WHEN `success`     THEN `Success`
+                                     WHEN `information` THEN `Information`
+                                     ELSE `Error` )
+                      title      = ls_message-text
+                      subtitle   = concat_lines_of( table = lt_labels sep = `, ` )
+                      group_name = ls_message-target ) TO result.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD parse_data_uri.
+
+    "data:[<mime type>][;charset=...][;base64],<data>
+    IF strlen( uri ) < 5 OR to_lower( uri(5) ) <> `data:`.
+      RETURN.
+    ENDIF.
+    DATA(lv_comma) = find( val = uri sub = `,` ).
+    IF lv_comma < 0.
+      RETURN.
+    ENDIF.
+    DATA(lv_header) = substring( val = uri off = 5 len = lv_comma - 5 ).
+    DATA(lv_data) = substring( val = uri off = lv_comma + 1 ).
+    DATA(lv_is_base64) = abap_false.
+    SPLIT lv_header AT `;` INTO TABLE DATA(lt_parts).
+    LOOP AT lt_parts INTO DATA(lv_part).
+      IF sy-tabix = 1.
+        result-mime_type = to_lower( condense( lv_part ) ).
+      ELSEIF to_lower( condense( lv_part ) ) = `base64`.
+        lv_is_base64 = abap_true.
+      ENDIF.
+    ENDLOOP.
+    IF lv_is_base64 = abap_true.
+      result-content = base64_decode( lv_data ).
+    ELSE.
+      result-content = to_utf8( url_decode( lv_data ) ).
+    ENDIF.
+    result-file_name = file_name.
+    IF result-mime_type IS INITIAL OR result-mime_type = `application/octet-stream`.
+      DATA(lv_by_name) = mime_from_file_name( file_name ).
+      IF lv_by_name IS NOT INITIAL.
+        result-mime_type = lv_by_name.
+      ENDIF.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD to_data_uri.
+
+    DATA(lv_mime) = to_lower( condense( mime_type ) ).
+    IF lv_mime IS INITIAL.
+      lv_mime = `application/octet-stream`.
+    ENDIF.
+    result = |data:{ lv_mime };base64,{ base64_encode( content ) }|.
+
+  ENDMETHOD.
+
+
+  METHOD base64_decode.
+
+    CONSTANTS lc_alphabet TYPE string VALUE `ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/`.
+    DATA lv_byte TYPE x LENGTH 1.
+    DATA lv_char TYPE c LENGTH 1.
+    DATA lv_bits TYPE i.
+    DATA lv_count TYPE i.
+    DATA lv_value TYPE i.
+
+    "6 bits per character, a byte as soon as 8 are there; = and anything
+    "outside the alphabet (blanks, line breaks) carries no bits
+    DATA(lv_length) = strlen( val ).
+    DATA(lv_offset) = 0.
+    WHILE lv_offset < lv_length.
+      lv_char = val+lv_offset(1).
+      lv_offset = lv_offset + 1.
+      IF lv_char = ` `.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_index) = find( val = lc_alphabet sub = lv_char case = abap_true ).
+      IF lv_index < 0.
+        CONTINUE.
+      ENDIF.
+      lv_bits = lv_bits * 64 + lv_index.
+      lv_count = lv_count + 6.
+      IF lv_count >= 8.
+        lv_count = lv_count - 8.
+        lv_value = lv_bits DIV ipow( base = 2 exp = lv_count ).
+        lv_bits = lv_bits - lv_value * ipow( base = 2 exp = lv_count ).
+        lv_byte = lv_value.
+        CONCATENATE result lv_byte INTO result IN BYTE MODE.
+      ENDIF.
+    ENDWHILE.
+
+  ENDMETHOD.
+
+
+  METHOD get_mime_map.
+
+    result = VALUE #(
+      ( name = `pdf`  value = `application/pdf` )
+      ( name = `png`  value = `image/png` )
+      ( name = `jpg`  value = `image/jpeg` )
+      ( name = `jpeg` value = `image/jpeg` )
+      ( name = `gif`  value = `image/gif` )
+      ( name = `bmp`  value = `image/bmp` )
+      ( name = `webp` value = `image/webp` )
+      ( name = `txt`  value = `text/plain` )
+      ( name = `csv`  value = `text/csv` )
+      ( name = `json` value = `application/json` )
+      ( name = `xml`  value = `application/xml` )
+      ( name = `zip`  value = `application/zip` )
+      ( name = `doc`  value = `application/msword` )
+      ( name = `docx` value = `application/vnd.openxmlformats-officedocument.wordprocessingml.document` )
+      ( name = `xls`  value = `application/vnd.ms-excel` )
+      ( name = `xlsx` value = `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` )
+      ( name = `pptx` value = `application/vnd.openxmlformats-officedocument.presentationml.presentation` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD mime_from_file_name.
+
+    DATA(lv_dot) = find( val = file_name sub = `.` occ = -1 ).
+    IF lv_dot < 0.
+      RETURN.
+    ENDIF.
+    DATA(lv_extension) = to_lower( substring( val = file_name off = lv_dot + 1 ) ).
+    DATA(lt_map) = get_mime_map( ).
+    READ TABLE lt_map INTO DATA(ls_map) WITH KEY name = lv_extension.
+    IF sy-subrc = 0.
+      result = ls_map-value.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD is_mime_type_accepted.
+
+    IF accepted IS INITIAL.
+      result = abap_true.
+      RETURN.
+    ENDIF.
+    DATA(lv_mime) = to_lower( condense( mime_type ) ).
+    LOOP AT accepted INTO DATA(lv_accepted).
+      lv_accepted = to_lower( condense( lv_accepted ) ).
+      IF lv_accepted = `*/*` OR lv_accepted = `*` OR lv_accepted = lv_mime.
+        result = abap_true.
+        RETURN.
+      ENDIF.
+      "image/* - every type of the group
+      DATA(lv_len) = strlen( lv_accepted ).
+      IF lv_len > 2 AND substring( val = lv_accepted off = lv_len - 2 ) = `/*`.
+        DATA(lv_group) = substring( val = lv_accepted len = lv_len - 1 ).
+        IF strlen( lv_mime ) > strlen( lv_group ) AND lv_mime CP |{ lv_group }*|.
+          result = abap_true.
+          RETURN.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD check_file.
+
+    IF xstrlen( file-content ) = 0.
+      result = cs_file_check-empty.
+    ELSEIF max_size > 0 AND xstrlen( file-content ) > max_size.
+      result = cs_file_check-too_large.
+    ELSEIF is_mime_type_accepted( mime_type = file-mime_type
+                                  accepted  = accepted ) = abap_false.
+      result = cs_file_check-type.
+    ELSE.
+      result = cs_file_check-ok.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD get_file_extensions.
+
+    DATA lt_extensions TYPE string_table.
+
+    DATA(lt_map) = get_mime_map( ).
+    LOOP AT accepted INTO DATA(lv_accepted).
+      DATA(lv_mime) = to_lower( condense( lv_accepted ) ).
+      DATA(lv_found) = abap_false.
+      LOOP AT lt_map INTO DATA(ls_map) WHERE value = lv_mime.
+        lv_found = abap_true.
+        APPEND ls_map-name TO lt_extensions.
+      ENDLOOP.
+      IF lv_found = abap_false.
+        "a group (image/*) or a type without a known extension: no filter
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+    result = concat_lines_of( table = lt_extensions sep = `,` ).
+
+  ENDMETHOD.
+
+
+  METHOD match_inbound_parameters.
+
+    LOOP AT params INTO DATA(ls_param).
+      READ TABLE it_fields INTO DATA(ls_field) WITH KEY name = to_upper( condense( ls_param-name ) ).
+      IF sy-subrc <> 0
+        OR ls_field-is_virtual = abap_true
+        OR ls_field-is_large_object = abap_true
+        OR line_exists( result[ name = ls_field-name ] ).
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( name = ls_field-name value = ls_param-value ) TO result.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD clear_large_objects.
+
+    FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
+    FIELD-SYMBOLS <lv_file> TYPE any.
+
+    IF data IS NOT BOUND OR NOT line_exists( it_fields[ is_large_object = abap_true ] ).
+      RETURN.
+    ENDIF.
+    ASSIGN data->* TO <lt_rows>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      LOOP AT it_fields INTO DATA(ls_field) WHERE is_large_object = abap_true.
+        ASSIGN COMPONENT ls_field-name OF STRUCTURE <ls_row> TO <lv_file>.
+        IF sy-subrc = 0.
+          CLEAR <lv_file>.
+        ENDIF.
+      ENDLOOP.
+    ENDLOOP.
+
   ENDMETHOD.
 
 ENDCLASS.

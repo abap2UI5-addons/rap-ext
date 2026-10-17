@@ -1867,3 +1867,277 @@ CLASS ltcl_behaviour IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+" Messages by severity, files of @Semantics.largeObject and the inbound
+" parameters of a navigation (added 2026-10, third round) - plain data,
+" no system
+CLASS ltcl_messages_files DEFINITION FINAL
+  FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS prepare_hides_success     FOR TESTING RAISING cx_static_check.
+    METHODS prepare_types_and_doubles FOR TESTING RAISING cx_static_check.
+    METHODS display_by_severity       FOR TESTING RAISING cx_static_check.
+    METHODS message_items             FOR TESTING RAISING cx_static_check.
+    METHODS large_object_annotations  FOR TESTING RAISING cx_static_check.
+    METHODS base64_round_trip         FOR TESTING RAISING cx_static_check.
+    METHODS data_uri                  FOR TESTING RAISING cx_static_check.
+    METHODS mime_type_accepted        FOR TESTING RAISING cx_static_check.
+    METHODS file_check                FOR TESTING RAISING cx_static_check.
+    METHODS file_extensions           FOR TESTING RAISING cx_static_check.
+    METHODS inbound_parameters        FOR TESTING RAISING cx_static_check.
+    METHODS large_objects_cleared     FOR TESTING RAISING cx_static_check.
+
+ENDCLASS.
+
+
+CLASS ltcl_messages_files IMPLEMENTATION.
+
+  METHOD prepare_hides_success.
+    DATA(lt_messages) = z2ui5_cl_rap_util=>prepare_messages( VALUE #(
+      ( text = `Saved`        type = `success` )
+      ( text = `Begin date`   type = `error` fields = VALUE #( ( `BEGINDATE` ) ) )
+      ( text = `Check prices` type = `warning` ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 2
+                                        act = lines( lt_messages ) ).
+    cl_abap_unit_assert=>assert_false( xsdbool( line_exists( lt_messages[ type = `success` ] ) ) ).
+
+    "without an error the success stays
+    lt_messages = z2ui5_cl_rap_util=>prepare_messages( VALUE #(
+      ( text = `Saved`        type = `success` )
+      ( text = `Check prices` type = `warning` ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 2
+                                        act = lines( lt_messages ) ).
+  ENDMETHOD.
+
+
+  METHOD prepare_types_and_doubles.
+    DATA(lt_messages) = z2ui5_cl_rap_util=>prepare_messages( VALUE #(
+      ( text = `A` type = `ERROR` )
+      ( text = `A` type = `error` )
+      ( text = ``  type = `error` )
+      ( text = `B` type = `odd` )
+      ( text = `C` type = `Information` ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 3
+                                        act = lines( lt_messages ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `error`
+                                        act = lt_messages[ 2 ]-type ).
+    cl_abap_unit_assert=>assert_equals( exp = `information`
+                                        act = lt_messages[ 3 ]-type ).
+  ENDMETHOD.
+
+
+  METHOD display_by_severity.
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_message_display-none
+      act = z2ui5_cl_rap_util=>get_message_display( VALUE #( ) ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_message_display-toast
+      act = z2ui5_cl_rap_util=>get_message_display( VALUE #( ( text = `Saved` type = `success` )
+                                                              ( text = `Note`  type = `information` ) ) ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_message_display-box
+      act = z2ui5_cl_rap_util=>get_message_display( VALUE #( ( text = `Locked` type = `error` ) ) ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_message_display-view
+      act = z2ui5_cl_rap_util=>get_message_display( VALUE #( ( text   = `Begin date`
+                                                                type   = `error`
+                                                                fields = VALUE #( ( `BEGINDATE` ) ) ) ) ) ).
+    "a message of the business object names its entity - listed
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_message_display-view
+      act = z2ui5_cl_rap_util=>get_message_display( VALUE #( ( text   = `Locked`
+                                                                type   = `error`
+                                                                target = `Z_TRAVEL` ) ) ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_message_display-view
+      act = z2ui5_cl_rap_util=>get_message_display( VALUE #( ( text = `A` type = `warning` )
+                                                              ( text = `B` type = `success` ) ) ) ).
+  ENDMETHOD.
+
+
+  METHOD message_items.
+    DATA(lt_items) = z2ui5_cl_rap_util=>get_message_items(
+      messages  = VALUE #( ( text   = `Dates`
+                             type   = `error`
+                             fields = VALUE #( ( `BEGINDATE` ) ( `ENDDATE` ) )
+                             target = `Z_TRAVEL` )
+                           ( text = `Note` type = `information` ) )
+      it_fields = VALUE #( ( name = `BEGINDATE` label = `Begin` ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 2
+                                        act = lines( lt_items ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `Error`
+                                        act = lt_items[ 1 ]-type ).
+    cl_abap_unit_assert=>assert_equals( exp = `Begin, ENDDATE`
+                                        act = lt_items[ 1 ]-subtitle ).
+    cl_abap_unit_assert=>assert_equals( exp = `Z_TRAVEL`
+                                        act = lt_items[ 1 ]-group_name ).
+    cl_abap_unit_assert=>assert_equals( exp = `Information`
+                                        act = lt_items[ 2 ]-type ).
+  ENDMETHOD.
+
+
+  METHOD large_object_annotations.
+    DATA(ls_entity) = VALUE z2ui5_cl_rap_util=>ty_s_entity_info(
+      fields = VALUE #( ( name = `ATTACHMENT` ) ( name = `MIMETYPE` ) ( name = `FILENAME` ) ) ).
+    z2ui5_cl_rap_util=>apply_annotations(
+      EXPORTING it_entity   = VALUE #( )
+                it_elements = VALUE #(
+                  ( element = `Attachment` key = `Semantics.largeObject.mimeType`                     value = `'MimeType'` )
+                  ( element = `Attachment` key = `Semantics.largeObject.fileName`                     value = `'FileName'` )
+                  ( element = `Attachment` key = `Semantics.largeObject.acceptableMimeTypes$1$`       value = `'image/png'` )
+                  ( element = `Attachment` key = `Semantics.largeObject.acceptableMimeTypes$2$`       value = `'Application/PDF'` )
+                  ( element = `Attachment` key = `Semantics.largeObject.contentDispositionPreference` value = `#INLINE` )
+                  ( element = `MimeType`   key = `Semantics.mimeType`                                 value = `true` ) )
+      CHANGING  cs_entity   = ls_entity ).
+    DATA(ls_lob) = ls_entity-fields[ name = `ATTACHMENT` ].
+    cl_abap_unit_assert=>assert_true( ls_lob-is_large_object ).
+    cl_abap_unit_assert=>assert_equals( exp = `MIMETYPE`
+                                        act = ls_lob-lob_mime_field ).
+    cl_abap_unit_assert=>assert_equals( exp = `FILENAME`
+                                        act = ls_lob-lob_file_name_field ).
+    cl_abap_unit_assert=>assert_equals( exp = `INLINE`
+                                        act = ls_lob-lob_disposition ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `image/png` ) ( `application/pdf` ) )
+                                        act = ls_lob-lob_mime_types ).
+    cl_abap_unit_assert=>assert_true( ls_entity-fields[ name = `MIMETYPE` ]-is_mime_type ).
+    cl_abap_unit_assert=>assert_false( ls_entity-fields[ name = `FILENAME` ]-is_large_object ).
+  ENDMETHOD.
+
+
+  METHOD base64_round_trip.
+    cl_abap_unit_assert=>assert_equals( exp = CONV xstring( `48656C6C6F` )
+                                        act = z2ui5_cl_rap_util=>base64_decode( `SGVsbG8=` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = CONV xstring( `00FF10` )
+                                        act = z2ui5_cl_rap_util=>base64_decode( `AP8Q` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = CONV xstring( `FB` )
+                                        act = z2ui5_cl_rap_util=>base64_decode( `+w==` ) ).
+    "line breaks and blanks are skipped
+    cl_abap_unit_assert=>assert_equals( exp = CONV xstring( `48656C6C6F` )
+                                        act = z2ui5_cl_rap_util=>base64_decode( |SGVs\nbG8 =| ) ).
+    DATA(lv_bytes) = CONV xstring( `000102FDFEFF7F80` ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = lv_bytes
+      act = z2ui5_cl_rap_util=>base64_decode( z2ui5_cl_rap_util=>base64_encode( lv_bytes ) ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>base64_decode( `` ) ).
+  ENDMETHOD.
+
+
+  METHOD data_uri.
+    DATA(ls_file) = z2ui5_cl_rap_util=>parse_data_uri( uri       = `data:image/PNG;base64,SGVsbG8=`
+                                                        file_name = `a.png` ).
+    cl_abap_unit_assert=>assert_equals( exp = `image/png`
+                                        act = ls_file-mime_type ).
+    cl_abap_unit_assert=>assert_equals( exp = `a.png`
+                                        act = ls_file-file_name ).
+    cl_abap_unit_assert=>assert_equals( exp = CONV xstring( `48656C6C6F` )
+                                        act = ls_file-content ).
+
+    "no type in the URI: the file name's
+    ls_file = z2ui5_cl_rap_util=>parse_data_uri( uri       = `data:application/octet-stream;base64,SGVsbG8=`
+                                                  file_name = `Report.PDF` ).
+    cl_abap_unit_assert=>assert_equals( exp = `application/pdf`
+                                        act = ls_file-mime_type ).
+    ls_file = z2ui5_cl_rap_util=>parse_data_uri( uri       = `data:;base64,SGVsbG8=`
+                                                  file_name = `noext` ).
+    cl_abap_unit_assert=>assert_initial( ls_file-mime_type ).
+
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>parse_data_uri( `SGVsbG8=` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `data:text/plain;base64,SGVsbG8=`
+      act = z2ui5_cl_rap_util=>to_data_uri( content   = CONV xstring( `48656C6C6F` )
+                                            mime_type = `Text/Plain` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `data:application/octet-stream;base64,SGVsbG8=`
+      act = z2ui5_cl_rap_util=>to_data_uri( CONV xstring( `48656C6C6F` ) ) ).
+  ENDMETHOD.
+
+
+  METHOD mime_type_accepted.
+    DATA(lt_accepted) = VALUE string_table( ( `image/*` ) ( `application/pdf` ) ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>is_mime_type_accepted( mime_type = `image/png`
+                                                                                accepted  = lt_accepted ) ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>is_mime_type_accepted( mime_type = `Application/PDF`
+                                                                                accepted  = lt_accepted ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_mime_type_accepted( mime_type = `text/plain`
+                                                                                 accepted  = lt_accepted ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_mime_type_accepted( mime_type = `image/`
+                                                                                 accepted  = lt_accepted ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_mime_type_accepted( mime_type = ``
+                                                                                 accepted  = lt_accepted ) ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>is_mime_type_accepted( mime_type = `text/plain`
+                                                                                accepted  = VALUE #( ) ) ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>is_mime_type_accepted(
+      mime_type = `text/plain`
+      accepted  = VALUE #( ( `*/*` ) ) ) ).
+  ENDMETHOD.
+
+
+  METHOD file_check.
+    DATA(ls_file) = VALUE z2ui5_cl_rap_util=>ty_s_file( mime_type = `image/png`
+                                                        content   = CONV xstring( `0102030405` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = z2ui5_cl_rap_util=>cs_file_check-ok
+                                        act = z2ui5_cl_rap_util=>check_file( file     = ls_file
+                                                                             accepted = VALUE #( ( `image/png` ) )
+                                                                             max_size = 5 ) ).
+    cl_abap_unit_assert=>assert_equals( exp = z2ui5_cl_rap_util=>cs_file_check-too_large
+                                        act = z2ui5_cl_rap_util=>check_file( file     = ls_file
+                                                                             max_size = 4 ) ).
+    cl_abap_unit_assert=>assert_equals( exp = z2ui5_cl_rap_util=>cs_file_check-type
+                                        act = z2ui5_cl_rap_util=>check_file( file     = ls_file
+                                                                             accepted = VALUE #( ( `application/pdf` ) ) ) ).
+    CLEAR ls_file-content.
+    cl_abap_unit_assert=>assert_equals( exp = z2ui5_cl_rap_util=>cs_file_check-empty
+                                        act = z2ui5_cl_rap_util=>check_file( ls_file ) ).
+  ENDMETHOD.
+
+
+  METHOD file_extensions.
+    cl_abap_unit_assert=>assert_equals(
+      exp = `png,jpg,jpeg`
+      act = z2ui5_cl_rap_util=>get_file_extensions( VALUE #( ( `image/png` ) ( `image/jpeg` ) ) ) ).
+    "a group or an unknown type: no filter
+    cl_abap_unit_assert=>assert_initial(
+      z2ui5_cl_rap_util=>get_file_extensions( VALUE #( ( `image/png` ) ( `image/*` ) ) ) ).
+    cl_abap_unit_assert=>assert_initial(
+      z2ui5_cl_rap_util=>get_file_extensions( VALUE #( ( `application/x-odd` ) ) ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>get_file_extensions( VALUE #( ) ) ).
+  ENDMETHOD.
+
+
+  METHOD inbound_parameters.
+    DATA(lt_matched) = z2ui5_cl_rap_util=>match_inbound_parameters(
+      params    = VALUE #( ( name = `agencyId`   value = `070001` )
+                           ( name = `Unknown`    value = `x` )
+                           ( name = `AGENCYID`   value = `second` )
+                           ( name = `Calculated` value = `1` )
+                           ( name = `Status`     value = `O` ) )
+      it_fields = VALUE #( ( name = `AGENCYID` )
+                           ( name = `STATUS` )
+                           ( name = `CALCULATED` is_virtual = abap_true ) ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_name_value( ( name = `AGENCYID` value = `070001` )
+                                                       ( name = `STATUS`   value = `O` ) )
+      act = lt_matched ).
+  ENDMETHOD.
+
+
+  METHOD large_objects_cleared.
+    TYPES:
+      BEGIN OF ty_s_row,
+        id       TYPE string,
+        file     TYPE xstring,
+        filename TYPE string,
+      END OF ty_s_row.
+    DATA lt_rows TYPE STANDARD TABLE OF ty_s_row WITH EMPTY KEY.
+    lt_rows = VALUE #( ( id = `1` file = CONV xstring( `0102` ) filename = `a.png` ) ).
+    z2ui5_cl_rap_util=>clear_large_objects( data      = REF #( lt_rows )
+                                            it_fields = VALUE #( ( name = `ID` )
+                                                                 ( name = `FILE` is_large_object = abap_true ) ) ).
+    cl_abap_unit_assert=>assert_initial( lt_rows[ 1 ]-file ).
+    cl_abap_unit_assert=>assert_equals( exp = `a.png`
+                                        act = lt_rows[ 1 ]-filename ).
+  ENDMETHOD.
+
+ENDCLASS.
