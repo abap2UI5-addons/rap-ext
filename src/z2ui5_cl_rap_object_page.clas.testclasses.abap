@@ -40,6 +40,7 @@ CLASS ltcl_object_page DEFINITION FINAL
     METHODS record_actions             FOR TESTING RAISING cx_static_check.
     METHODS field_control_in_edit      FOR TESTING RAISING cx_static_check.
     METHODS disabled_actions           FOR TESTING RAISING cx_static_check.
+    METHODS identification_entry_display FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -361,6 +362,32 @@ CLASS ltcl_object_page IMPLEMENTATION.
                                                                ( name = `copyTravel` ) ) ).
     cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `acceptTravel` ) )
                                         act = lt_disabled ).
+
+  ENDMETHOD.
+
+
+  METHOD identification_entry_display.
+
+    " the entry's criticality and importance travel with the field; a
+    " hidden: #(Field) entry is left out when the record's field is true
+    mo_cut->ms_entity-fields[ name = `TRAVELID` ]-is_identification = abap_true.
+    mo_cut->ms_entity-fields[ name = `TRAVELID` ]-identifications = VALUE #(
+      ( qualifier = `` position = 10 criticality = `3` importance = `LOW` ) ).
+    mo_cut->ms_entity-fields[ name = `STATUS` ]-identifications = VALUE #(
+      ( qualifier = `Admin` position = 10 hidden = `STATUS` ) ).
+
+    DATA(lt_header) = mo_cut->get_identification_fields( ).
+    cl_abap_unit_assert=>assert_equals( act = lt_header[ 1 ]-entry_criticality
+                                        exp = `3` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_header[ 1 ]-entry_importance
+                                        exp = `LOW` ).
+    " STATUS 'O' shows it, 'X' hides it
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_cut->get_identification_fields( `Admin` ) )
+                                        exp = 1 ).
+    ASSIGN mo_cut->ms_data->* TO FIELD-SYMBOL(<ls_record>).
+    ASSIGN COMPONENT `STATUS` OF STRUCTURE <ls_record> TO FIELD-SYMBOL(<lv_status>).
+    <lv_status> = 'X'.
+    cl_abap_unit_assert=>assert_initial( mo_cut->get_identification_fields( `Admin` ) ).
 
   ENDMETHOD.
 

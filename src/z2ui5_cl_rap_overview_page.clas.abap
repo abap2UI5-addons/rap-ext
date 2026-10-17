@@ -84,6 +84,9 @@ CLASS z2ui5_cl_rap_overview_page DEFINITION
         card_type       TYPE string,
         "CHART: BAR, SHARE or TREND
         chart_type      TYPE string,
+        "added 2026-10, third round: the qualifier of the @UI.lineItem a
+        "table card of a presentation variant shows (its visualization)
+        line_item_qualifier TYPE string,
       END OF ty_s_card_data.
 
     TYPES ty_t_card_data TYPE STANDARD TABLE OF ty_s_card_data WITH DEFAULT KEY.
@@ -360,6 +363,8 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
             ENDIF.
           ELSEIF ls_cd-card_type <> `KPI` AND ls_cd-card_type <> `NUMERIC`.
             ls_cd-card_type = `TABLE`.
+            "its qualified @UI.lineItem (since 2026-10, third round)
+            ls_cd-line_item_qualifier = ls_variant-visualization_qualifier.
           ENDIF.
           IF lv_max <= 0 AND ls_variant-max_items > 0.
             lv_max = ls_variant-max_items.
@@ -726,13 +731,14 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
     ASSIGN is_card-data_ref->* TO <lt_data>.
     DATA(lv_index) = mv_card_index.
 
-    "get lineItem fields or all visible
-    DATA lt_columns TYPE z2ui5_cl_rap_util=>ty_t_field_info.
-    LOOP AT is_card-entity-fields INTO DATA(ls_field)
-      WHERE line_item_pos > 0 AND is_hidden = abap_false.
-      APPEND ls_field TO lt_columns.
-    ENDLOOP.
-    SORT lt_columns BY line_item_pos.
+    "the qualified @UI.lineItem of the card's presentation variant, else
+    "the lineItem fields, else all visible
+    DATA(lt_columns) = z2ui5_cl_rap_util=>get_line_item_columns( it_fields = is_card-entity-fields
+                                                                 qualifier = is_card-line_item_qualifier ).
+    DATA ls_field TYPE z2ui5_cl_rap_util=>ty_s_field_info.
+    IF lt_columns IS INITIAL.
+      lt_columns = z2ui5_cl_rap_util=>get_line_item_columns( is_card-entity-fields ).
+    ENDIF.
     IF lt_columns IS INITIAL.
       LOOP AT is_card-entity-fields INTO ls_field
         WHERE is_hidden = abap_false.

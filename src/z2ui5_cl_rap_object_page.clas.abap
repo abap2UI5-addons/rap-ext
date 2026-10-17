@@ -888,10 +888,35 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     IF client->check_on_event( cs_event-intent ).
       READ TABLE ms_entity-actions INTO DATA(ls_intent) WITH KEY name = client->get_event_arg( ).
       IF sy-subrc = 0 AND ls_intent-semantic_object IS NOT INITIAL.
+        "semanticObjectBinding: the record's values, else its keys (since
+        "2026-10, third round)
+        DATA(lt_intent_params) = COND ty_t_name_value(
+          WHEN ls_intent-sem_object_bindings IS NOT INITIAL
+          THEN z2ui5_cl_rap_util=>get_navigation_params( row      = ms_data->*
+                                                         bindings = ls_intent-sem_object_bindings )
+          ELSE get_own_keys( ) ).
         navigate_to_intent( client          = client
                             semantic_object = ls_intent-semantic_object
                             action          = ls_intent-semantic_action
-                            params          = get_own_keys( ) ).
+                            params          = lt_intent_params ).
+        RETURN.
+      ENDIF.
+      "the link of a field with @Consumption.semanticObject: its value
+      "(mapped by its bindings) and the record's keys
+      READ TABLE ms_entity-fields INTO DATA(ls_link_field) WITH KEY name = client->get_event_arg( ).
+      IF sy-subrc = 0 AND ls_link_field-semantic_object IS NOT INITIAL.
+        DATA(lt_link_params) = z2ui5_cl_rap_util=>get_navigation_params( row      = ms_data->*
+                                                                         field    = ls_link_field-name
+                                                                         bindings = ls_link_field-sem_object_bindings ).
+        LOOP AT get_own_keys( ) INTO DATA(ls_own_key).
+          IF NOT line_exists( lt_link_params[ name = ls_own_key-name ] ).
+            APPEND ls_own_key TO lt_link_params.
+          ENDIF.
+        ENDLOOP.
+        navigate_to_intent( client          = client
+                            semantic_object = ls_link_field-semantic_object
+                            action          = `display`
+                            params          = lt_link_params ).
       ENDIF.
       RETURN.
     ENDIF.
@@ -1975,6 +2000,18 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       IF lv_found = abap_true AND ls_ident-label IS NOT INITIAL.
         ls_field-label = ls_ident-label.
       ENDIF.
+      "the entry's criticality, importance and hidden (since 2026-10, third
+      "round) - a field of the record hides it for this record
+      IF lv_found = abap_true.
+        ls_field-entry_criticality = ls_ident-criticality.
+        ls_field-entry_crit_repr = ls_ident-crit_representation.
+        ls_field-entry_importance = ls_ident-importance.
+        ls_field-entry_hidden = ls_ident-hidden.
+      ENDIF.
+      IF ms_data IS BOUND AND is_hidden_by_annotation( value = ls_field-entry_hidden
+                                                       row   = ms_data->* ) = abap_true.
+        CONTINUE.
+      ENDIF.
       APPEND ls_field TO result.
     ENDLOOP.
     SORT result STABLE BY identification_pos.
@@ -2352,15 +2389,36 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     FIELD-SYMBOLS <lv_text> TYPE any.
 
+    DATA lr_one TYPE REF TO data.
+    DATA lv_text TYPE string.
+    FIELD-SYMBOLS <ls_record> TYPE any.
+    FIELD-SYMBOLS <lt_one> TYPE STANDARD TABLE.
+
     result = get_field_value( is_field ).
-    IF is_field-text_element IS INITIAL.
-      RETURN.
+    IF is_field-text_element IS INITIAL AND is_field-text_association IS NOT INITIAL AND result IS NOT INITIAL.
+      "@ObjectModel.text.association: the text of the association's
+      "target (since 2026-10, third round)
+      ASSIGN ms_data->* TO <ls_record>.
+      CREATE DATA lr_one LIKE STANDARD TABLE OF <ls_record>.
+      ASSIGN lr_one->* TO <lt_one>.
+      APPEND <ls_record> TO <lt_one>.
+      DATA(lt_texts) = read_association_texts( is_entity = ms_entity
+                                               is_field  = is_field
+                                               data      = lr_one ).
+      IF lt_texts IS INITIAL OR lt_texts[ 1 ]-value IS INITIAL.
+        RETURN.
+      ENDIF.
+      lv_text = lt_texts[ 1 ]-value.
+    ELSE.
+      IF is_field-text_element IS INITIAL.
+        RETURN.
+      ENDIF.
+      ASSIGN COMPONENT is_field-text_element OF STRUCTURE ms_data->* TO <lv_text>.
+      IF sy-subrc <> 0 OR <lv_text> IS INITIAL.
+        RETURN.
+      ENDIF.
+      lv_text = |{ <lv_text> }|.
     ENDIF.
-    ASSIGN COMPONENT is_field-text_element OF STRUCTURE ms_data->* TO <lv_text>.
-    IF sy-subrc <> 0 OR <lv_text> IS INITIAL.
-      RETURN.
-    ENDIF.
-    DATA(lv_text) = |{ <lv_text> }|.
     result = SWITCH #( is_field-text_arrangement
       WHEN `TEXT_LAST`     THEN |{ result } ({ lv_text })|
       WHEN `TEXT_ONLY`     THEN lv_text
@@ -2413,19 +2471,41 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    "identification fields as header attributes
+    "identification fields as header attributes - with the entry's
+    "criticality and importance (since 2026-10, third round)
     LOOP AT get_identification_fields( ) INTO DATA(ls_id).
       DATA(lv_val_str) = get_field_value( ls_id ).
-      IF lv_val_str IS NOT INITIAL.
-        lo_hbox->ele( `VBox`
-            )->a( n = `class`
-                  v = `sapUiSmallMarginEnd sapUiSmallMarginBottom`
-            )->tag( `Label`
-                )->a( n = `text`
-                      t = ls_id-label
-            )->tag( `Text`
-                )->a( n = `text`
-                      t = lv_val_str ).
+      IF lv_val_str IS INITIAL.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_header_class) = |sapUiSmallMarginEnd sapUiSmallMarginBottom{ SWITCH string( ls_id-entry_importance
+        WHEN `LOW`    THEN ` sapUiHideOnPhone sapUiHideOnTablet`
+        WHEN `MEDIUM` THEN ` sapUiHideOnPhone` ) }|.
+      DATA(lo_attribute) = lo_hbox->ele( `VBox`
+          )->a( n = `class`
+                t = lv_header_class
+          )->tag( `Label`
+              )->a( n = `text`
+                    t = ls_id-label ).
+      IF ls_id-entry_criticality IS NOT INITIAL.
+        DATA(lv_header_level) = COND string( WHEN ls_id-entry_criticality CO `0123456789`
+                                             THEN ls_id-entry_criticality
+                                             ELSE |{ get_crit_value( ls_id-entry_criticality ) }| ).
+        lo_attribute->tag( `ObjectStatus`
+            )->a( n = `text`
+                  t = get_display_text( ls_id )
+            )->a( n = `state`
+                  t = z2ui5_cl_rap_util=>criticality_binding( lv_header_level ) ).
+        DATA(lv_header_icon) = z2ui5_cl_rap_util=>criticality_binding( criticality = lv_header_level
+                                                                      kind        = `ICON` ).
+        IF ls_id-entry_crit_repr <> `WITHOUT_ICON` AND lv_header_icon IS NOT INITIAL.
+          lo_attribute->a( n = `icon`
+                           v = lv_header_icon ).
+        ENDIF.
+      ELSE.
+        lo_attribute->tag( `Text`
+            )->a( n = `text`
+                  t = get_display_text( ls_id ) ).
       ENDIF.
     ENDLOOP.
 
@@ -2600,8 +2680,20 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ENDIF.
       READ TABLE ls_field-field_groups INTO DATA(ls_group) WITH KEY qualifier = iv_group.
       IF sy-subrc = 0.
-        "the position within THIS group
+        "the position within THIS group - and the entry's criticality,
+        "importance and hidden (since 2026-10, third round)
         ls_field-field_group_pos = ls_group-position.
+        ls_field-entry_criticality = ls_group-criticality.
+        ls_field-entry_crit_repr = ls_group-crit_representation.
+        ls_field-entry_importance = ls_group-importance.
+        ls_field-entry_hidden = ls_group-hidden.
+        IF is_hidden_by_annotation( value = ls_field-entry_hidden
+                                    row   = ms_data->* ) = abap_true.
+          CONTINUE.
+        ENDIF.
+        IF ls_group-label IS NOT INITIAL.
+          ls_field-label = ls_group-label.
+        ENDIF.
         APPEND ls_field TO lt_sorted.
       ELSEIF ls_field-field_group = iv_group.
         APPEND ls_field TO lt_sorted.
@@ -2651,6 +2743,15 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                 t = ls_field-tooltip
           )->a( n = `required`
                 b = xsdbool( mv_editable = abap_true AND ls_field-is_mandatory = abap_true ) ).
+      "the entry's importance: a LOW one is left out on a phone and a
+      "tablet, a MEDIUM one on a phone (since 2026-10, third round)
+      DATA(lv_importance_class) = SWITCH string( ls_field-entry_importance
+        WHEN `LOW`    THEN `sapUiHideOnPhone sapUiHideOnTablet`
+        WHEN `MEDIUM` THEN `sapUiHideOnPhone` ).
+      IF lv_importance_class IS NOT INITIAL.
+        lo_form->a( n = `class`
+                    t = lv_importance_class ).
+      ENDIF.
 
       "=== EDIT MODE: render input controls ===
       IF mv_editable = abap_true.
@@ -2696,6 +2797,25 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                              record       = ms_data->*
                              editable     = abap_false ).
 
+        "the criticality of the @UI.fieldGroup / @UI.identification entry
+        "-> ObjectStatus with its icon unless #WITHOUT_ICON (since 2026-10,
+        "third round)
+        ELSEIF ls_field-entry_criticality IS NOT INITIAL.
+          DATA(lv_entry_level) = COND string( WHEN ls_field-entry_criticality CO `0123456789`
+                                              THEN ls_field-entry_criticality
+                                              ELSE |{ get_crit_value( ls_field-entry_criticality ) }| ).
+          lo_form->tag( `ObjectStatus`
+              )->a( n = `text`
+                    t = get_display_text( ls_field )
+              )->a( n = `state`
+                    t = z2ui5_cl_rap_util=>criticality_binding( lv_entry_level ) ).
+          DATA(lv_entry_icon) = z2ui5_cl_rap_util=>criticality_binding( criticality = lv_entry_level
+                                                                       kind        = `ICON` ).
+          IF ls_field-entry_crit_repr <> `WITHOUT_ICON` AND lv_entry_icon IS NOT INITIAL.
+            lo_form->a( n = `icon`
+                        v = lv_entry_icon ).
+          ENDIF.
+
         "criticality -> ObjectStatus
         ELSEIF ls_field-datapoint_crit_field IS NOT INITIAL.
           lo_form->tag( `ObjectStatus`
@@ -2703,6 +2823,25 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                     t = lv_display_val
               )->a( n = `state`
                     v = get_criticality_state( get_crit_value( ls_field-datapoint_crit_field ) ) ).
+
+        "@Semantics.imageUrl -> the image
+        ELSEIF ls_field-is_image_url = abap_true AND lv_display_val IS NOT INITIAL.
+          lo_form->tag( `Avatar`
+              )->a( n = `src`
+                    t = lv_display_val
+              )->a( n = `displaySize`
+                    v = `S`
+              )->a( n = `displayShape`
+                    v = `Square` ).
+
+        "@Consumption.semanticObject -> a link to the semantic object
+        ELSEIF ls_field-semantic_object IS NOT INITIAL AND lv_display_val IS NOT INITIAL.
+          lo_form->tag( `Link`
+              )->a( n = `text`
+                    t = get_display_text( ls_field )
+              )->a( n = `press`
+                    v = client->_event( val = cs_event-intent
+                                        arg = ls_field-name ) ).
 
         "amount + currency -> ObjectNumber
         ELSEIF ls_field-is_amount_field = abap_true
@@ -2736,6 +2875,11 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                     t = get_display_text( ls_field ) ).
         ENDIF.
 
+      ENDIF.
+
+      IF lv_importance_class IS NOT INITIAL AND ls_field-is_large_object = abap_false.
+        lo_form->a( n = `class`
+                    t = lv_importance_class ).
       ENDIF.
 
     ENDLOOP.
@@ -2832,6 +2976,13 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     DATA(lo_item) = lo_table->ele( `items`
         )->ele( `ColumnListItem` ).
+    "the child row's criticality (since 2026-10, third round)
+    IF ls_child-entity-row_criticality IS NOT INITIAL
+      AND line_exists( ls_child-entity-fields[ name = ls_child-entity-row_criticality ] ).
+      lo_item->a( n = `highlight`
+                  v = criticality_expression( crit_field = ls_child-entity-row_criticality
+                                              kind       = `HIGHLIGHT` ) ).
+    ENDIF.
     IF lv_child_actions = abap_true.
       lo_item->a( n = `selected`
                   v = |\{{ cv_select_column }\}| ).
@@ -2848,13 +2999,20 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     LOOP AT lt_columns INTO ls_field.
       IF ls_field-datapoint_crit_field IS NOT INITIAL OR ls_field-line_item_crit_field IS NOT INITIAL.
+        DATA(lv_child_crit) = COND string( WHEN ls_field-line_item_crit_field IS NOT INITIAL
+                                           THEN ls_field-line_item_crit_field
+                                           ELSE ls_field-datapoint_crit_field ).
         lo_cells->tag( `ObjectStatus`
             )->a( n = `text`
                   v = |\{{ ls_field-name }\}|
             )->a( n = `state`
-                  v = criticality_expression( COND #( WHEN ls_field-line_item_crit_field IS NOT INITIAL
-                                                      THEN ls_field-line_item_crit_field
-                                                      ELSE ls_field-datapoint_crit_field ) ) ).
+                  v = criticality_expression( lv_child_crit ) ).
+        "its icon unless #WITHOUT_ICON (since 2026-10, third round)
+        IF ls_field-line_item_crit_repr <> `WITHOUT_ICON`.
+          lo_cells->a( n = `icon`
+                       v = criticality_expression( crit_field = lv_child_crit
+                                                   kind       = `ICON` ) ).
+        ENDIF.
       ELSE.
         lo_cells->tag( `Text`
             )->a( n = `text`
