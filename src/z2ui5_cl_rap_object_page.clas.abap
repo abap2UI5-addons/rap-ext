@@ -498,7 +498,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     IF client->check_on_init( ).
       IF ms_data IS NOT BOUND.
-        client->message_box_display( text = get_text( cs_text-load_error )
+        "why the read failed, where it is known (a query provider's error)
+        client->message_box_display( text = COND #( WHEN mv_read_error IS INITIAL
+                                                    THEN get_text( cs_text-load_error )
+                                                    ELSE get_load_error( mv_entity_name ) )
                                      type = `error` ).
         client->nav_app_leave( ).
         RETURN.

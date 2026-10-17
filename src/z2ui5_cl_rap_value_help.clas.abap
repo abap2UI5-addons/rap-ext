@@ -179,7 +179,8 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
                            ELSE ms_entity-name ).
       ENDIF.
       LOOP AT ms_entity-fields INTO DATA(ls_field)
-        WHERE is_selection_field = abap_true AND filter_hidden = abap_false AND is_hidden = abap_false.
+        WHERE is_selection_field = abap_true AND filter_hidden = abap_false AND is_hidden = abap_false
+          AND is_virtual = abap_false.
         APPEND VALUE #( name  = ls_field-name
                         label = ls_field-label
                         value = ls_field-filter_default ) TO mt_filter.
@@ -343,7 +344,7 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
     IF mr_data IS NOT BOUND.
       "a message queued before nav_app_leave( ) never reaches the browser -
       "the caller reads load_error( ) and shows it
-      mv_load_error = |{ get_text( cs_text-load_error ) }: { mv_cds_view }|.
+      mv_load_error = get_load_error( mv_cds_view ).
       client->nav_app_leave( ).
       RETURN.
     ENDIF.

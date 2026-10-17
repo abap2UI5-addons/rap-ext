@@ -186,15 +186,29 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     DATA(lv_select) = |{ mv_segment_field } AS segment_key, COUNT(*) AS segment_count|.
     DATA(lv_where) = get_ext_where( entity_name = mv_cds_view
                                     where       = where ).
-    TRY.
-        SELECT (lv_select) FROM (mv_cds_view)
-          WHERE (lv_where)
-          GROUP BY (mv_segment_field)
-          INTO CORRESPONDING FIELDS OF TABLE @lt_group
-          UP TO 20 ROWS.
-      CATCH cx_root.
-        RETURN.
-    ENDTRY.
+    IF get_read_info( mv_cds_view )-query_class IS NOT INITIAL.
+      "a custom entity: ABAP SQL cannot group it - its rows are counted
+      LOOP AT aggregate_rows( entity_name = mv_cds_view
+                              where       = where
+                              group_by    = mv_segment_field
+                              method      = `COUNT` ) INTO DATA(ls_aggregate).
+        IF lines( lt_group ) >= 20.
+          EXIT.
+        ENDIF.
+        APPEND VALUE #( segment_key   = ls_aggregate-group_key
+                        segment_count = ls_aggregate-row_count ) TO lt_group.
+      ENDLOOP.
+    ELSE.
+      TRY.
+          SELECT (lv_select) FROM (mv_cds_view)
+            WHERE (lv_where)
+            GROUP BY (mv_segment_field)
+            INTO CORRESPONDING FIELDS OF TABLE @lt_group
+            UP TO 20 ROWS.
+        CATCH cx_root.
+          RETURN.
+      ENDTRY.
+    ENDIF.
 
     "all items - counted, not summed up from the first 20 groups
     APPEND VALUE #( key   = cv_segment_all
@@ -214,7 +228,7 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
   METHOD render_page.
 
     IF mr_data IS NOT BOUND.
-      client->message_box_display( text = |{ get_text( cs_text-load_error ) }: { mv_cds_view }|
+      client->message_box_display( text = get_load_error( mv_cds_view )
                                    type = `error` ).
       RETURN.
     ENDIF.

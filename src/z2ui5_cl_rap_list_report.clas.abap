@@ -426,9 +426,12 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         ms_caps-can_create = abap_false.
       ENDIF.
 
-      "sortable: the columns that are text, numbers or dates
-      LOOP AT get_line_item_fields( ) INTO DATA(ls_col)
-        WHERE type_kind <> `STRING` AND type_kind <> `RAW`.
+      "sortable: the columns that are text, numbers or dates - a virtual
+      "element only with a sort transformation
+      LOOP AT get_line_item_fields( ) INTO DATA(ls_col).
+        IF z2ui5_cl_rap_util=>is_sortable( ls_col ) = abap_false.
+          CONTINUE.
+        ENDIF.
         APPEND VALUE #( name  = ls_col-name
                         label = COND #( WHEN ls_col-line_item_label IS NOT INITIAL THEN ls_col-line_item_label
                                         ELSE ls_col-label ) ) TO mt_sort_field.
@@ -701,7 +704,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         CONTINUE.
       ENDIF.
       READ TABLE ms_entity-fields INTO DATA(ls_key_field) WITH KEY name = lv_key.
-      IF sy-subrc = 0 AND ls_key_field-type_kind <> `STRING`.
+      IF sy-subrc = 0 AND ls_key_field-type_kind <> `STRING` AND ls_key_field-is_virtual = abap_false.
         APPEND lv_key TO lt_order.
         APPEND lv_key TO lt_used.
       ENDIF.
@@ -772,8 +775,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
 
   METHOD get_selection_fields.
+    "a virtual element has no column to filter (is_filterable)
     LOOP AT ms_entity-fields INTO DATA(ls_field)
-      WHERE is_selection_field = abap_true.
+      WHERE is_selection_field = abap_true AND is_virtual = abap_false.
       APPEND ls_field TO result.
     ENDLOOP.
     SORT result BY selection_field_pos.
@@ -830,7 +834,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                                  max_rows    = cv_export_max
                                  order_by    = get_order_by( ) ).
     IF lr_rows IS NOT BOUND.
-      client->message_box_display( text = |{ get_text( cs_text-load_error ) }: { mv_cds_view }|
+      client->message_box_display( text = get_load_error( mv_cds_view )
                                    type = `error` ).
       RETURN.
     ENDIF.
@@ -1489,7 +1493,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   METHOD render_page.
 
     IF mr_data IS NOT BOUND.
-      client->message_box_display( text = |{ get_text( cs_text-load_error ) }: { mv_cds_view }|
+      client->message_box_display( text = get_load_error( mv_cds_view )
                                    type = `error` ).
       RETURN.
     ENDIF.

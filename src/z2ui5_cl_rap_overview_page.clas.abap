@@ -368,7 +368,7 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
           CLEAR lt_order.
           LOOP AT ls_variant-sort_order INTO DATA(ls_sort).
             READ TABLE ls_cd-entity-fields INTO DATA(ls_sort_field) WITH KEY name = ls_sort-field.
-            IF sy-subrc = 0 AND ls_sort_field-type_kind <> `STRING` AND ls_sort_field-type_kind <> `RAW`.
+            IF sy-subrc = 0 AND z2ui5_cl_rap_util=>is_sortable( ls_sort_field ) = abap_true.
               APPEND |{ ls_sort-field }{ COND #( WHEN ls_sort-descending = abap_true THEN ` DESCENDING` ELSE `` ) }|
                 TO lt_order.
             ENDIF.
@@ -435,7 +435,21 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
     DATA(lv_select) = |{ lv_aggregation }( { lv_field } )|.
     DATA(lv_where) = get_ext_where( lv_view ).
     TRY.
-        SELECT SINGLE (lv_select) FROM (lv_view) WHERE (lv_where) INTO @lv_value.
+        IF get_read_info( lv_view )-query_class IS NOT INITIAL
+          OR cs_card_data-entity-fields[ name = lv_field ]-is_virtual = abap_true.
+          "a custom entity or a virtual element: ABAP SQL cannot aggregate
+          "it, the rows read are aggregated
+          DATA(lt_kpi) = aggregate_rows( entity_name = lv_view
+                                         measure     = lv_field
+                                         method      = lv_aggregation ).
+          IF mv_read_error IS NOT INITIAL.
+            cs_card_data-kpi_value = |{ cs_card_data-count }|.
+            RETURN.
+          ENDIF.
+          lv_value = VALUE #( lt_kpi[ 1 ]-value OPTIONAL ).
+        ELSE.
+          SELECT SINGLE (lv_select) FROM (lv_view) WHERE (lv_where) INTO @lv_value.
+        ENDIF.
         cs_card_data-kpi_value = |{ lv_value NUMBER = USER }|.
         "the KPI's color by the field's @UI.dataPoint.criticalityCalculation
         cs_card_data-kpi_state = SWITCH #( z2ui5_cl_rap_util=>criticality_by_calculation(
@@ -486,16 +500,32 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
     DATA(lv_select) = |{ cs_card_data-chart_dimension } AS dimension, SUM( { cs_card_data-chart_measure } ) AS measure|.
     DATA(lv_max) = COND i( WHEN is_card-max_rows > 0 THEN is_card-max_rows ELSE 8 ).
     DATA(lv_where) = get_ext_where( lv_view ).
-    TRY.
-        SELECT (lv_select) FROM (lv_view)
-          WHERE (lv_where)
-          GROUP BY (cs_card_data-chart_dimension)
-          ORDER BY (cs_card_data-chart_dimension)
-          INTO CORRESPONDING FIELDS OF TABLE @lt_rows
-          UP TO @lv_max ROWS.
-      CATCH cx_root.
-        RETURN.
-    ENDTRY.
+    IF get_read_info( lv_view )-query_class IS NOT INITIAL
+      OR cs_card_data-entity-fields[ name = cs_card_data-chart_dimension ]-is_virtual = abap_true
+      OR cs_card_data-entity-fields[ name = cs_card_data-chart_measure ]-is_virtual = abap_true.
+      "a custom entity or a virtual element: ABAP SQL cannot group it, the
+      "rows read are - sorted by the dimension like the SELECT
+      LOOP AT aggregate_rows( entity_name = lv_view
+                              group_by    = cs_card_data-chart_dimension
+                              measure     = cs_card_data-chart_measure ) INTO DATA(ls_aggregate).
+        IF lines( lt_rows ) >= lv_max.
+          EXIT.
+        ENDIF.
+        APPEND VALUE #( dimension = ls_aggregate-group_key
+                        measure   = ls_aggregate-value ) TO lt_rows.
+      ENDLOOP.
+    ELSE.
+      TRY.
+          SELECT (lv_select) FROM (lv_view)
+            WHERE (lv_where)
+            GROUP BY (cs_card_data-chart_dimension)
+            ORDER BY (cs_card_data-chart_dimension)
+            INTO CORRESPONDING FIELDS OF TABLE @lt_rows
+            UP TO @lv_max ROWS.
+        CATCH cx_root.
+          RETURN.
+      ENDTRY.
+    ENDIF.
 
     DATA lv_total TYPE decfloat34.
     LOOP AT lt_rows INTO DATA(ls_row).

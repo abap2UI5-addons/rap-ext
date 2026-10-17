@@ -21,6 +21,7 @@ CLASS ltcl_list_report DEFINITION FINAL
     METHODS variant_keeps_known_fields FOR TESTING RAISING cx_static_check.
     METHODS hidden_columns             FOR TESTING RAISING cx_static_check.
     METHODS actions_and_intents        FOR TESTING RAISING cx_static_check.
+    METHODS virtual_no_filter          FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -169,6 +170,20 @@ CLASS ltcl_list_report IMPLEMENTATION.
                                         exp = 1 ).
     cl_abap_unit_assert=>assert_equals( act = lt_intents[ 1 ]-semantic_object
                                         exp = `Travel` ).
+
+  ENDMETHOD.
+
+
+  METHOD virtual_no_filter.
+
+    "a virtual element has no column - it is no filter field, even with
+    "@UI.selectionField
+    APPEND VALUE #( name = `DAYSTOGO` label = `Days` type_kind = `INT` is_selection_field = abap_true
+                    is_virtual = abap_true virtual_calc_class = `ZCL_DAYS` ) TO mo_cut->ms_entity-fields.
+    DATA(lt_selection) = mo_cut->get_selection_fields( ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_selection )
+                                        exp = 2 ).
+    cl_abap_unit_assert=>assert_false( xsdbool( line_exists( lt_selection[ name = `DAYSTOGO` ] ) ) ).
 
   ENDMETHOD.
 

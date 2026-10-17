@@ -215,6 +215,13 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
+    "! The query provider interfaces are there (IF_RAP_QUERY_PROVIDER
+    "! exists) - answered from RTTI, so asking never loads
+    "! z2ui5_cl_rap_query (added 2026-10, third round)
+    CLASS-METHODS query_available
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
   PROTECTED SECTION.
 
     DATA mo_ext TYPE REF TO z2ui5_if_rap_ext.
@@ -291,7 +298,12 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         VALUE(result) TYPE abap_bool.
 
     "! SELECT * FROM entity_name WHERE where UP TO max_rows into a table of
-    "! the entity - with_selection adds the column cv_select_column
+    "! the entity - with_selection adds the column cv_select_column. Since
+    "! 2026-10 (third round) a custom entity is read through its query
+    "! provider (query_rows), and a virtual element is left out of the
+    "! SELECT, the WHERE and the ORDER BY and calculated afterwards
+    "! (calculate_virtual_elements). A failed read is unbound, its reason
+    "! in mv_read_error
     METHODS select_rows
       IMPORTING
         entity_name    TYPE string
@@ -615,6 +627,94 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
+    "! the rows aggregate_rows reads at most - a custom entity's aggregates
+    "! are computed from its rows (added 2026-10, third round)
+    CONSTANTS cv_aggregate_max TYPE i VALUE 5000.
+
+    "! why the last read failed - the text of its exception, empty after a
+    "! read that worked (select_rows, count_rows; added 2026-10, third
+    "! round)
+    DATA mv_read_error TYPE string.
+
+    "! How the rows of entity_name are read: through its query provider (a
+    "! custom entity) or by ABAP SQL, and which of its elements are virtual
+    "! - from the annotations (z2ui5_cl_rap_util=>get_read_info). A
+    "! subclass can name a provider or a calculation the annotations do not
+    "! show (added 2026-10, third round)
+    METHODS get_read_info
+      IMPORTING
+        entity_name   TYPE string
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_s_read_info.
+
+    "! Read a custom entity through its query provider (z2ui5_cl_rap_query):
+    "! where becomes the filter (its search part the search expression,
+    "! the host variables of host their values), order_by the sort order,
+    "! max_rows the page. data (a table, bound) is filled with the rows,
+    "! count_requested asks for count - what select_rows and count_rows
+    "! call for such an entity (added 2026-10, third round)
+    METHODS query_rows
+      IMPORTING
+        entity_name     TYPE string
+        query_class     TYPE string
+        where           TYPE string OPTIONAL
+        host            TYPE REF TO data OPTIONAL
+        max_rows        TYPE i DEFAULT 500
+        order_by        TYPE string OPTIONAL
+        data            TYPE REF TO data OPTIONAL
+        count_requested TYPE abap_bool DEFAULT abap_false
+      EXPORTING
+        count           TYPE i
+      RAISING
+        cx_static_check.
+
+    "! Fill the virtual elements of data (a table of the entity) by their
+    "! classes: IF_SADL_EXIT_CALC_ELEMENT_READ~GET_CALCULATION_INFO and
+    "! ~CALCULATE, called dynamically, once per class for all of its
+    "! elements. A class that fails leaves its elements empty (added
+    "! 2026-10, third round)
+    METHODS calculate_virtual_elements
+      IMPORTING
+        entity_name      TYPE string
+        virtual_elements TYPE z2ui5_cl_rap_util=>ty_t_virtual_element
+        data             TYPE REF TO data.
+
+    "! order_by without the virtual elements, which have no column - one
+    "! with @ObjectModel.sort.transformedBy is replaced by the elements its
+    "! class names (IF_SADL_EXIT_SORT_TRANSFORM~MAP_ELEMENT, called
+    "! dynamically), every other one is dropped (added 2026-10, third round)
+    METHODS adjust_virtual_order_by
+      IMPORTING
+        entity_name      TYPE string
+        order_by         TYPE string
+        virtual_elements TYPE z2ui5_cl_rap_util=>ty_t_virtual_element
+      RETURNING
+        VALUE(result)    TYPE string.
+
+    "! The rows of entity_name that match where, grouped by group_by (none:
+    "! one group) with method (SUM AVG MIN MAX COUNT) over measure - read
+    "! with select_rows (at most cv_aggregate_max rows) and aggregated in
+    "! ABAP. What the worklist's tabs and the overview's KPI and chart cards
+    "! use for a custom entity, which ABAP SQL cannot aggregate (added
+    "! 2026-10, third round)
+    METHODS aggregate_rows
+      IMPORTING
+        entity_name   TYPE string
+        where         TYPE string OPTIONAL
+        group_by      TYPE string OPTIONAL
+        measure       TYPE string OPTIONAL
+        method        TYPE string DEFAULT `SUM`
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_aggregate.
+
+    "! the message of a read that failed: the load error text, the entity
+    "! and why (mv_read_error) - added 2026-10, third round
+    METHODS get_load_error
+      IMPORTING
+        entity_name   TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
     "! align ABAP and JSON model representations (dates, times, padding)
     METHODS normalize_key_value
       IMPORTING
@@ -665,6 +765,22 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     cl_abap_typedescr=>describe_by_name(
       EXPORTING
         p_name         = `IF_ABAP_BEHV`
+      RECEIVING
+        p_descr_ref    = lo_type
+      EXCEPTIONS
+        type_not_found = 1
+        OTHERS         = 2 ).
+    result = xsdbool( sy-subrc = 0 ).
+
+  ENDMETHOD.
+
+
+  METHOD query_available.
+
+    DATA lo_type TYPE REF TO cl_abap_typedescr.
+    cl_abap_typedescr=>describe_by_name(
+      EXPORTING
+        p_name         = `IF_RAP_QUERY_PROVIDER`
       RECEIVING
         p_descr_ref    = lo_type
       EXCEPTIONS
@@ -886,18 +1002,25 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     "the host structure - a dynamic WHERE names it as @<LS_HOST>-field
     "(cv_host), so the name of this field symbol is part of the contract
     FIELD-SYMBOLS <ls_host> TYPE any.
+    DATA lt_virtual TYPE string_table.
+    DATA lt_columns TYPE string_table.
+    DATA lv_fields TYPE string.
+    DATA lv_order_by TYPE string.
+    DATA lv_corresponding TYPE abap_bool.
 
+    CLEAR mv_read_error.
     IF host IS BOUND.
       ASSIGN host->* TO <ls_host>.
     ENDIF.
 
     DATA(lv_where) = get_ext_where( entity_name = entity_name
                                     where       = where ).
+    DATA(ls_read) = get_read_info( entity_name ).
 
     TRY.
         DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( entity_name ) ).
+        DATA(lt_comp) = lo_struct->get_components( ).
         IF with_selection = abap_true.
-          DATA(lt_comp) = lo_struct->get_components( ).
           IF NOT line_exists( lt_comp[ name = cv_select_column ] ).
             APPEND VALUE #( name = cv_select_column
                             type = CAST #( cl_abap_typedescr=>describe_by_name( `ABAP_BOOL` ) ) ) TO lt_comp.
@@ -908,35 +1031,76 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         CREATE DATA result TYPE HANDLE lo_table.
         ASSIGN result->* TO <lt_data>.
 
-        "sorted in the database - UP TO n ROWS without an ORDER BY is n
-        "arbitrary rows, and sorting them afterwards sorts the wrong ones
-        IF with_selection = abap_true AND order_by IS NOT INITIAL.
-          SELECT * FROM (entity_name)
-            WHERE (lv_where)
-            ORDER BY (order_by)
-            INTO CORRESPONDING FIELDS OF TABLE @<lt_data>
-            UP TO @max_rows ROWS.
-        ELSEIF with_selection = abap_true.
-          SELECT * FROM (entity_name)
-            WHERE (lv_where)
-            INTO CORRESPONDING FIELDS OF TABLE @<lt_data>
-            UP TO @max_rows ROWS.
-        ELSEIF order_by IS NOT INITIAL.
-          SELECT * FROM (entity_name)
-            WHERE (lv_where)
-            ORDER BY (order_by)
-            INTO TABLE @<lt_data>
-            UP TO @max_rows ROWS.
+        "a custom entity: its query provider reads it - ABAP SQL cannot
+        IF ls_read-query_class IS NOT INITIAL.
+          query_rows( entity_name = entity_name
+                      query_class = ls_read-query_class
+                      where       = lv_where
+                      host        = host
+                      max_rows    = max_rows
+                      order_by    = order_by
+                      data        = result ).
         ELSE.
-          SELECT * FROM (entity_name)
-            WHERE (lv_where)
-            INTO TABLE @<lt_data>
-            UP TO @max_rows ROWS.
+          "a virtual element has no column: the others are selected, and
+          "a condition or sort criterion on it is left out
+          LOOP AT ls_read-virtual_elements INTO DATA(ls_virtual).
+            APPEND ls_virtual-name TO lt_virtual.
+          ENDLOOP.
+          lv_fields = `*`.
+          lv_order_by = order_by.
+          lv_corresponding = with_selection.
+          IF lt_virtual IS NOT INITIAL.
+            LOOP AT lt_comp INTO DATA(ls_comp).
+              IF ls_comp-name <> cv_select_column AND NOT line_exists( lt_virtual[ table_line = ls_comp-name ] ).
+                APPEND ls_comp-name TO lt_columns.
+              ENDIF.
+            ENDLOOP.
+            lv_fields = concat_lines_of( table = lt_columns sep = `, ` ).
+            lv_where = z2ui5_cl_rap_util=>remove_where_fields( where  = lv_where
+                                                               fields = lt_virtual ).
+            lv_order_by = adjust_virtual_order_by( entity_name      = entity_name
+                                                   order_by         = order_by
+                                                   virtual_elements = ls_read-virtual_elements ).
+            lv_corresponding = abap_true.
+          ENDIF.
+
+          "sorted in the database - UP TO n ROWS without an ORDER BY is n
+          "arbitrary rows, and sorting them afterwards sorts the wrong ones
+          IF lv_corresponding = abap_true AND lv_order_by IS NOT INITIAL.
+            SELECT (lv_fields) FROM (entity_name)
+              WHERE (lv_where)
+              ORDER BY (lv_order_by)
+              INTO CORRESPONDING FIELDS OF TABLE @<lt_data>
+              UP TO @max_rows ROWS.
+          ELSEIF lv_corresponding = abap_true.
+            SELECT (lv_fields) FROM (entity_name)
+              WHERE (lv_where)
+              INTO CORRESPONDING FIELDS OF TABLE @<lt_data>
+              UP TO @max_rows ROWS.
+          ELSEIF lv_order_by IS NOT INITIAL.
+            SELECT (lv_fields) FROM (entity_name)
+              WHERE (lv_where)
+              ORDER BY (lv_order_by)
+              INTO TABLE @<lt_data>
+              UP TO @max_rows ROWS.
+          ELSE.
+            SELECT (lv_fields) FROM (entity_name)
+              WHERE (lv_where)
+              INTO TABLE @<lt_data>
+              UP TO @max_rows ROWS.
+          ENDIF.
         ENDIF.
-      CATCH cx_root.
+      CATCH cx_root INTO DATA(lx_read).
+        mv_read_error = lx_read->get_text( ).
         CLEAR result.
         RETURN.
     ENDTRY.
+
+    IF ls_read-query_class IS INITIAL AND ls_read-virtual_elements IS NOT INITIAL.
+      calculate_virtual_elements( entity_name      = entity_name
+                                  virtual_elements = ls_read-virtual_elements
+                                  data             = result ).
+    ENDIF.
 
     IF mo_ext IS BOUND.
       mo_ext->after_load( floorplan   = mv_floorplan
@@ -959,16 +1123,250 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD count_rows.
 
+    DATA lt_virtual TYPE string_table.
+
+    CLEAR mv_read_error.
     DATA(lv_where) = get_ext_where( entity_name = entity_name
                                     where       = where ).
+    DATA(ls_read) = get_read_info( entity_name ).
     TRY.
+        IF ls_read-query_class IS NOT INITIAL.
+          query_rows( EXPORTING entity_name     = entity_name
+                                query_class     = ls_read-query_class
+                                where           = lv_where
+                                count_requested = abap_true
+                      IMPORTING count           = result ).
+          RETURN.
+        ENDIF.
+        LOOP AT ls_read-virtual_elements INTO DATA(ls_virtual).
+          APPEND ls_virtual-name TO lt_virtual.
+        ENDLOOP.
+        lv_where = z2ui5_cl_rap_util=>remove_where_fields( where  = lv_where
+                                                           fields = lt_virtual ).
         SELECT COUNT(*) FROM (entity_name)
           WHERE (lv_where)
           INTO @result.
-      CATCH cx_root.
+      CATCH cx_root INTO DATA(lx_read).
+        mv_read_error = lx_read->get_text( ).
         result = 0.
     ENDTRY.
 
+  ENDMETHOD.
+
+
+  METHOD get_read_info.
+    result = z2ui5_cl_rap_util=>get_read_info( entity_name ).
+    "the provider is called through the query interfaces - without them
+    "there is nothing to read the entity with
+    IF result-query_class IS NOT INITIAL AND query_available( ) = abap_false.
+      CLEAR result-query_class.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD query_rows.
+
+    FIELD-SYMBOLS <ls_host> TYPE any.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+    DATA lt_host TYPE z2ui5_cl_rap_util=>ty_t_name_value.
+    DATA lt_elements TYPE string_table.
+    DATA lv_total TYPE int8.
+
+    CLEAR count.
+
+    "the host variables of a key condition as their values - a provider
+    "cannot read @<LS_HOST>-field
+    IF host IS BOUND.
+      ASSIGN host->* TO <ls_host>.
+      DATA(lo_host) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_host> ) ).
+      LOOP AT lo_host->components INTO DATA(ls_host_comp).
+        UNASSIGN <lv_value>.
+        ASSIGN COMPONENT ls_host_comp-name OF STRUCTURE <ls_host> TO <lv_value>.
+        IF <lv_value> IS ASSIGNED.
+          APPEND VALUE #( name  = to_upper( ls_host_comp-name )
+                          value = |{ <lv_value> }| ) TO lt_host.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+    "every element of the entity is requested
+    DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( entity_name ) ).
+    LOOP AT lo_struct->components INTO DATA(ls_comp).
+      IF ls_comp-name <> cv_select_column.
+        APPEND |{ ls_comp-name }| TO lt_elements.
+      ENDIF.
+    ENDLOOP.
+
+    z2ui5_cl_rap_query=>select(
+      EXPORTING
+        query_class = query_class
+        entity_name = entity_name
+        filter      = z2ui5_cl_rap_util=>build_query_filter( where       = where
+                                                             host_values = lt_host )
+        sort        = z2ui5_cl_rap_util=>parse_order_by( order_by )
+        elements    = lt_elements
+        page_size   = max_rows
+        data        = data
+        count       = count_requested
+      IMPORTING
+        total       = lv_total ).
+    count = lv_total.
+
+  ENDMETHOD.
+
+
+  METHOD calculate_virtual_elements.
+
+    "the types of IF_SADL_EXIT_CALC_ELEMENT_READ - its parameters are
+    "passed by reference, so they have to be the same
+    TYPES ty_t_elements TYPE SORTED TABLE OF string WITH UNIQUE DEFAULT KEY.
+    DATA lt_elements TYPE ty_t_elements.
+    DATA lt_original TYPE ty_t_elements.
+    DATA lt_classes TYPE string_table.
+    DATA lr_calculated TYPE REF TO data.
+    DATA lo_calc TYPE REF TO object.
+    DATA lv_index TYPE i.
+    DATA(lv_entity) = to_upper( entity_name ).
+    FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_calculated> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <ls_row> TYPE any.
+    FIELD-SYMBOLS <ls_calculated> TYPE any.
+    FIELD-SYMBOLS <lv_target> TYPE any.
+    FIELD-SYMBOLS <lv_source> TYPE any.
+
+    IF data IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN data->* TO <lt_data>.
+    IF <lt_data> IS NOT ASSIGNED OR <lt_data> IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    LOOP AT virtual_elements INTO DATA(ls_virtual) WHERE calc_class IS NOT INITIAL.
+      IF NOT line_exists( lt_classes[ table_line = ls_virtual-calc_class ] ).
+        APPEND ls_virtual-calc_class TO lt_classes.
+      ENDIF.
+    ENDLOOP.
+
+    LOOP AT lt_classes INTO DATA(lv_class).
+      CLEAR: lt_elements, lt_original.
+      LOOP AT virtual_elements INTO ls_virtual WHERE calc_class = lv_class.
+        INSERT ls_virtual-name INTO TABLE lt_elements.
+      ENDLOOP.
+      TRY.
+          CREATE OBJECT lo_calc TYPE (lv_class).
+          CALL METHOD lo_calc->('IF_SADL_EXIT_CALC_ELEMENT_READ~GET_CALCULATION_INFO')
+            EXPORTING
+              it_requested_calc_elements = lt_elements
+              iv_entity                  = lv_entity
+            IMPORTING
+              et_requested_orig_elements = lt_original.
+          "every column is read already - the original elements it asks for
+          "are there
+          CREATE DATA lr_calculated LIKE <lt_data>.
+          ASSIGN lr_calculated->* TO <lt_calculated>.
+          <lt_calculated> = <lt_data>.
+          CALL METHOD lo_calc->('IF_SADL_EXIT_CALC_ELEMENT_READ~CALCULATE')
+            EXPORTING
+              it_original_data           = <lt_data>
+              it_requested_calc_elements = lt_elements
+            CHANGING
+              ct_calculated_data         = <lt_calculated>.
+        CATCH cx_root.
+          "the elements of this class stay empty, the rows are shown
+          CONTINUE.
+      ENDTRY.
+
+      "only the calculated elements are taken over, row by row
+      LOOP AT <lt_data> ASSIGNING <ls_row>.
+        lv_index = sy-tabix.
+        UNASSIGN <ls_calculated>.
+        READ TABLE <lt_calculated> INDEX lv_index ASSIGNING <ls_calculated>.
+        IF <ls_calculated> IS NOT ASSIGNED.
+          EXIT.
+        ENDIF.
+        LOOP AT lt_elements INTO DATA(lv_element).
+          UNASSIGN: <lv_target>, <lv_source>.
+          ASSIGN COMPONENT lv_element OF STRUCTURE <ls_row> TO <lv_target>.
+          ASSIGN COMPONENT lv_element OF STRUCTURE <ls_calculated> TO <lv_source>.
+          IF <lv_target> IS ASSIGNED AND <lv_source> IS ASSIGNED.
+            <lv_target> = <lv_source>.
+          ENDIF.
+        ENDLOOP.
+      ENDLOOP.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD adjust_virtual_order_by.
+
+    "the type of IF_SADL_EXIT_SORT_TRANSFORM=>TT_SORT_ELEMENTS - passed by
+    "reference, so it has to be the same
+    TYPES:
+      BEGIN OF ty_s_sort_element,
+        name    TYPE string,
+        reverse TYPE abap_bool,
+      END OF ty_s_sort_element.
+    TYPES ty_t_sort_elements TYPE STANDARD TABLE OF ty_s_sort_element WITH DEFAULT KEY.
+    DATA lt_mapped TYPE ty_t_sort_elements.
+    DATA lt_sort TYPE z2ui5_cl_rap_util=>ty_t_sort.
+    DATA lo_sort TYPE REF TO object.
+    DATA(lv_entity) = to_upper( entity_name ).
+
+    LOOP AT z2ui5_cl_rap_util=>parse_order_by( order_by ) INTO DATA(ls_sort).
+      READ TABLE virtual_elements INTO DATA(ls_virtual) WITH KEY name = ls_sort-field.
+      IF sy-subrc <> 0.
+        APPEND ls_sort TO lt_sort.
+        CONTINUE.
+      ENDIF.
+      IF ls_virtual-sort_class IS INITIAL.
+        CONTINUE.
+      ENDIF.
+      CLEAR lt_mapped.
+      TRY.
+          CREATE OBJECT lo_sort TYPE (ls_virtual-sort_class).
+          CALL METHOD lo_sort->('IF_SADL_EXIT_SORT_TRANSFORM~MAP_ELEMENT')
+            EXPORTING
+              iv_entity        = lv_entity
+              iv_element       = ls_sort-field
+            IMPORTING
+              et_sort_elements = lt_mapped.
+        CATCH cx_root ##NO_HANDLER.
+          "not sorted by it
+      ENDTRY.
+      LOOP AT lt_mapped INTO DATA(ls_mapped).
+        DATA(lv_name) = to_upper( ls_mapped-name ).
+        IF line_exists( virtual_elements[ name = lv_name ] ) OR line_exists( lt_sort[ field = lv_name ] ).
+          CONTINUE.
+        ENDIF.
+        "reverse: the element sorts the other way round than the virtual one
+        APPEND VALUE #( field      = lv_name
+                        descending = xsdbool( ls_sort-descending <> ls_mapped-reverse ) ) TO lt_sort.
+      ENDLOOP.
+    ENDLOOP.
+
+    result = z2ui5_cl_rap_util=>order_by_to_string( lt_sort ).
+
+  ENDMETHOD.
+
+
+  METHOD aggregate_rows.
+    DATA(lr_rows) = select_rows( entity_name = entity_name
+                                 where       = where
+                                 max_rows    = cv_aggregate_max ).
+    result = z2ui5_cl_rap_util=>aggregate_rows( data     = lr_rows
+                                                group_by = group_by
+                                                measure  = measure
+                                                method   = method ).
+  ENDMETHOD.
+
+
+  METHOD get_load_error.
+    result = |{ get_text( cs_text-load_error ) }: { entity_name }|.
+    IF mv_read_error IS NOT INITIAL.
+      result = |{ result } - { mv_read_error }|.
+    ENDIF.
   ENDMETHOD.
 
 
