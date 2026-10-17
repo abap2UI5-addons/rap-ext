@@ -69,6 +69,19 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         as_default     TYPE string VALUE `AS_DEFAULT`,
         view_saved     TYPE string VALUE `VIEW_SAVED`,
         columns        TYPE string VALUE `COLUMNS`,
+        "added 2026-10, third round (RAP behaviour and draft)
+        resume_draft   TYPE string VALUE `RESUME_DRAFT`,
+        keep_draft     TYPE string VALUE `KEEP_DRAFT`,
+        leave_draft    TYPE string VALUE `LEAVE_DRAFT`,
+        own_draft      TYPE string VALUE `OWN_DRAFT`,
+        "&1 is the user
+        locked_by      TYPE string VALUE `LOCKED_BY`,
+        editing_status TYPE string VALUE `EDITING_STATUS`,
+        own_drafts     TYPE string VALUE `OWN_DRAFTS`,
+        locked_other   TYPE string VALUE `LOCKED_OTHER`,
+        unchanged      TYPE string VALUE `UNCHANGED`,
+        not_allowed    TYPE string VALUE `NOT_ALLOWED`,
+        field_read_only TYPE string VALUE `FIELD_READ_ONLY`,
       END OF cs_text.
 
     " Where z2ui5_if_rap_ext~extend_view may add controls
@@ -167,6 +180,13 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         "fills them, so a create does not send them
         parent_fields TYPE string_table,
       END OF ty_s_rap_context.
+
+    "! what GET PERMISSIONS answers for an entity - global, static and per
+    "! instance (z2ui5_cl_rap_util=>ty_s_permissions; added 2026-10, third
+    "! round)
+    TYPES ty_s_permissions TYPE z2ui5_cl_rap_util=>ty_s_permissions.
+    "! the permissions of one record, global and instance combined
+    TYPES ty_s_perm_set TYPE z2ui5_cl_rap_util=>ty_s_perm_set.
 
     "! The dropdown entries of the fields that have a small value help
     "! (sizeCategory #XS) - one component per field, each a table of the
@@ -715,6 +735,71 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! GET PERMISSIONS of entity_name (z2ui5_cl_rap_eml=>get_permissions):
+    "! the global and static permissions, and those of the instances of rows
+    "! (a table of the entity). Not answered for what is no RAP business
+    "! object and where the statement's class did not activate - then the
+    "! BDEF derived types alone decide, as before. A subclass can answer it
+    "! itself (added 2026-10, third round)
+    METHODS get_permissions
+      IMPORTING
+        entity_name   TYPE string
+        context       TYPE ty_s_rap_context OPTIONAL
+        rows          TYPE REF TO data OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_s_permissions.
+
+    "! the permissions of the one record row - the global ones combined
+    "! with the instance's (added 2026-10, third round)
+    METHODS get_row_permissions
+      IMPORTING
+        entity_name   TYPE string
+        context       TYPE ty_s_rap_context OPTIONAL
+        row           TYPE data
+      RETURNING
+        VALUE(result) TYPE ty_s_perm_set.
+
+    "! the key fields of entity_name with their values in row
+    METHODS get_keys_of_row
+      IMPORTING
+        entity_name   TYPE string
+        row           TYPE data
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
+
+    "! the drafts of the instances of rows (a table of the entity), read
+    "! back with READ ENTITIES (z2ui5_cl_rap_eml=>read_instances): a table
+    "! of the READ RESULT type with a line per draft found - unbound when
+    "! the read could not be made (added 2026-10, third round)
+    METHODS read_drafts
+      IMPORTING
+        entity_name   TYPE string
+        context       TYPE ty_s_rap_context OPTIONAL
+        rows          TYPE REF TO data
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
+    "! the field of entity_name the optimistic check before an update
+    "! compares - z2ui5_cl_rap_util=>get_etag_field. Redefine it to name
+    "! the etag master field of the BDEF, which is not read (added 2026-10,
+    "! third round)
+    METHODS get_etag_field
+      IMPORTING
+        entity_name   TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the record row (what the user saw) is still the stored one: its etag
+    "! field (get_etag_field) has the value it had - abap_true when there
+    "! is no such field or the record is no longer there (added 2026-10,
+    "! third round)
+    METHODS check_etag
+      IMPORTING
+        entity_name   TYPE string
+        row           TYPE data
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
     "! align ABAP and JSON model representations (dates, times, padding)
     METHODS normalize_key_value
       IMPORTING
@@ -723,6 +808,19 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         VALUE(result) TYPE string.
 
   PRIVATE SECTION.
+
+    "! why an update or delete of row (original: as the user saw it) is
+    "! refused - the record's permissions, a changed read-only field, a
+    "! changed etag; empty when it may run
+    METHODS check_rap_write
+      IMPORTING
+        entity_name   TYPE string
+        operation     TYPE string
+        row           TYPE data
+        original      TYPE data
+        context       TYPE ty_s_rap_context
+      RETURNING
+        VALUE(result) TYPE string_table.
 
     "! the value state of the control render_field_input just added - the
     "! container's last child
@@ -917,6 +1015,17 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-as_default   THEN `Als Standard verwenden`
         WHEN cs_text-view_saved   THEN `Sicht gesichert`
         WHEN cs_text-columns      THEN `Spalten`
+        WHEN cs_text-resume_draft THEN `Entwurf fortsetzen`
+        WHEN cs_text-keep_draft   THEN `Entwurf behalten`
+        WHEN cs_text-leave_draft  THEN `Ihren Entwurf behalten oder verwerfen?`
+        WHEN cs_text-own_draft    THEN `Entwurf`
+        WHEN cs_text-locked_by    THEN `Gesperrt von &1`
+        WHEN cs_text-editing_status THEN `Bearbeitungsstatus`
+        WHEN cs_text-own_drafts   THEN `Eigener Entwurf`
+        WHEN cs_text-locked_other THEN `Von anderem Benutzer gesperrt`
+        WHEN cs_text-unchanged    THEN `Ungeändert`
+        WHEN cs_text-not_allowed  THEN `Für diesen Eintrag nicht erlaubt`
+        WHEN cs_text-field_read_only THEN `Diese Felder können nicht geändert werden`
         ELSE key ).
     ELSE.
       "the text pool of this class, original language English - translate
@@ -964,6 +1073,17 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-as_default    THEN 'Use as default'(040)
         WHEN cs_text-view_saved    THEN 'View saved'(041)
         WHEN cs_text-columns       THEN 'Columns'(042)
+        WHEN cs_text-resume_draft  THEN 'Resume draft'(043)
+        WHEN cs_text-keep_draft    THEN 'Keep draft'(044)
+        WHEN cs_text-leave_draft   THEN 'Keep your draft or discard it?'(045)
+        WHEN cs_text-own_draft     THEN 'Draft'(046)
+        WHEN cs_text-locked_by     THEN 'Locked by &1'(047)
+        WHEN cs_text-editing_status THEN 'Editing status'(048)
+        WHEN cs_text-own_drafts    THEN 'Own draft'(049)
+        WHEN cs_text-locked_other  THEN 'Locked by another user'(050)
+        WHEN cs_text-unchanged     THEN 'Unchanged'(051)
+        WHEN cs_text-not_allowed   THEN 'Not allowed for this record'(052)
+        WHEN cs_text-field_read_only THEN 'These fields cannot be changed'(053)
         ELSE key ).
     ENDIF.
 
@@ -1989,6 +2109,27 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "the record's own permissions, its read-only fields and - without a
+    "draft - that nobody changed it meanwhile (since 2026-10, third round)
+    IF ls_caps-is_rap_bo = abap_true AND ( operation = `UPDATE` OR operation = `DELETE` ).
+      IF original IS SUPPLIED.
+        result-messages = check_rap_write( entity_name = entity_name
+                                           operation   = operation
+                                           row         = row
+                                           original    = original
+                                           context     = context ).
+      ELSE.
+        result-messages = check_rap_write( entity_name = entity_name
+                                           operation   = operation
+                                           row         = row
+                                           original    = row
+                                           context     = context ).
+      ENDIF.
+      IF result-messages IS NOT INITIAL.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
     CREATE DATA lr_row LIKE row.
     ASSIGN lr_row->* TO <ls_row>.
     <ls_row> = row.
@@ -2213,12 +2354,11 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     DATA(ls_entity) = get_capabilities( entity_name = entity_name
                                         context     = context ).
     result = ls_entity.
-    IF mo_ext IS NOT BOUND.
-      RETURN.
+    IF mo_ext IS BOUND.
+      mo_ext->adjust_capabilities( EXPORTING floorplan   = mv_floorplan
+                                             entity_name = to_upper( entity_name )
+                                   CHANGING  caps        = result ).
     ENDIF.
-    mo_ext->adjust_capabilities( EXPORTING floorplan   = mv_floorplan
-                                           entity_name = to_upper( entity_name )
-                                 CHANGING  caps        = result ).
 
     "the extension decides what is offered, not what the entity is: it may
     "withhold an operation of a business object and allow the writes of a
@@ -2232,6 +2372,40 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       result-can_delete = xsdbool( result-can_delete = abap_true AND ls_entity-can_delete = abap_true ).
     ELSEIF ls_entity-is_table = abap_false.
       CLEAR: result-can_create, result-can_update, result-can_delete.
+    ENDIF.
+    IF ls_entity-is_rap_bo = abap_false.
+      RETURN.
+    ENDIF.
+
+    "nor what GET PERMISSIONS forbids (since 2026-10, third round): global
+    "feature control and authorization, an internal operation - and a
+    "create by association as the parent's association allows it
+    IF context-association IS NOT INITIAL AND context-parent IS NOT INITIAL.
+      DATA(lv_parent) = to_upper( context-parent ).
+      DATA(lr_parent) = create_host( entity_name = lv_parent
+                                     values      = context-parent_keys ).
+      IF lr_parent IS BOUND.
+        ASSIGN lr_parent->* TO FIELD-SYMBOL(<ls_parent>).
+        DATA(ls_parent_perm) = get_row_permissions( entity_name = lv_parent
+                                                    context     = VALUE #( bdef      = context-bdef
+                                                                           root_keys = context-root_keys )
+                                                    row         = <ls_parent> ).
+        result-can_create = xsdbool( result-can_create = abap_true
+          AND z2ui5_cl_rap_util=>is_permitted( ops  = ls_parent_perm-associations
+                                               name = context-association ) = abap_true ).
+      ENDIF.
+    ELSE.
+      DATA(ls_perm) = get_permissions( entity_name = entity_name
+                                       context     = context ).
+      IF ls_perm-answered = abap_true.
+        result-can_create = xsdbool( result-can_create = abap_true AND ls_perm-global-can_create = abap_true ).
+      ENDIF.
+    ENDIF.
+    ls_perm = get_permissions( entity_name = entity_name
+                               context     = context ).
+    IF ls_perm-answered = abap_true.
+      result-can_update = xsdbool( result-can_update = abap_true AND ls_perm-global-can_update = abap_true ).
+      result-can_delete = xsdbool( result-can_delete = abap_true AND ls_perm-global-can_delete = abap_true ).
     ENDIF.
 
   ENDMETHOD.
@@ -2371,6 +2545,36 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     IF <lt_rows> IS INITIAL AND lv_static = abap_false.
       APPEND get_text( cs_text-no_selection ) TO result-messages.
       RETURN.
+    ENDIF.
+
+    "an action the record's feature control or authorization disables
+    "is refused, whoever asks (since 2026-10, third round)
+    DATA(ls_perm) = get_permissions( entity_name = entity_name
+                                     context     = context
+                                     rows        = COND #( WHEN lv_static = abap_false THEN lr_rows ) ).
+    IF ls_perm-answered = abap_true.
+      IF z2ui5_cl_rap_util=>is_permitted( ops  = ls_perm-global-actions
+                                          name = action ) = abap_false.
+        APPEND |{ get_text( cs_text-not_allowed ) }: { action }| TO result-messages.
+        RETURN.
+      ENDIF.
+      DATA(lv_refused) = 0.
+      IF lv_static = abap_false.
+        LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_action_row>).
+          DATA(ls_row_perm) = z2ui5_cl_rap_util=>get_instance_permissions(
+            is_permissions = ls_perm
+            keys           = get_keys_of_row( entity_name = entity_name
+                                              row         = <ls_action_row> ) ).
+          IF z2ui5_cl_rap_util=>is_permitted( ops  = ls_row_perm-actions
+                                              name = action ) = abap_false.
+            lv_refused = lv_refused + 1.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+      IF lv_refused > 0.
+        APPEND |{ get_text( cs_text-not_allowed ) }: { action } ({ lv_refused })| TO result-messages.
+        RETURN.
+      ENDIF.
     ENDIF.
 
     IF mo_ext IS BOUND.
@@ -2542,6 +2746,158 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD normalize_key_value.
     result = z2ui5_cl_rap_util=>normalize_value( val ).
+  ENDMETHOD.
+
+
+  METHOD get_permissions.
+    IF eml_available( ) = abap_false
+      OR get_capabilities( entity_name = entity_name
+                           context     = context )-is_rap_bo = abap_false.
+      RETURN.
+    ENDIF.
+    result = z2ui5_cl_rap_eml=>get_permissions( entity_name = entity_name
+                                                context     = context
+                                                rows        = rows ).
+  ENDMETHOD.
+
+
+  METHOD get_row_permissions.
+
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+
+    DATA(lr_rows) = create_entity_table( entity_name ).
+    IF lr_rows IS BOUND.
+      ASSIGN lr_rows->* TO <lt_rows>.
+      APPEND INITIAL LINE TO <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      MOVE-CORRESPONDING row TO <ls_row>.
+    ENDIF.
+    result = z2ui5_cl_rap_util=>get_instance_permissions(
+      is_permissions = get_permissions( entity_name = entity_name
+                                        context     = context
+                                        rows        = lr_rows )
+      keys           = get_keys_of_row( entity_name = entity_name
+                                        row         = row ) ).
+
+  ENDMETHOD.
+
+
+  METHOD get_keys_of_row.
+
+    FIELD-SYMBOLS <lv_key> TYPE any.
+    LOOP AT z2ui5_cl_rap_util=>get_key_fields( entity_name ) INTO DATA(lv_key).
+      UNASSIGN <lv_key>.
+      ASSIGN COMPONENT lv_key OF STRUCTURE row TO <lv_key>.
+      IF <lv_key> IS ASSIGNED.
+        APPEND VALUE #( name = to_upper( lv_key ) value = |{ <lv_key> }| ) TO result.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD read_drafts.
+    IF eml_available( ) = abap_false OR rows IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    result = z2ui5_cl_rap_eml=>read_instances( entity_name = entity_name
+                                               context     = context
+                                               rows        = rows
+                                               is_draft    = abap_true ).
+  ENDMETHOD.
+
+
+  METHOD get_etag_field.
+    result = z2ui5_cl_rap_util=>get_etag_field( z2ui5_cl_rap_util=>read_entity( entity_name )-fields ).
+  ENDMETHOD.
+
+
+  METHOD check_etag.
+
+    DATA lt_names TYPE string_table.
+    FIELD-SYMBOLS <lv_seen> TYPE any.
+    FIELD-SYMBOLS <lv_now> TYPE any.
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+
+    result = abap_true.
+    DATA(lv_field) = get_etag_field( entity_name ).
+    IF lv_field IS INITIAL.
+      RETURN.
+    ENDIF.
+    ASSIGN COMPONENT lv_field OF STRUCTURE row TO <lv_seen>.
+    IF sy-subrc <> 0 OR <lv_seen> IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA(lt_keys) = get_keys_of_row( entity_name = entity_name
+                                     row         = row ).
+    IF lt_keys IS INITIAL.
+      RETURN.
+    ENDIF.
+    LOOP AT lt_keys INTO DATA(ls_key).
+      APPEND ls_key-name TO lt_names.
+    ENDLOOP.
+
+    DATA(lr_rows) = select_rows( entity_name = entity_name
+                                 where       = build_key_condition( lt_names )
+                                 max_rows    = 1
+                                 host        = create_host( entity_name = entity_name
+                                                            values      = lt_keys ) ).
+    IF lr_rows IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_rows->* TO <lt_rows>.
+    READ TABLE <lt_rows> INDEX 1 ASSIGNING FIELD-SYMBOL(<ls_now>).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    ASSIGN COMPONENT lv_field OF STRUCTURE <ls_now> TO <lv_now>.
+    IF sy-subrc = 0 AND <lv_now> <> <lv_seen>.
+      result = abap_false.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD check_rap_write.
+
+    DATA lt_fields TYPE string_table.
+    FIELD-SYMBOLS <lv_new> TYPE any.
+    FIELD-SYMBOLS <lv_old> TYPE any.
+
+    DATA(ls_perm) = get_row_permissions( entity_name = entity_name
+                                         context     = context
+                                         row         = original ).
+    IF ( operation = `UPDATE` AND ls_perm-can_update = abap_false )
+      OR ( operation = `DELETE` AND ls_perm-can_delete = abap_false ).
+      APPEND get_text( cs_text-not_allowed ) TO result.
+      RETURN.
+    ENDIF.
+
+    IF operation = `UPDATE`.
+      "a field its field control makes read-only is not changed
+      LOOP AT ls_perm-fields INTO DATA(ls_field)
+        WHERE read_only = abap_true OR read_only_update = abap_true.
+        UNASSIGN: <lv_new>, <lv_old>.
+        ASSIGN COMPONENT ls_field-name OF STRUCTURE row TO <lv_new>.
+        ASSIGN COMPONENT ls_field-name OF STRUCTURE original TO <lv_old>.
+        IF <lv_new> IS ASSIGNED AND <lv_old> IS ASSIGNED AND <lv_new> <> <lv_old>.
+          APPEND ls_field-name TO lt_fields.
+        ENDIF.
+      ENDLOOP.
+      IF lt_fields IS NOT INITIAL.
+        APPEND |{ get_text( cs_text-field_read_only ) }: { concat_lines_of( table = lt_fields sep = `, ` ) }| TO result.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
+    "a draft keeps the record locked while it is edited - without one, the
+    "record as the user saw it is compared with the stored one
+    DATA(lv_bdef) = COND string( WHEN context-bdef IS NOT INITIAL THEN context-bdef ELSE entity_name ).
+    IF is_draft_enabled( lv_bdef ) = abap_false
+      AND check_etag( entity_name = entity_name
+                      row         = original ) = abap_false.
+      APPEND get_text( cs_text-changed ) TO result.
+    ENDIF.
+
   ENDMETHOD.
 
 ENDCLASS.

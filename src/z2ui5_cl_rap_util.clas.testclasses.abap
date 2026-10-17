@@ -1611,3 +1611,259 @@ CLASS ltcl_reading IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+
+" RAP behaviour (added 2026-10, third round): what GET PERMISSIONS answers,
+" decoded and combined, the field control of edit mode, the draft status
+" of a record and the field of the optimistic check - on plain data
+CLASS ltcl_behaviour DEFINITION FINAL
+  FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS field_permission_flags  FOR TESTING RAISING cx_static_check.
+    METHODS operation_permission    FOR TESTING RAISING cx_static_check.
+    METHODS permission_type_names   FOR TESTING RAISING cx_static_check.
+    METHODS instance_combined       FOR TESTING RAISING cx_static_check.
+    METHODS not_answered_allows     FOR TESTING RAISING cx_static_check.
+    METHODS field_control_update    FOR TESTING RAISING cx_static_check.
+    METHODS field_control_create    FOR TESTING RAISING cx_static_check.
+    METHODS draft_status            FOR TESTING RAISING cx_static_check.
+    METHODS editing_status_filter   FOR TESTING RAISING cx_static_check.
+    METHODS etag_field              FOR TESTING RAISING cx_static_check.
+
+ENDCLASS.
+
+
+CLASS ltcl_behaviour IMPLEMENTATION.
+
+  METHOD field_permission_flags.
+
+    DATA(ls_none) = z2ui5_cl_rap_util=>decode_field_permission( name  = `A`
+                                                                value = 0 ).
+    cl_abap_unit_assert=>assert_false( ls_none-read_only ).
+    cl_abap_unit_assert=>assert_false( ls_none-mandatory ).
+
+    DATA(ls_ro) = z2ui5_cl_rap_util=>decode_field_permission( name  = `A`
+                                                              value = 2 ).
+    cl_abap_unit_assert=>assert_true( ls_ro-read_only ).
+    cl_abap_unit_assert=>assert_false( ls_ro-mandatory ).
+
+    "mandatory : create combined with readonly : update (16 + 32)
+    DATA(ls_both) = z2ui5_cl_rap_util=>decode_field_permission( name  = `A`
+                                                                value = 48 ).
+    cl_abap_unit_assert=>assert_true( ls_both-mandatory_create ).
+    cl_abap_unit_assert=>assert_true( ls_both-read_only_update ).
+    cl_abap_unit_assert=>assert_false( ls_both-read_only ).
+    cl_abap_unit_assert=>assert_equals( exp = `A`
+                                        act = ls_both-name ).
+
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>decode_field_permission( name  = `A`
+                                                                                  value = 1 )-mandatory ).
+
+  ENDMETHOD.
+
+
+  METHOD operation_permission.
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>is_operation_enabled( 0 ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_operation_enabled( 1 ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_operation_enabled( 2 ) ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>is_permitted(
+      ops  = VALUE #( ( name = `ACCEPT` enabled = abap_false ) )
+      name = `reject` ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_permitted(
+      ops  = VALUE #( ( name = `ACCEPT` enabled = abap_false ) )
+      name = `accept` ) ).
+  ENDMETHOD.
+
+
+  METHOD permission_type_names.
+    DATA(lt_names) = z2ui5_cl_rap_util=>get_permission_type_names( bdef        = `zr_travel`
+                                                                   entity_name = `ZR_BOOKING`
+                                                                   kind        = `request` ).
+    cl_abap_unit_assert=>assert_equals( exp = `\BDEF=ZR_TRAVEL\ENTITY=ZR_BOOKING\TYPE=PERMISSIONS_Q`
+                                        act = lt_names[ 1 ] ).
+    cl_abap_unit_assert=>assert_equals( exp = 2
+                                        act = lines( lt_names ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>get_permission_type_names( bdef        = `A`
+                                                                                       entity_name = `A`
+                                                                                       kind        = `OTHER` ) ).
+  ENDMETHOD.
+
+
+  METHOD instance_combined.
+
+    DATA(ls_perm) = VALUE z2ui5_cl_rap_util=>ty_s_permissions(
+      answered  = abap_true
+      global    = VALUE #( can_create = abap_true
+                           can_update = abap_true
+                           can_delete = abap_true
+                           actions    = VALUE #( ( name = `COPY` enabled = abap_false ) )
+                           fields     = VALUE #( ( name = `STATUS` read_only = abap_true ) ) )
+      instances = VALUE #( ( keys       = VALUE #( ( name = `TRAVELID` value = ` 1` ) )
+                             can_update = abap_true
+                             can_delete = abap_false
+                             actions    = VALUE #( ( name = `ACCEPT` enabled = abap_false ) )
+                             fields     = VALUE #( ( name = `PRICE` read_only = abap_true )
+                                                   ( name = `STATUS` mandatory = abap_true ) ) )
+                           ( keys       = VALUE #( ( name = `TRAVELID` value = `2` ) )
+                             can_update = abap_false
+                             can_delete = abap_true ) ) ).
+
+    DATA(ls_one) = z2ui5_cl_rap_util=>get_instance_permissions(
+      is_permissions = ls_perm
+      keys           = VALUE #( ( name = `TravelID` value = `1` ) ) ).
+    cl_abap_unit_assert=>assert_true( ls_one-can_update ).
+    cl_abap_unit_assert=>assert_false( ls_one-can_delete ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_permitted( ops  = ls_one-actions
+                                                                        name = `ACCEPT` ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_permitted( ops  = ls_one-actions
+                                                                        name = `COPY` ) ).
+    DATA(ls_status) = ls_one-fields[ name = `STATUS` ].
+    cl_abap_unit_assert=>assert_true( ls_status-read_only ).
+    cl_abap_unit_assert=>assert_true( ls_status-mandatory ).
+    cl_abap_unit_assert=>assert_true( ls_one-fields[ name = `PRICE` ]-read_only ).
+
+    DATA(ls_two) = z2ui5_cl_rap_util=>get_instance_permissions(
+      is_permissions = ls_perm
+      keys           = VALUE #( ( name = `TRAVELID` value = `2` ) ) ).
+    cl_abap_unit_assert=>assert_false( ls_two-can_update ).
+    cl_abap_unit_assert=>assert_true( ls_two-can_delete ).
+
+    "an instance GET PERMISSIONS did not answer: the global permissions
+    DATA(ls_three) = z2ui5_cl_rap_util=>get_instance_permissions(
+      is_permissions = ls_perm
+      keys           = VALUE #( ( name = `TRAVELID` value = `3` ) ) ).
+    cl_abap_unit_assert=>assert_true( ls_three-can_delete ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>is_permitted( ops  = ls_three-actions
+                                                                       name = `ACCEPT` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD not_answered_allows.
+    DATA(ls_set) = z2ui5_cl_rap_util=>get_instance_permissions(
+      is_permissions = VALUE #( )
+      keys           = VALUE #( ( name = `A` value = `1` ) ) ).
+    cl_abap_unit_assert=>assert_true( ls_set-can_create ).
+    cl_abap_unit_assert=>assert_true( ls_set-can_update ).
+    cl_abap_unit_assert=>assert_true( ls_set-can_delete ).
+    cl_abap_unit_assert=>assert_initial( ls_set-fields ).
+  ENDMETHOD.
+
+
+  METHOD field_control_update.
+
+    DATA(lt_perm) = VALUE z2ui5_cl_rap_util=>ty_t_perm_field(
+      ( name = `STATUS` read_only = abap_true )
+      ( name = `AGENCY` read_only_update = abap_true )
+      ( name = `CUSTOMER` mandatory = abap_true )
+      ( name = `BEGINDATE` mandatory_create = abap_true ) ).
+
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>get_field_control(
+      is_field       = VALUE #( name = `Status` )
+      it_perm_fields = lt_perm )-read_only ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>get_field_control(
+      is_field       = VALUE #( name = `AGENCY` )
+      it_perm_fields = lt_perm )-read_only ).
+    DATA(ls_customer) = z2ui5_cl_rap_util=>get_field_control( is_field       = VALUE #( name = `CUSTOMER` )
+                                                              it_perm_fields = lt_perm ).
+    cl_abap_unit_assert=>assert_false( ls_customer-read_only ).
+    cl_abap_unit_assert=>assert_true( ls_customer-mandatory ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>get_field_control(
+      is_field       = VALUE #( name = `BEGINDATE` )
+      it_perm_fields = lt_perm )-mandatory ).
+    "a key is set once
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>get_field_control(
+      is_field = VALUE #( name = `TRAVELID` is_key = abap_true ) )-read_only ).
+    "@ObjectModel.readOnly, and a read-only field is no mandatory one
+    DATA(ls_annotated) = z2ui5_cl_rap_util=>get_field_control(
+      is_field = VALUE #( name = `X` is_readonly = abap_true is_mandatory = abap_true ) ).
+    cl_abap_unit_assert=>assert_true( ls_annotated-read_only ).
+    cl_abap_unit_assert=>assert_false( ls_annotated-mandatory ).
+
+  ENDMETHOD.
+
+
+  METHOD field_control_create.
+
+    DATA(lt_perm) = VALUE z2ui5_cl_rap_util=>ty_t_perm_field(
+      ( name = `TRAVELID` read_only = abap_true )
+      ( name = `AGENCY` read_only_update = abap_true )
+      ( name = `BEGINDATE` mandatory_create = abap_true ) ).
+
+    "early numbering: the key is read-only by its field control
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>get_field_control(
+      is_field       = VALUE #( name = `TRAVELID` is_key = abap_true )
+      it_perm_fields = lt_perm
+      is_create      = abap_true )-read_only ).
+    "an external key is typed in on create
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>get_field_control(
+      is_field  = VALUE #( name = `CODE` is_key = abap_true type_kind = `CHAR` length = 3 )
+      is_create = abap_true )-read_only ).
+    "a UUID key is numbered by the business object
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>get_field_control(
+      is_field  = VALUE #( name = `TRAVELUUID` is_key = abap_true type_kind = `RAW` length = 16 )
+      is_create = abap_true )-read_only ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>get_field_control(
+      is_field       = VALUE #( name = `AGENCY` )
+      it_perm_fields = lt_perm
+      is_create      = abap_true )-read_only ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>get_field_control(
+      is_field       = VALUE #( name = `BEGINDATE` )
+      it_perm_fields = lt_perm
+      is_create      = abap_true )-mandatory ).
+
+  ENDMETHOD.
+
+
+  METHOD draft_status.
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>get_draft_status( has_draft = abap_false
+                                                                              user      = `ME` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_editing_status-own_draft
+      act = z2ui5_cl_rap_util=>get_draft_status( has_draft = abap_true
+                                                 owner     = `me`
+                                                 user      = `ME` )-state ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_editing_status-own_draft
+      act = z2ui5_cl_rap_util=>get_draft_status( has_draft = abap_true
+                                                 user      = `ME` )-state ).
+    DATA(ls_locked) = z2ui5_cl_rap_util=>get_draft_status( has_draft = abap_true
+                                                           owner     = `OTHER`
+                                                           user      = `ME` ).
+    cl_abap_unit_assert=>assert_equals( exp = z2ui5_cl_rap_util=>cs_editing_status-locked
+                                        act = ls_locked-state ).
+    cl_abap_unit_assert=>assert_equals( exp = `OTHER`
+                                        act = ls_locked-user ).
+  ENDMETHOD.
+
+
+  METHOD editing_status_filter.
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>matches_editing_status( filter = ``
+                                                                                 state  = `LOCKED` ) ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>matches_editing_status( filter = `ALL`
+                                                                                 state  = `` ) ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>matches_editing_status( filter = `UNCHANGED`
+                                                                                 state  = `` ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>matches_editing_status( filter = `UNCHANGED`
+                                                                                  state  = `OWN` ) ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>matches_editing_status( filter = `own`
+                                                                                 state  = `OWN` ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>matches_editing_status( filter = `LOCKED`
+                                                                                  state  = `OWN` ) ).
+  ENDMETHOD.
+
+
+  METHOD etag_field.
+    cl_abap_unit_assert=>assert_equals(
+      exp = `LOCALCHANGED`
+      act = z2ui5_cl_rap_util=>get_etag_field( VALUE #( ( name = `CHANGED`      admin_field = `LAST_CHANGED_AT` )
+                                                        ( name = `LOCALCHANGED` admin_field = `LOCAL_LAST_CHANGED_AT` ) ) ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `CHANGED`
+      act = z2ui5_cl_rap_util=>get_etag_field( VALUE #( ( name = `CHANGED` admin_field = `LAST_CHANGED_AT` ) ) ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>get_etag_field( VALUE #( ( name = `A` ) ) ) ).
+  ENDMETHOD.
+
+ENDCLASS.

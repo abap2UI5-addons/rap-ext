@@ -475,6 +475,80 @@ CLASS z2ui5_cl_rap_util DEFINITION
 
     TYPES ty_t_aggregate TYPE STANDARD TABLE OF ty_s_aggregate WITH EMPTY KEY.
 
+    "======= RAP BEHAVIOUR TYPES (added 2026-10, third round) =======
+
+    " the control of one field as GET PERMISSIONS answers it - static
+    " (field ( readonly ), readonly : update, mandatory : create) and
+    " instance feature control alike
+    TYPES:
+      BEGIN OF ty_s_perm_field,
+        name             TYPE string,
+        read_only        TYPE abap_bool,
+        read_only_update TYPE abap_bool,
+        mandatory        TYPE abap_bool,
+        mandatory_create TYPE abap_bool,
+      END OF ty_s_perm_field.
+
+    TYPES ty_t_perm_field TYPE STANDARD TABLE OF ty_s_perm_field WITH EMPTY KEY.
+
+    " one action or association (create by association) - enabled is
+    " abap_false when it is disabled or unauthorized
+    TYPES:
+      BEGIN OF ty_s_perm_op,
+        name    TYPE string,
+        enabled TYPE abap_bool,
+      END OF ty_s_perm_op.
+
+    TYPES ty_t_perm_op TYPE STANDARD TABLE OF ty_s_perm_op WITH EMPTY KEY.
+
+    " the permissions of the entity (global) or of one instance (its keys)
+    TYPES:
+      BEGIN OF ty_s_perm_set,
+        keys         TYPE ty_t_name_value,
+        can_create   TYPE abap_bool,
+        can_update   TYPE abap_bool,
+        can_delete   TYPE abap_bool,
+        actions      TYPE ty_t_perm_op,
+        associations TYPE ty_t_perm_op,
+        fields       TYPE ty_t_perm_field,
+      END OF ty_s_perm_set.
+
+    TYPES ty_t_perm_set TYPE STANDARD TABLE OF ty_s_perm_set WITH EMPTY KEY.
+
+    " what GET PERMISSIONS answered - answered is abap_false when it could
+    " not be asked (no RAP, the statement's class did not activate), and
+    " then everything the derived types offer is allowed
+    TYPES:
+      BEGIN OF ty_s_permissions,
+        answered  TYPE abap_bool,
+        global    TYPE ty_s_perm_set,
+        instances TYPE ty_t_perm_set,
+      END OF ty_s_permissions.
+
+    " how a field is shown in edit mode (get_field_control)
+    TYPES:
+      BEGIN OF ty_s_field_control,
+        read_only TYPE abap_bool,
+        mandatory TYPE abap_bool,
+      END OF ty_s_field_control.
+
+    " the draft of a record: state OWN (the user's), LOCKED (another
+    " user's, user names who) or empty (none)
+    TYPES:
+      BEGIN OF ty_s_draft_status,
+        state TYPE string,
+        user  TYPE string,
+      END OF ty_s_draft_status.
+
+    " the values of the editing status filter of a draft business object
+    CONSTANTS:
+      BEGIN OF cs_editing_status,
+        all       TYPE string VALUE `ALL`,
+        own_draft TYPE string VALUE `OWN`,
+        locked    TYPE string VALUE `LOCKED`,
+        unchanged TYPE string VALUE `UNCHANGED`,
+      END OF cs_editing_status.
+
     "======= PUBLIC METHODS =======
 
     "! Read full metadata for a CDS entity (abstract entity, view entity, etc.)
@@ -798,6 +872,101 @@ CLASS z2ui5_cl_rap_util DEFINITION
         method        TYPE string DEFAULT `SUM`
       RETURNING
         VALUE(result) TYPE ty_t_aggregate.
+
+    "! One field permission of GET PERMISSIONS (IF_ABAP_BEHV=>PERM-F,
+    "! as an integer): mandatory 1, read-only 2, mandatory on create 16,
+    "! read-only on update 32 - the flags combine (added 2026-10, third
+    "! round)
+    CLASS-METHODS decode_field_permission
+      IMPORTING
+        name          TYPE string
+        value         TYPE i
+      RETURNING
+        VALUE(result) TYPE ty_s_perm_field.
+
+    "! an operation permission (IF_ABAP_BEHV=>PERM-O, as an integer):
+    "! enabled is 0, disabled 1, unauthorized 2
+    CLASS-METHODS is_operation_enabled
+      IMPORTING
+        value         TYPE i
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! the absolute names a BDEF derived type of GET PERMISSIONS may have
+    "! - kind KEY (TABLE FOR PERMISSIONS KEY), REQUEST or RESULT (the
+    "! STRUCTURE FOR PERMISSIONS ones), in the order they are tried. The
+    "! names are not documented for these types; the forms follow those
+    "! of READ (READ_I, READ_R) - see docs/system-test.md
+    CLASS-METHODS get_permission_type_names
+      IMPORTING
+        bdef          TYPE string
+        entity_name   TYPE string
+        kind          TYPE string
+      RETURNING
+        VALUE(result) TYPE string_table.
+
+    "! the permissions of the instance of keys: the global ones combined
+    "! with the instance's - an operation is allowed when both allow it,
+    "! a field read-only or mandatory when either says so. Not answered:
+    "! everything is allowed
+    CLASS-METHODS get_instance_permissions
+      IMPORTING
+        is_permissions TYPE ty_s_permissions
+        keys           TYPE ty_t_name_value OPTIONAL
+      RETURNING
+        VALUE(result)  TYPE ty_s_perm_set.
+
+    "! the operation name of ops is enabled - one that is not listed is
+    CLASS-METHODS is_permitted
+      IMPORTING
+        ops           TYPE ty_t_perm_op
+        name          TYPE string
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! how is_field is edited: read-only by @ObjectModel.readOnly, by the
+    "! field control of it_perm_fields (static and instance) and as a key
+    "! outside a create - on create a key that the business object numbers
+    "! (read-only by its field control, or a UUID) is read-only too;
+    "! mandatory by the annotation and the field control, never when
+    "! read-only
+    CLASS-METHODS get_field_control
+      IMPORTING
+        is_field       TYPE ty_s_field_info
+        it_perm_fields TYPE ty_t_perm_field OPTIONAL
+        is_create      TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(result)  TYPE ty_s_field_control.
+
+    "! the draft status of a record: none without a draft, the user's own
+    "! when owner (who changed the draft last) is user or unknown, else
+    "! locked by owner
+    CLASS-METHODS get_draft_status
+      IMPORTING
+        has_draft     TYPE abap_bool
+        owner         TYPE string OPTIONAL
+        user          TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_s_draft_status.
+
+    "! a record of draft status state is shown by the editing status filter
+    "! value filter (cs_editing_status; empty is ALL)
+    CLASS-METHODS matches_editing_status
+      IMPORTING
+        filter        TYPE string
+        state         TYPE string
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! the field an optimistic check compares before an update: the local
+    "! instance last changed time (@Semantics.systemDateTime
+    "! .localInstanceLastChangedAt), else the last changed time - what a
+    "! BDEF names as etag master in practice. Empty when there is neither
+    CLASS-METHODS get_etag_field
+      IMPORTING
+        it_fields     TYPE ty_t_field_info
+      RETURNING
+        VALUE(result) TYPE string.
 
     "! Remove one pair of enclosing single quotes and surrounding blanks
     CLASS-METHODS strip_quotes
@@ -3891,6 +4060,166 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     ENDLOOP.
     SORT result BY group_key.
 
+  ENDMETHOD.
+
+
+  METHOD decode_field_permission.
+    result-name = name.
+    result-mandatory = xsdbool( value MOD 2 = 1 ).
+    result-read_only = xsdbool( ( value DIV 2 ) MOD 2 = 1 ).
+    result-mandatory_create = xsdbool( ( value DIV 16 ) MOD 2 = 1 ).
+    result-read_only_update = xsdbool( ( value DIV 32 ) MOD 2 = 1 ).
+  ENDMETHOD.
+
+
+  METHOD is_operation_enabled.
+    result = xsdbool( value = 0 ).
+  ENDMETHOD.
+
+
+  METHOD get_permission_type_names.
+    DATA(lv_base) = |\\BDEF={ to_upper( bdef ) }\\ENTITY={ to_upper( entity_name ) }\\TYPE=|.
+    CASE to_upper( kind ).
+      WHEN `KEY`.
+        result = VALUE #( ( lv_base && `PERMISSIONS_K` ) ( lv_base && `PERMISSIONS_I` ) ( lv_base && `PERMISSIONS_KEY` ) ).
+      WHEN `REQUEST`.
+        result = VALUE #( ( lv_base && `PERMISSIONS_Q` ) ( lv_base && `PERMISSIONS_REQUEST` ) ).
+      WHEN `RESULT`.
+        result = VALUE #( ( lv_base && `PERMISSIONS_R` ) ( lv_base && `PERMISSIONS_RESULT` ) ).
+    ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD is_permitted.
+    READ TABLE ops INTO DATA(ls_op) WITH KEY name = to_upper( name ).
+    result = xsdbool( sy-subrc <> 0 OR ls_op-enabled = abap_true ).
+  ENDMETHOD.
+
+
+  METHOD get_instance_permissions.
+
+    DATA lv_match TYPE abap_bool.
+
+    IF is_permissions-answered = abap_false.
+      result = VALUE #( keys       = keys
+                        can_create = abap_true
+                        can_update = abap_true
+                        can_delete = abap_true ).
+      RETURN.
+    ENDIF.
+    result = is_permissions-global.
+    result-keys = keys.
+    IF keys IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    LOOP AT is_permissions-instances INTO DATA(ls_instance).
+      lv_match = abap_true.
+      LOOP AT keys INTO DATA(ls_key).
+        READ TABLE ls_instance-keys INTO DATA(ls_inst_key) WITH KEY name = to_upper( ls_key-name ).
+        IF sy-subrc <> 0 OR condense( ls_inst_key-value ) <> condense( ls_key-value ).
+          lv_match = abap_false.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+      IF lv_match = abap_false.
+        CONTINUE.
+      ENDIF.
+      result-can_update = xsdbool( result-can_update = abap_true AND ls_instance-can_update = abap_true ).
+      result-can_delete = xsdbool( result-can_delete = abap_true AND ls_instance-can_delete = abap_true ).
+      LOOP AT ls_instance-actions INTO DATA(ls_op) WHERE enabled = abap_false.
+        DELETE result-actions WHERE name = ls_op-name.
+        APPEND ls_op TO result-actions.
+      ENDLOOP.
+      LOOP AT ls_instance-associations INTO ls_op WHERE enabled = abap_false.
+        DELETE result-associations WHERE name = ls_op-name.
+        APPEND ls_op TO result-associations.
+      ENDLOOP.
+      LOOP AT ls_instance-fields INTO DATA(ls_field).
+        READ TABLE result-fields ASSIGNING FIELD-SYMBOL(<ls_field>) WITH KEY name = ls_field-name.
+        IF sy-subrc <> 0.
+          APPEND ls_field TO result-fields.
+          CONTINUE.
+        ENDIF.
+        <ls_field>-read_only = xsdbool( <ls_field>-read_only = abap_true OR ls_field-read_only = abap_true ).
+        <ls_field>-read_only_update = xsdbool( <ls_field>-read_only_update = abap_true
+                                            OR ls_field-read_only_update = abap_true ).
+        <ls_field>-mandatory = xsdbool( <ls_field>-mandatory = abap_true OR ls_field-mandatory = abap_true ).
+        <ls_field>-mandatory_create = xsdbool( <ls_field>-mandatory_create = abap_true
+                                            OR ls_field-mandatory_create = abap_true ).
+      ENDLOOP.
+      RETURN.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_field_control.
+
+    DATA ls_perm TYPE ty_s_perm_field.
+
+    READ TABLE it_perm_fields INTO ls_perm WITH KEY name = to_upper( is_field-name ).
+    IF sy-subrc <> 0.
+      CLEAR ls_perm.
+    ENDIF.
+
+    result-read_only = xsdbool( is_field-is_readonly = abap_true OR ls_perm-read_only = abap_true ).
+    IF is_create = abap_false AND ( is_field-is_key = abap_true OR ls_perm-read_only_update = abap_true ).
+      result-read_only = abap_true.
+    ENDIF.
+    "a key the business object numbers itself is never typed in - early
+    "numbering (read-only by its field control) or a UUID (managed)
+    IF is_create = abap_true AND is_field-is_key = abap_true
+      AND is_field-type_kind = `RAW` AND is_field-length = 16.
+      result-read_only = abap_true.
+    ENDIF.
+
+    result-mandatory = xsdbool( is_field-is_mandatory = abap_true OR ls_perm-mandatory = abap_true
+                             OR ( is_create = abap_true AND ls_perm-mandatory_create = abap_true ) ).
+    IF result-read_only = abap_true.
+      result-mandatory = abap_false.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD get_draft_status.
+    IF has_draft = abap_false.
+      RETURN.
+    ENDIF.
+    DATA(lv_owner) = condense( to_upper( owner ) ).
+    IF lv_owner IS INITIAL OR lv_owner = condense( to_upper( user ) ).
+      result-state = cs_editing_status-own_draft.
+      result-user = condense( user ).
+      RETURN.
+    ENDIF.
+    result-state = cs_editing_status-locked.
+    result-user = condense( owner ).
+  ENDMETHOD.
+
+
+  METHOD matches_editing_status.
+    CASE to_upper( filter ).
+      WHEN `` OR cs_editing_status-all.
+        result = abap_true.
+      WHEN cs_editing_status-unchanged.
+        result = xsdbool( state IS INITIAL ).
+      WHEN OTHERS.
+        result = xsdbool( to_upper( filter ) = to_upper( state ) ).
+    ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD get_etag_field.
+    READ TABLE it_fields INTO DATA(ls_field) WITH KEY admin_field = `LOCAL_LAST_CHANGED_AT`.
+    IF sy-subrc = 0.
+      result = ls_field-name.
+      RETURN.
+    ENDIF.
+    READ TABLE it_fields INTO ls_field WITH KEY admin_field = `LAST_CHANGED_AT`.
+    IF sy-subrc = 0.
+      result = ls_field-name.
+    ENDIF.
   ENDMETHOD.
 
 ENDCLASS.
