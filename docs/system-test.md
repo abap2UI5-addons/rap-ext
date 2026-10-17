@@ -44,6 +44,32 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
 - [ ] the actions offered are only the annotated ones; an event that names
       another is ignored
 
+- [ ] a static action (`static action` in the BDEF, e.g. one added to the
+      demo BO): the derived type `\ACTION=...\TYPE=IMPORTING` has no `%KEY`,
+      the toolbar button runs it without a selected row, and `%cid` is
+      accepted
+- [ ] a factory action (`factory action copyTravel [1]` of the flight
+      scenario, and a static factory one): the created record's object page
+      opens with the keys `MAPPED` returned - for a draft business object the
+      created instance may be a draft the page cannot read yet (ROADMAP 3);
+      note what it shows
+- [ ] an action with `invocationGrouping: #ISOLATED` on two rows, one of them
+      refused: the other one is changed, the refusal's message is shown
+- [ ] `#FOR_ACTION_GROUP` with `actionGroupId`: the menu button opens, its
+      items run their actions; the annotation names (`id` or `actionGroupId`
+      of the group entry) arrive as `GET_ANNOS` hands them over
+- [ ] `criticality` of a `#FOR_ACTION` entry: a literal colors the button
+      (Accept, Reject, Emphasized), a field on the object page by the
+      record's value
+- [ ] an action of a qualified `@UI.identification` and a `@UI.fieldGroup`
+      `#FOR_ACTION` entry: the button sits above its section, not in the
+      header
+- [ ] a `@UI.lineItem` action of the bookings: the bookings table of a travel
+      is selectable, the action runs on the selected bookings through the
+      travel's BDEF, and both the travel and the table are read again
+- [ ] after an action on the object page (with and without a parameter) the
+      child tables show the changed rows
+
 ## 4 · RAP, draft (`/DMO/C_TRAVEL_A_D`)
 
 - [ ] Edit creates a draft (visible in the draft table), Save activates it,
@@ -89,6 +115,12 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
 - [ ] the columns dialog hides and shows columns; the export downloads the
       visible columns of every matching row, and Excel opens it with umlauts
 
+- [ ] a `@UI.selectionVariant` with `OR` and parentheses selects the same
+      rows as the condition written out in SQL
+- [ ] `@UI.createHidden: true` hides Create; `@UI.updateHidden` /
+      `.deleteHidden` with a field (`#(...)`) hide Edit / Delete per record -
+      check how `GET_ANNOS` hands a path over (`#(Field)`, `'Field'`)
+
 ## 8 · Value help
 
 - [ ] the selection (single and multi) comes back into the dialog, the filter
@@ -97,6 +129,16 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
       and confirm work
 - [ ] typing into an input with a value help suggests values; picking one
       fills the input
+
+## 8a · Object page display
+
+- [ ] a `#IDENTIFICATION_REFERENCE` facet with `targetQualifier` shows only
+      that qualifier's fields (with their labels), the header only the
+      unqualified ones
+- [ ] `@UI.headerInfo.imageUrl`: the avatar shows the record's image, and
+      `typeImageUrl` (`sap-icon://...` or a URL) when it has none
+- [ ] `@EndUserText.quickInfo`: the tooltip of the label in a form, in the
+      action dialog and of a column header
 
 ## 9 · Overview page
 

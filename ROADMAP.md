@@ -1,6 +1,6 @@
 # Roadmap
 
-What the 2026-09 and the two 2026-10 rounds implemented, and what is still
+What the 2026-09 and the three 2026-10 rounds implemented, and what is still
 open. Everything marked **done** passes the three offline gates (abaplint,
 the transpiled unit tests, the abap2UI5-linter); **none of it has been
 clicked through in an SAP system yet** - that is the first open item, and
@@ -56,6 +56,28 @@ decision:
   `z2ui5_cl_rap_eml` like the others.
 
 ## Done
+
+### 2026-10, third round
+
+- **Qualified `@UI.identification`**: every entry is read with its
+  qualifier and label; a `#IDENTIFICATION_REFERENCE` facet with a
+  `targetQualifier` shows only its fields, the header only the unqualified
+  ones.
+- **Static and factory actions**: a static action (no `%KEY` in its derived
+  type) runs without selected rows, with a `%cid`; after a factory action the
+  object page of the created record opens, by the keys `MAPPED` returns.
+- **Actions**: `#FOR_ACTION_GROUP` / `actionGroupId` as a menu button,
+  criticality as the button type (Accept, Reject, Emphasized), sorted by
+  position, at a section (qualified `@UI.identification`, `@UI.fieldGroup`
+  `#FOR_ACTION`), on the child tables of the object page (their selected
+  rows), and `invocationGrouping: #ISOLATED` - one request per row - next to
+  the change set.
+- **After an action** the object page reads its child tables again.
+- **`@EndUserText.quickInfo`** as the tooltip of labels and column headers,
+  **`@UI.headerInfo.imageUrl` / `typeImageUrl`** as the object page's avatar.
+- **`@UI.selectionVariant` filters** with OR and parentheses.
+- **`@UI.createHidden` / `updateHidden` / `deleteHidden`**: `true`, or a
+  field of the record on the object page.
 
 ### 2026-10, second round
 
