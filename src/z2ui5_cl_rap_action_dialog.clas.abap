@@ -65,6 +65,20 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
 
     METHODS apply_default_values.
 
+    "! the parameters the abstract entity's behavior marks as mandatory
+    "! (field ( mandatory ) in an abstract BDEF) - asked with GET
+    "! PERMISSIONS for the abstract entity where RAP answers it; whether it
+    "! does is for a system to show (docs/system-test.md). Empty otherwise
+    "! - the annotation @ObjectModel.mandatory and the extension
+    "! (adjust_entity) still mark fields (added 2026-10, third round)
+    METHODS get_mandatory_parameters
+      RETURNING
+        VALUE(result) TYPE string_table.
+
+    "! mark the fields of get_mandatory_parameters as mandatory (added
+    "! 2026-10, third round)
+    METHODS apply_mandatory_parameters.
+
     METHODS render_action_dialog
       IMPORTING
         client TYPE REF TO z2ui5_if_client.
@@ -133,6 +147,7 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
                            ELSE ms_entity-name ).
       ENDIF.
       apply_default_values( ).
+      apply_mandatory_parameters( ).
       prepare_value_lists( ms_entity-fields ).
       render_action_dialog( client ).
       RETURN.
@@ -146,6 +161,35 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
     IF client->check_on_event( cv_event_suggest ).
       load_suggestions( client    = client
                         it_fields = ms_entity-fields ).
+      RETURN.
+    ENDIF.
+
+    "a file parameter (@Semantics.largeObject in the abstract entity;
+    "since 2026-10, third round)
+    "the upload dialog takes the place of this one - shown again after it
+    IF client->check_on_event( cv_event_upload_open ).
+      READ TABLE ms_entity-fields INTO DATA(ls_upload_field) WITH KEY name = to_upper( client->get_event_arg( ) ).
+      IF sy-subrc = 0 AND ls_upload_field-is_large_object = abap_true.
+        render_upload_popup( client   = client
+                             is_field = ls_upload_field ).
+      ENDIF.
+      RETURN.
+    ENDIF.
+    IF client->check_on_event( cv_event_upload_cancel ).
+      render_action_dialog( client ).
+      RETURN.
+    ENDIF.
+    IF client->check_on_event( cv_event_upload ).
+      apply_upload( EXPORTING client    = client
+                              it_fields = ms_entity-fields
+                    CHANGING  target    = ms_cds->* ).
+      render_action_dialog( client ).
+      RETURN.
+    ENDIF.
+    IF client->check_on_event( cv_event_download ).
+      download_file( client    = client
+                     it_fields = ms_entity-fields
+                     source    = ms_cds->* ).
       RETURN.
     ENDIF.
 
@@ -220,6 +264,39 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
         ENDTRY.
       ENDIF.
     ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD get_mandatory_parameters.
+
+    IF eml_available( ) = abap_false OR ms_entity-name IS INITIAL.
+      RETURN.
+    ENDIF.
+    TRY.
+        DATA(ls_perm) = z2ui5_cl_rap_eml=>get_permissions( ms_entity-name ).
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+    IF ls_perm-answered = abap_false.
+      RETURN.
+    ENDIF.
+    LOOP AT ls_perm-global-fields INTO DATA(ls_perm_field)
+      WHERE mandatory = abap_true OR mandatory_create = abap_true.
+      APPEND to_upper( ls_perm_field-name ) TO result.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD apply_mandatory_parameters.
+
+    DATA(lt_mandatory) = get_mandatory_parameters( ).
+    LOOP AT ms_entity-fields ASSIGNING FIELD-SYMBOL(<ls_field>).
+      IF line_exists( lt_mandatory[ table_line = <ls_field>-name ] ).
+        <ls_field>-is_mandatory = abap_true.
+      ENDIF.
+    ENDLOOP.
+
   ENDMETHOD.
 
 
@@ -343,6 +420,8 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
     io_form->tag( `Label`
         )->a( n = `text`
               t = is_field-label
+        )->a( n = `tooltip`
+              t = is_field-tooltip
         )->a( n = `required`
               b = is_field-is_mandatory ).
     get_control_for_field(
@@ -365,7 +444,8 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
                         is_field     = is_field
                         client       = client
                         value        = <field>
-                        vh_event     = cs_event-value_help ).
+                        vh_event     = cs_event-value_help
+                        record       = ms_cds->* ).
 
   ENDMETHOD.
 

@@ -21,6 +21,10 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         value_help    TYPE string VALUE `VALUE_HELP`,
         action_dialog TYPE string VALUE `ACTION_DIALOG`,
         overview_page TYPE string VALUE `OVERVIEW_PAGE`,
+        "added 2026-10, third round: the tree and the flexible column
+        "layout (z2ui5_cl_rap_tree, z2ui5_cl_rap_fcl)
+        tree          TYPE string VALUE `TREE`,
+        fcl           TYPE string VALUE `FCL`,
       END OF cs_floorplan.
 
     " The keys of get_text( ) - z2ui5_if_rap_ext~get_text translates them
@@ -69,6 +73,69 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         as_default     TYPE string VALUE `AS_DEFAULT`,
         view_saved     TYPE string VALUE `VIEW_SAVED`,
         columns        TYPE string VALUE `COLUMNS`,
+        "added 2026-10, third round (RAP behaviour and draft)
+        resume_draft   TYPE string VALUE `RESUME_DRAFT`,
+        keep_draft     TYPE string VALUE `KEEP_DRAFT`,
+        leave_draft    TYPE string VALUE `LEAVE_DRAFT`,
+        own_draft      TYPE string VALUE `OWN_DRAFT`,
+        "&1 is the user
+        locked_by      TYPE string VALUE `LOCKED_BY`,
+        editing_status TYPE string VALUE `EDITING_STATUS`,
+        own_drafts     TYPE string VALUE `OWN_DRAFTS`,
+        locked_other   TYPE string VALUE `LOCKED_OTHER`,
+        unchanged      TYPE string VALUE `UNCHANGED`,
+        not_allowed    TYPE string VALUE `NOT_ALLOWED`,
+        field_read_only TYPE string VALUE `FIELD_READ_ONLY`,
+        "added 2026-10, third round (messages, files)
+        messages       TYPE string VALUE `MESSAGES`,
+        close          TYPE string VALUE `CLOSE`,
+        "&1 is the limit in KB
+        file_too_large TYPE string VALUE `FILE_TOO_LARGE`,
+        file_type      TYPE string VALUE `FILE_TYPE`,
+        file_empty     TYPE string VALUE `FILE_EMPTY`,
+        upload         TYPE string VALUE `UPLOAD`,
+        download       TYPE string VALUE `DOWNLOAD`,
+        no_file        TYPE string VALUE `NO_FILE`,
+        file_uploaded  TYPE string VALUE `FILE_UPLOADED`,
+        "added 2026-10, third round (filter bar, table, views)
+        adapt_filters  TYPE string VALUE `ADAPT_FILTERS`,
+        define_conditions TYPE string VALUE `DEFINE_CONDITIONS`,
+        include        TYPE string VALUE `INCLUDE`,
+        exclude        TYPE string VALUE `EXCLUDE`,
+        add_condition  TYPE string VALUE `ADD_CONDITION`,
+        op_eq          TYPE string VALUE `OP_EQ`,
+        op_ne          TYPE string VALUE `OP_NE`,
+        op_bt          TYPE string VALUE `OP_BT`,
+        op_gt          TYPE string VALUE `OP_GT`,
+        op_ge          TYPE string VALUE `OP_GE`,
+        op_lt          TYPE string VALUE `OP_LT`,
+        op_le          TYPE string VALUE `OP_LE`,
+        op_contains    TYPE string VALUE `OP_CONTAINS`,
+        op_starts      TYPE string VALUE `OP_STARTS`,
+        op_ends        TYPE string VALUE `OP_ENDS`,
+        op_empty       TYPE string VALUE `OP_EMPTY`,
+        move_up        TYPE string VALUE `MOVE_UP`,
+        move_down      TYPE string VALUE `MOVE_DOWN`,
+        width          TYPE string VALUE `WIDTH`,
+        group_by       TYPE string VALUE `GROUP_BY`,
+        public         TYPE string VALUE `PUBLIC`,
+        auto_apply     TYPE string VALUE `AUTO_APPLY`,
+        press_go       TYPE string VALUE `PRESS_GO`,
+        remove         TYPE string VALUE `REMOVE`,
+        "added 2026-10, third round (object page)
+        change_info    TYPE string VALUE `CHANGE_INFO`,
+        change_docs    TYPE string VALUE `CHANGE_DOCS`,
+        "added 2026-10, third round (tree, analytical list, column layout)
+        expand_all     TYPE string VALUE `EXPAND_ALL`,
+        collapse_all   TYPE string VALUE `COLLAPSE_ALL`,
+        create_child   TYPE string VALUE `CREATE_CHILD`,
+        total          TYPE string VALUE `TOTAL`,
+        full_screen    TYPE string VALUE `FULL_SCREEN`,
+        exit_full_screen TYPE string VALUE `EXIT_FULL_SCREEN`,
+        select_one     TYPE string VALUE `SELECT_ONE`,
+        has_children   TYPE string VALUE `HAS_CHILDREN`,
+        open           TYPE string VALUE `OPEN`,
+        toggle         TYPE string VALUE `TOGGLE`,
       END OF cs_text.
 
     " Where z2ui5_if_rap_ext~extend_view may add controls
@@ -84,6 +151,12 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         dialog_content TYPE string VALUE `DIALOG_CONTENT`,
         "the grid of the overview page - add cards
         cards          TYPE string VALUE `CARDS`,
+        "added 2026-10, third round: the content of a section of the object
+        "page an extension added (z2ui5_if_rap_ext~get_custom_sections) -
+        "extend_view gets its section_id
+        custom_section TYPE string VALUE `CUSTOM_SECTION`,
+        "the header content of the object page, behind its facets
+        header_content TYPE string VALUE `HEADER_CONTENT`,
       END OF cs_spot.
 
     "! The selection column added to rows a table or dialog lets the user
@@ -93,6 +166,17 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     "! the event of an input with a value help while the user types - the
     "! suggestions (load_suggestions); arguments: the field, the text
     CONSTANTS cv_event_suggest TYPE string VALUE `SUGGEST`.
+
+    "! the events of a file field (@Semantics.largeObject; added 2026-10,
+    "! third round): the user uploaded a file - argument the field, the file
+    "! in mv_file_value - or wants to download one (apply_upload,
+    "! download_file)
+    CONSTANTS cv_event_upload TYPE string VALUE `FILE_UPLOAD`.
+    CONSTANTS cv_event_download TYPE string VALUE `FILE_DOWNLOAD`.
+    "! the upload dialog of a file field opens (argument the field) or is
+    "! cancelled (render_upload_popup)
+    CONSTANTS cv_event_upload_open TYPE string VALUE `FILE_UPLOAD_OPEN`.
+    CONSTANTS cv_event_upload_cancel TYPE string VALUE `FILE_UPLOAD_CANCEL`.
 
     TYPES:
       BEGIN OF ty_s_capabilities,
@@ -115,17 +199,24 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
 
     TYPES ty_t_name_value TYPE STANDARD TABLE OF ty_s_name_value WITH DEFAULT KEY.
 
-    TYPES:
-      "! one message of a write, as RAP reported it
-      BEGIN OF ty_s_message,
-        text   TYPE string,
-        "error, warning, success or information
-        type   TYPE string,
-        "the fields the message is about (%element)
-        fields TYPE string_table,
-      END OF ty_s_message.
+    "! one message of a write, as RAP reported it: text, type (error,
+    "! warning, success, information), the fields it is about (%element)
+    "! and - appended 2026-10, third round - target, its entity
+    TYPES ty_s_message TYPE z2ui5_cl_rap_util=>ty_s_message.
 
     TYPES ty_t_message TYPE STANDARD TABLE OF ty_s_message WITH EMPTY KEY.
+
+    TYPES:
+      "! a button of the actions (get_action_entries): one action, or an
+      "! action group - a menu of its actions (added 2026-10, third round)
+      BEGIN OF ty_s_action_entry,
+        position TYPE i,
+        action   TYPE z2ui5_cl_rap_util=>ty_s_action,
+        group    TYPE z2ui5_cl_rap_util=>ty_s_action_group,
+        items    TYPE z2ui5_cl_rap_util=>ty_t_action,
+      END OF ty_s_action_entry.
+
+    TYPES ty_t_action_entry TYPE STANDARD TABLE OF ty_s_action_entry WITH EMPTY KEY.
 
     TYPES:
       BEGIN OF ty_s_result,
@@ -156,6 +247,13 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         parent_fields TYPE string_table,
       END OF ty_s_rap_context.
 
+    "! what GET PERMISSIONS answers for an entity - global, static and per
+    "! instance (z2ui5_cl_rap_util=>ty_s_permissions; added 2026-10, third
+    "! round)
+    TYPES ty_s_permissions TYPE z2ui5_cl_rap_util=>ty_s_permissions.
+    "! the permissions of one record, global and instance combined
+    TYPES ty_s_perm_set TYPE z2ui5_cl_rap_util=>ty_s_perm_set.
+
     "! The dropdown entries of the fields that have a small value help
     "! (sizeCategory #XS) - one component per field, each a table of the
     "! value help entity. PUBLIC and a REF TO data because that is what the
@@ -167,6 +265,15 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     "! types (load_suggestions). PUBLIC and a REF TO data for the same
     "! reason as mr_value_lists.
     DATA mr_suggestions TYPE REF TO data.
+
+    "! the messages the message view lists (show_messages) - PUBLIC to be
+    "! bound (added 2026-10, third round)
+    DATA mt_message_items TYPE z2ui5_cl_rap_util=>ty_t_message_item.
+
+    "! the file of the last upload, as a data URI, and its name - what the
+    "! upload control of a file field writes (added 2026-10, third round)
+    DATA mv_file_value TYPE string.
+    DATA mv_file_name TYPE string.
 
     "! Hand the floorplan an implementation of the extension points
     METHODS set_extension
@@ -203,6 +310,13 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
+    "! The query provider interfaces are there (IF_RAP_QUERY_PROVIDER
+    "! exists) - answered from RTTI, so asking never loads
+    "! z2ui5_cl_rap_query (added 2026-10, third round)
+    CLASS-METHODS query_available
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
   PROTECTED SECTION.
 
     DATA mo_ext TYPE REF TO z2ui5_if_rap_ext.
@@ -214,6 +328,9 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     "! the text element of each value help entity with suggestions - the
     "! additional text of a suggestion (prepare_value_lists)
     DATA mt_suggest_text TYPE ty_t_name_value.
+    "! the text element of each dropdown value help entity - the text of
+    "! its entries (prepare_value_lists; added 2026-10, third round)
+    DATA mt_dropdown_text TYPE ty_t_name_value.
 
     "! the name select_rows( ) gives the host structure - a dynamic WHERE
     "! compares with its components as @&lt;LS_HOST&gt;-name
@@ -264,12 +381,15 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       CHANGING
         cs_entity TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
 
-    "! let the extension add controls at one of the cs_spot places
+    "! let the extension add controls at one of the cs_spot places -
+    "! section_id names the custom section of cs_spot-custom_section
+    "! (added 2026-10, third round)
     METHODS render_extension
       IMPORTING
         spot         TYPE string
         io_container TYPE REF TO z2ui5_cl_ui5_view_builder
-        client       TYPE REF TO z2ui5_if_client.
+        client       TYPE REF TO z2ui5_if_client
+        section_id   TYPE string OPTIONAL.
 
     "! let the extension take an event over - abap_true when it did
     METHODS ext_on_event
@@ -279,7 +399,12 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         VALUE(result) TYPE abap_bool.
 
     "! SELECT * FROM entity_name WHERE where UP TO max_rows into a table of
-    "! the entity - with_selection adds the column cv_select_column
+    "! the entity - with_selection adds the column cv_select_column. Since
+    "! 2026-10 (third round) a custom entity is read through its query
+    "! provider (query_rows), and a virtual element is left out of the
+    "! SELECT, the WHERE and the ORDER BY and calculated afterwards
+    "! (calculate_virtual_elements). A failed read is unbound, its reason
+    "! in mv_read_error
     METHODS select_rows
       IMPORTING
         entity_name    TYPE string
@@ -322,22 +447,30 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
 
     "! the WHERE condition of a free-text search over the searchable text
     "! fields (@Search.defaultSearchElement, else every visible text field)
+    "! - a LIKE, or what z2ui5_if_rap_ext~build_search_condition answers
+    "! instead (a fuzzy search, added 2026-10, third round)
     METHODS build_search_condition
       IMPORTING
         it_fields     TYPE z2ui5_cl_rap_util=>ty_t_field_info
         search        TYPE string
+        "the entity searched - what z2ui5_if_rap_ext~build_search_condition
+        "is told (added 2026-10, third round)
+        entity_name   TYPE string OPTIONAL
       RETURNING
         VALUE(result) TYPE string.
 
-    "! the expression binding that maps a criticality field (0-3) to a
-    "! ValueState - for an ObjectStatus in a table cell
+    "! the expression binding that maps a criticality field (0-3, 5) to a
+    "! ValueState - for an ObjectStatus in a table cell; kind (added
+    "! 2026-10, third round) ICON gives its icon, HIGHLIGHT a row's
+    "! highlight (z2ui5_cl_rap_util=>criticality_binding)
     METHODS criticality_expression
       IMPORTING
         crit_field    TYPE string
+        kind          TYPE string DEFAULT `STATE`
       RETURNING
         VALUE(result) TYPE string.
 
-    "! criticality 1/2/3 as the ValueState Error/Warning/Success
+    "! criticality 1/2/3/5 as the ValueState Error/Warning/Success/Information
     METHODS criticality_state
       IMPORTING
         value         TYPE i
@@ -373,7 +506,10 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         "a sap.ui.core.ValueState (Error, Warning) and its text - a message
         "of the last save about this field (added 2026-10)
         value_state      TYPE string OPTIONAL
-        value_state_text TYPE string OPTIONAL.
+        value_state_text TYPE string OPTIONAL
+        "the structure value is a component of - a file field names its
+        "file by the file name field (added 2026-10, third round)
+        record           TYPE data OPTIONAL.
 
     "! call the value help of is_field; source holds the values for the
     "! additional bindings with usage FILTER (the structure being edited)
@@ -432,8 +568,32 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result)  TYPE REF TO data.
 
+    "! the texts of is_field (@ObjectModel.text.association) for the rows of
+    "! data (a table of is_entity): the @Semantics.text field of the
+    "! association's target, in the logon language when it has a
+    "! @Semantics.language field - name the values of the association's
+    "! fields in the row joined by |, value the text (added 2026-10, third
+    "! round)
+    METHODS read_association_texts
+      IMPORTING
+        is_entity     TYPE z2ui5_cl_rap_util=>ty_s_entity_info
+        is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
+        data          TYPE REF TO data
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
+
+    "! the key read_association_texts gives the row's text under
+    METHODS get_association_text_key
+      IMPORTING
+        is_entity     TYPE z2ui5_cl_rap_util=>ty_s_entity_info
+        is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
+        row           TYPE data
+      RETURNING
+        VALUE(result) TYPE string.
+
     "! navigate in the Fiori launchpad to semantic_object-action with params
-    "! (cross-app navigation) - outside the launchpad the user is told so
+    "! (cross-app navigation) - outside the launchpad the user is told so;
+    "! a name given several times is an array of its values
     METHODS navigate_to_intent
       IMPORTING
         client          TYPE REF TO z2ui5_if_client
@@ -481,10 +641,15 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         original      TYPE data OPTIONAL
         "a child entity of a business object - added 2026-10
         context       TYPE ty_s_rap_context OPTIONAL
+        "a child of the draft the object page edits: written into that
+        "draft, committed, not activated (added 2026-10, third round)
+        in_draft      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
-    "! run a RAP action on rows (a table of the entity)
+    "! run a RAP action on rows (a table of the entity) - a static action
+    "! (is_static_action) runs without rows. The keys of what a factory
+    "! action created (MAPPED) are result-keys
     METHODS run_action
       IMPORTING
         entity_name   TYPE string
@@ -492,8 +657,52 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         rows          TYPE REF TO data
         param         TYPE REF TO data OPTIONAL
         context       TYPE ty_s_rap_context OPTIONAL
+        "ISOLATED: one request per row (ty_s_action-invocation_grouping) -
+        "added 2026-10, third round
+        invocation_grouping TYPE string OPTIONAL
       RETURNING
         VALUE(result) TYPE ty_s_result.
+
+    "! the action is static - it needs no row: its derived type carries no
+    "! key of an instance (z2ui5_cl_rap_util=>is_static_action_line)
+    METHODS is_static_action
+      IMPORTING
+        entity_name   TYPE string
+        action        TYPE string
+        context       TYPE ty_s_rap_context OPTIONAL
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! an operation hidden by @UI.createHidden / .updateHidden /
+    "! .deleteHidden (ty_s_entity_info-create_hidden, ...): TRUE hides it,
+    "! a field hides it when the field of row is true - without a row a
+    "! field hides nothing
+    METHODS is_hidden_by_annotation
+      IMPORTING
+        value         TYPE string
+        row           TYPE data OPTIONAL
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! the sap.m.ButtonType of an action by its criticality - a field's
+    "! value is read from row, without a row such a button is Default
+    METHODS get_action_button_type
+      IMPORTING
+        is_action     TYPE z2ui5_cl_rap_util=>ty_s_action
+        row           TYPE data OPTIONAL
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the buttons of it_actions in their order: by position, an action
+    "! alone or an action group (it_groups) with its actions - a group
+    "! without one of them is left out. What render_action_buttons of the
+    "! list report and the object page draw
+    METHODS get_action_entries
+      IMPORTING
+        it_actions    TYPE z2ui5_cl_rap_util=>ty_t_action
+        it_groups     TYPE z2ui5_cl_rap_util=>ty_t_action_group OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_t_action_entry.
 
     "! the business object bdef (its root entity) has a draft
     METHODS is_draft_enabled
@@ -524,6 +733,10 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         row           TYPE data
         original      TYPE data
         context       TYPE ty_s_rap_context OPTIONAL
+        "check the record's permissions and field control first, as
+        "write_row does - the rows of a child table, whose cells the browser
+        "sends (added 2026-10, third round)
+        check         TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -536,12 +749,111 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE REF TO data.
 
-    "! a message box with every message
+    "! the messages of a write, by their severity (since 2026-10, third
+    "! round): only success and information - a toast; one message about
+    "! no field and no entity - a message box; else a message view in a
+    "! dialog, each message with its type, its fields and its entity.
+    "! details are the
+    "! messages with their severity (ty_s_result-details), messages the
+    "! texts - one that is no detail is of type; a success is left out when
+    "! there is an error. fields gives the labels of the fields
     METHODS show_messages
       IMPORTING
         client   TYPE REF TO z2ui5_if_client
         messages TYPE string_table
-        type     TYPE string DEFAULT `error`.
+        type     TYPE string DEFAULT `error`
+        "added 2026-10, third round
+        details  TYPE ty_t_message OPTIONAL
+        fields   TYPE z2ui5_cl_rap_util=>ty_t_field_info OPTIONAL.
+
+    "! the dialog with a sap.m.MessageView of mt_message_items - grouped by
+    "! entity when grouped is set (added 2026-10, third round)
+    METHODS render_message_view
+      IMPORTING
+        client  TYPE REF TO z2ui5_if_client
+        grouped TYPE abap_bool DEFAULT abap_false.
+
+    "! the most bytes an uploaded file may have - cv_file_max_size; redefine
+    "! it for another limit, 0 is none (added 2026-10, third round)
+    METHODS get_max_file_size
+      RETURNING
+        VALUE(result) TYPE i.
+
+    "! the controls of a file field (@Semantics.largeObject, value the
+    "! RAWSTRING): a link that downloads the file - named by the file name
+    "! field of record - and, when editable, a button that opens the upload
+    "! dialog (cv_event_upload_open, render_upload_popup). Plain controls,
+    "! because a form in ColumnLayout takes no box (added 2026-10, third
+    "! round)
+    METHODS render_file_field
+      IMPORTING
+        io_container TYPE REF TO z2ui5_cl_ui5_view_builder
+        is_field     TYPE z2ui5_cl_rap_util=>ty_s_field_info
+        client       TYPE REF TO z2ui5_if_client
+        value        TYPE data
+        record       TYPE data OPTIONAL
+        editable     TYPE abap_bool DEFAULT abap_true.
+
+    "! the upload dialog of the file field is_field: the core's upload
+    "! control (z2ui5.cc.FileUploader) writes the file into mv_file_value
+    "! and sends cv_event_upload, Cancel sends cv_event_upload_cancel - the
+    "! floorplan shows its own view or dialog again on both (added 2026-10,
+    "! third round)
+    METHODS render_upload_popup
+      IMPORTING
+        client   TYPE REF TO z2ui5_if_client
+        is_field TYPE z2ui5_cl_rap_util=>ty_s_field_info.
+
+    "! on cv_event_upload: the file of mv_file_value into the file field
+    "! the event names (a large object of it_fields) of target, its MIME
+    "! type and file name into their fields - checked on the server: its
+    "! size (get_max_file_size) and its type (acceptableMimeTypes). A file
+    "! that is refused is a message; abap_true when the file was taken
+    "! (added 2026-10, third round)
+    METHODS apply_upload
+      IMPORTING
+        client        TYPE REF TO z2ui5_if_client
+        it_fields     TYPE z2ui5_cl_rap_util=>ty_t_field_info
+      CHANGING
+        target        TYPE data
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! on cv_event_download: the browser downloads the file of the field
+    "! the event names from source, with its MIME type and file name
+    "! (added 2026-10, third round)
+    METHODS download_file
+      IMPORTING
+        client    TYPE REF TO z2ui5_if_client
+        it_fields TYPE z2ui5_cl_rap_util=>ty_t_field_info
+        source    TYPE data.
+
+    "! the name of the default function of action (BDEF `default function
+    "! GetDefaultsFor...`) - GetDefaultsFor and the action's name, as RAP
+    "! names it; redefine it for another (added 2026-10, third round)
+    METHODS get_default_function_name
+      IMPORTING
+        action        TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the default values of the parameter of action - what its default
+    "! function answers for the first of rows (a table of the entity; a
+    "! static action needs none) - into the initial fields of param.
+    "! Nothing changes when the business object has no default function
+    "! (z2ui5_cl_rap_eml=>read_action_defaults; added 2026-10, third round)
+    METHODS apply_action_defaults
+      IMPORTING
+        entity_name TYPE string
+        action      TYPE string
+        rows        TYPE REF TO data OPTIONAL
+        context     TYPE ty_s_rap_context OPTIONAL
+        is_draft    TYPE abap_bool DEFAULT abap_false
+      CHANGING
+        param       TYPE data.
+
+    "! the most bytes an uploaded file may have by default (5 MB)
+    CONSTANTS cv_file_max_size TYPE i VALUE 5242880.
 
     "! write one row of a database table with ABAP SQL: the authorization
     "! S_TABU_NAM (activity 02) for the table, a lock (ENQUEUE_E_TABLE) on
@@ -557,6 +869,172 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
+    "! the rows aggregate_rows reads at most - a custom entity's aggregates
+    "! are computed from its rows (added 2026-10, third round)
+    CONSTANTS cv_aggregate_max TYPE i VALUE 5000.
+
+    "! why the last read failed - the text of its exception, empty after a
+    "! read that worked (select_rows, count_rows; added 2026-10, third
+    "! round)
+    DATA mv_read_error TYPE string.
+
+    "! How the rows of entity_name are read: through its query provider (a
+    "! custom entity) or by ABAP SQL, and which of its elements are virtual
+    "! - from the annotations (z2ui5_cl_rap_util=>get_read_info). A
+    "! subclass can name a provider or a calculation the annotations do not
+    "! show (added 2026-10, third round)
+    METHODS get_read_info
+      IMPORTING
+        entity_name   TYPE string
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_s_read_info.
+
+    "! Read a custom entity through its query provider (z2ui5_cl_rap_query):
+    "! where becomes the filter (its search part the search expression,
+    "! the host variables of host their values), order_by the sort order,
+    "! max_rows the page. data (a table, bound) is filled with the rows,
+    "! count_requested asks for count - what select_rows and count_rows
+    "! call for such an entity (added 2026-10, third round)
+    METHODS query_rows
+      IMPORTING
+        entity_name     TYPE string
+        query_class     TYPE string
+        where           TYPE string OPTIONAL
+        host            TYPE REF TO data OPTIONAL
+        max_rows        TYPE i DEFAULT 500
+        order_by        TYPE string OPTIONAL
+        data            TYPE REF TO data OPTIONAL
+        count_requested TYPE abap_bool DEFAULT abap_false
+      EXPORTING
+        count           TYPE i
+      RAISING
+        cx_static_check.
+
+    "! Fill the virtual elements of data (a table of the entity) by their
+    "! classes: IF_SADL_EXIT_CALC_ELEMENT_READ~GET_CALCULATION_INFO and
+    "! ~CALCULATE, called dynamically, once per class for all of its
+    "! elements. A class that fails leaves its elements empty (added
+    "! 2026-10, third round)
+    METHODS calculate_virtual_elements
+      IMPORTING
+        entity_name      TYPE string
+        virtual_elements TYPE z2ui5_cl_rap_util=>ty_t_virtual_element
+        data             TYPE REF TO data.
+
+    "! order_by without the virtual elements, which have no column - one
+    "! with @ObjectModel.sort.transformedBy is replaced by the elements its
+    "! class names (IF_SADL_EXIT_SORT_TRANSFORM~MAP_ELEMENT, called
+    "! dynamically), every other one is dropped (added 2026-10, third round)
+    METHODS adjust_virtual_order_by
+      IMPORTING
+        entity_name      TYPE string
+        order_by         TYPE string
+        virtual_elements TYPE z2ui5_cl_rap_util=>ty_t_virtual_element
+      RETURNING
+        VALUE(result)    TYPE string.
+
+    "! The rows of entity_name that match where, grouped by group_by (none:
+    "! one group) with method (SUM AVG MIN MAX COUNT) over measure - read
+    "! with select_rows (at most cv_aggregate_max rows) and aggregated in
+    "! ABAP. What the worklist's tabs and the overview's KPI and chart cards
+    "! use for a custom entity, which ABAP SQL cannot aggregate (added
+    "! 2026-10, third round)
+    METHODS aggregate_rows
+      IMPORTING
+        entity_name   TYPE string
+        where         TYPE string OPTIONAL
+        group_by      TYPE string OPTIONAL
+        measure       TYPE string OPTIONAL
+        method        TYPE string DEFAULT `SUM`
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_aggregate.
+
+    "! the message of a read that failed: the load error text, the entity
+    "! and why (mv_read_error) - added 2026-10, third round
+    METHODS get_load_error
+      IMPORTING
+        entity_name   TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! GET PERMISSIONS of entity_name (z2ui5_cl_rap_eml=>get_permissions):
+    "! the global and static permissions, and those of the instances of rows
+    "! (a table of the entity). Not answered for what is no RAP business
+    "! object and where the statement's class did not activate - then the
+    "! BDEF derived types alone decide, as before. A subclass can answer it
+    "! itself (added 2026-10, third round)
+    METHODS get_permissions
+      IMPORTING
+        entity_name   TYPE string
+        context       TYPE ty_s_rap_context OPTIONAL
+        rows          TYPE REF TO data OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_s_permissions.
+
+    "! the permissions of the one record row - the global ones combined
+    "! with the instance's (added 2026-10, third round)
+    METHODS get_row_permissions
+      IMPORTING
+        entity_name   TYPE string
+        context       TYPE ty_s_rap_context OPTIONAL
+        row           TYPE data
+      RETURNING
+        VALUE(result) TYPE ty_s_perm_set.
+
+    "! the key fields of entity_name with their values in row
+    METHODS get_keys_of_row
+      IMPORTING
+        entity_name   TYPE string
+        row           TYPE data
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
+
+    "! the drafts of the instances of rows (a table of the entity), read
+    "! back with READ ENTITIES (z2ui5_cl_rap_eml=>read_instances): a table
+    "! of the READ RESULT type with a line per draft found - unbound when
+    "! the read could not be made (added 2026-10, third round)
+    METHODS read_drafts
+      IMPORTING
+        entity_name   TYPE string
+        context       TYPE ty_s_rap_context OPTIONAL
+        rows          TYPE REF TO data
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
+    "! the children the association of entity_name leads to from the
+    "! drafts of rows (a table of the entity), read back with READ ENTITIES
+    "! BY association (z2ui5_cl_rap_eml=>read_by_association) - unbound
+    "! when the read could not be made (added 2026-10, third round)
+    METHODS read_draft_children
+      IMPORTING
+        entity_name   TYPE string
+        association   TYPE string
+        context       TYPE ty_s_rap_context OPTIONAL
+        rows          TYPE REF TO data
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
+    "! the field of entity_name the optimistic check before an update
+    "! compares - z2ui5_cl_rap_util=>get_etag_field. Redefine it to name
+    "! the etag master field of the BDEF, which is not read (added 2026-10,
+    "! third round)
+    METHODS get_etag_field
+      IMPORTING
+        entity_name   TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the record row (what the user saw) is still the stored one: its etag
+    "! field (get_etag_field) has the value it had - abap_true when there
+    "! is no such field or the record is no longer there (added 2026-10,
+    "! third round)
+    METHODS check_etag
+      IMPORTING
+        entity_name   TYPE string
+        row           TYPE data
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
     "! align ABAP and JSON model representations (dates, times, padding)
     METHODS normalize_key_value
       IMPORTING
@@ -565,6 +1043,19 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         VALUE(result) TYPE string.
 
   PRIVATE SECTION.
+
+    "! why an update or delete of row (original: as the user saw it) is
+    "! refused - the record's permissions, a changed read-only field, a
+    "! changed etag; empty when it may run
+    METHODS check_rap_write
+      IMPORTING
+        entity_name   TYPE string
+        operation     TYPE string
+        row           TYPE data
+        original      TYPE data
+        context       TYPE ty_s_rap_context
+      RETURNING
+        VALUE(result) TYPE string_table.
 
     "! the value state of the control render_field_input just added - the
     "! container's last child
@@ -586,7 +1077,7 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     METHODS get_table_varkey
       IMPORTING
         row           TYPE data
-        key_fields    TYPE ddfields
+        key_fields    TYPE z2ui5_cl_rap_util=>ty_t_ddic_field
       RETURNING
         VALUE(result) TYPE string.
 
@@ -617,6 +1108,22 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD query_available.
+
+    DATA lo_type TYPE REF TO cl_abap_typedescr.
+    cl_abap_typedescr=>describe_by_name(
+      EXPORTING
+        p_name         = `IF_RAP_QUERY_PROVIDER`
+      RECEIVING
+        p_descr_ref    = lo_type
+      EXCEPTIONS
+        type_not_found = 1
+        OTHERS         = 2 ).
+    result = xsdbool( sy-subrc = 0 ).
+
+  ENDMETHOD.
+
+
   METHOD get_capabilities.
 
     DATA(lv_entity) = to_upper( entity_name ).
@@ -630,8 +1137,12 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       result-can_create = try_create_data( lv_base && `\TYPE=CREATE` ).
       "a child is created under its parent - by association, not alone
       IF context-association IS NOT INITIAL.
-        result-can_create = try_create_data( |\\BDEF={ lv_bdef }\\ENTITY={ to_upper( context-parent ) }| &&
-                                             |\\ASSOCIATION={ to_upper( context-association ) }\\TYPE=CREATE| ).
+        "\ASSOC= is the documented form, \ASSOCIATION= the one used up to
+        "2026-10 - whichever the system knows (z2ui5_cl_rap_eml)
+        DATA(lv_parent_base) = |\\BDEF={ lv_bdef }\\ENTITY={ to_upper( context-parent ) }|.
+        result-can_create = xsdbool(
+          try_create_data( |{ lv_parent_base }\\ASSOC={ to_upper( context-association ) }\\TYPE=CREATE| ) = abap_true
+          OR try_create_data( |{ lv_parent_base }\\ASSOCIATION={ to_upper( context-association ) }\\TYPE=CREATE| ) = abap_true ).
       ENDIF.
       result-can_update = try_create_data( lv_base && `\TYPE=UPDATE` ).
       result-can_delete = try_create_data( lv_base && `\TYPE=DELETE` ).
@@ -646,12 +1157,19 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     "a transparent table - what the object page wrote before RAP support.
     "A CDS view is never writable with ABAP SQL, so it ends here read-only,
-    "and so does a table until get_entity_capabilities( ) is told otherwise
+    "and so does a table until get_entity_capabilities( ) is told otherwise.
+    "DD02L is named dynamically and not read in ABAP Cloud, which releases
+    "neither it nor the write path of write_table_row (S_TABU_NAM,
+    "ENQUEUE_E_TABLE) - a table is read-only there
+    IF z2ui5_cl_rap_util=>get_environment( ) = z2ui5_cl_rap_util=>cs_environment-cloud.
+      RETURN.
+    ENDIF.
     TRY.
         DATA lv_tabclass TYPE c LENGTH 8.
-        SELECT SINGLE tabclass FROM dd02l
-          WHERE tabname  = @lv_entity
-            AND as4local = 'A'
+        DATA(lv_dd02l) = `DD02L`.
+        DATA(lv_dd02l_where) = |TABNAME = @LV_ENTITY AND AS4LOCAL = 'A'|.
+        SELECT SINGLE ('TABCLASS') FROM (lv_dd02l)
+          WHERE (lv_dd02l_where)
           INTO @lv_tabclass.
         "read-only until the extension allows the writes
         result-is_table = xsdbool( sy-subrc = 0 AND lv_tabclass = `TRANSP` ).
@@ -666,7 +1184,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       RETURN.
     ENDIF.
     io_container->a( n = `valueState`
-                     v = value_state
+                     t = value_state
         )->a( n = `valueStateText`
               t = value_state_text ).
   ENDMETHOD.
@@ -743,6 +1261,62 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-as_default   THEN `Als Standard verwenden`
         WHEN cs_text-view_saved   THEN `Sicht gesichert`
         WHEN cs_text-columns      THEN `Spalten`
+        WHEN cs_text-resume_draft THEN `Entwurf fortsetzen`
+        WHEN cs_text-keep_draft   THEN `Entwurf behalten`
+        WHEN cs_text-leave_draft  THEN `Ihren Entwurf behalten oder verwerfen?`
+        WHEN cs_text-own_draft    THEN `Entwurf`
+        WHEN cs_text-locked_by    THEN `Gesperrt von &1`
+        WHEN cs_text-editing_status THEN `Bearbeitungsstatus`
+        WHEN cs_text-own_drafts   THEN `Eigener Entwurf`
+        WHEN cs_text-locked_other THEN `Von anderem Benutzer gesperrt`
+        WHEN cs_text-unchanged    THEN `Ungeändert`
+        WHEN cs_text-not_allowed  THEN `Für diesen Eintrag nicht erlaubt`
+        WHEN cs_text-field_read_only THEN `Diese Felder können nicht geändert werden`
+        WHEN cs_text-messages     THEN `Meldungen`
+        WHEN cs_text-close        THEN `Schließen`
+        WHEN cs_text-file_too_large THEN `Die Datei ist zu groß (höchstens &1 KB)`
+        WHEN cs_text-file_type    THEN `Dieser Dateityp ist nicht erlaubt`
+        WHEN cs_text-file_empty   THEN `Die Datei ist leer`
+        WHEN cs_text-upload       THEN `Hochladen`
+        WHEN cs_text-download     THEN `Herunterladen`
+        WHEN cs_text-no_file      THEN `Keine Datei`
+        WHEN cs_text-file_uploaded THEN `Datei übernommen - sichern, um sie zu speichern`
+        WHEN cs_text-adapt_filters THEN `Filter anpassen`
+        WHEN cs_text-define_conditions THEN `Bedingungen definieren`
+        WHEN cs_text-include       THEN `Einschließen`
+        WHEN cs_text-exclude       THEN `Ausschließen`
+        WHEN cs_text-add_condition THEN `Hinzufügen`
+        WHEN cs_text-op_eq         THEN `gleich`
+        WHEN cs_text-op_ne         THEN `ungleich`
+        WHEN cs_text-op_bt         THEN `zwischen`
+        WHEN cs_text-op_gt         THEN `größer als`
+        WHEN cs_text-op_ge         THEN `größer oder gleich`
+        WHEN cs_text-op_lt         THEN `kleiner als`
+        WHEN cs_text-op_le         THEN `kleiner oder gleich`
+        WHEN cs_text-op_contains   THEN `enthält`
+        WHEN cs_text-op_starts     THEN `beginnt mit`
+        WHEN cs_text-op_ends       THEN `endet mit`
+        WHEN cs_text-op_empty      THEN `leer`
+        WHEN cs_text-move_up       THEN `Nach oben`
+        WHEN cs_text-move_down     THEN `Nach unten`
+        WHEN cs_text-width         THEN `Breite`
+        WHEN cs_text-group_by      THEN `Gruppieren nach`
+        WHEN cs_text-public        THEN `Öffentlich`
+        WHEN cs_text-auto_apply    THEN `Automatisch anwenden`
+        WHEN cs_text-press_go      THEN `Filter setzen und Start drücken`
+        WHEN cs_text-remove        THEN `Entfernen`
+        WHEN cs_text-change_info   THEN `Änderungsinformationen`
+        WHEN cs_text-change_docs   THEN `Änderungen`
+        WHEN cs_text-expand_all    THEN `Alle aufklappen`
+        WHEN cs_text-collapse_all  THEN `Alle zuklappen`
+        WHEN cs_text-create_child  THEN `Unterknoten anlegen`
+        WHEN cs_text-total         THEN `Gesamt`
+        WHEN cs_text-full_screen   THEN `Vollbild`
+        WHEN cs_text-exit_full_screen THEN `Vollbild beenden`
+        WHEN cs_text-select_one    THEN `Wählen Sie genau eine Zeile aus`
+        WHEN cs_text-has_children  THEN `Der Knoten hat Unterknoten`
+        WHEN cs_text-open          THEN `Öffnen`
+        WHEN cs_text-toggle        THEN `Auf- oder zuklappen`
         ELSE key ).
     ELSE.
       "the text pool of this class, original language English - translate
@@ -790,6 +1364,62 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-as_default    THEN 'Use as default'(040)
         WHEN cs_text-view_saved    THEN 'View saved'(041)
         WHEN cs_text-columns       THEN 'Columns'(042)
+        WHEN cs_text-resume_draft  THEN 'Resume draft'(043)
+        WHEN cs_text-keep_draft    THEN 'Keep draft'(044)
+        WHEN cs_text-leave_draft   THEN 'Keep your draft or discard it?'(045)
+        WHEN cs_text-own_draft     THEN 'Draft'(046)
+        WHEN cs_text-locked_by     THEN 'Locked by &1'(047)
+        WHEN cs_text-editing_status THEN 'Editing status'(048)
+        WHEN cs_text-own_drafts    THEN 'Own draft'(049)
+        WHEN cs_text-locked_other  THEN 'Locked by another user'(050)
+        WHEN cs_text-unchanged     THEN 'Unchanged'(051)
+        WHEN cs_text-not_allowed   THEN 'Not allowed for this record'(052)
+        WHEN cs_text-field_read_only THEN 'These fields cannot be changed'(053)
+        WHEN cs_text-messages      THEN 'Messages'(054)
+        WHEN cs_text-close         THEN 'Close'(055)
+        WHEN cs_text-file_too_large THEN 'The file is too large (at most &1 KB)'(056)
+        WHEN cs_text-file_type     THEN 'This file type is not allowed'(057)
+        WHEN cs_text-file_empty    THEN 'The file is empty'(058)
+        WHEN cs_text-upload        THEN 'Upload'(059)
+        WHEN cs_text-download      THEN 'Download'(060)
+        WHEN cs_text-no_file       THEN 'No file'(061)
+        WHEN cs_text-file_uploaded THEN 'File taken over - save to keep it'(062)
+        WHEN cs_text-adapt_filters  THEN 'Adapt filters'(063)
+        WHEN cs_text-define_conditions THEN 'Define conditions'(064)
+        WHEN cs_text-include        THEN 'Include'(065)
+        WHEN cs_text-exclude        THEN 'Exclude'(066)
+        WHEN cs_text-add_condition  THEN 'Add'(067)
+        WHEN cs_text-op_eq          THEN 'equal to'(068)
+        WHEN cs_text-op_ne          THEN 'not equal to'(069)
+        WHEN cs_text-op_bt          THEN 'between'(070)
+        WHEN cs_text-op_gt          THEN 'greater than'(071)
+        WHEN cs_text-op_ge          THEN 'greater than or equal to'(072)
+        WHEN cs_text-op_lt          THEN 'less than'(073)
+        WHEN cs_text-op_le          THEN 'less than or equal to'(074)
+        WHEN cs_text-op_contains    THEN 'contains'(075)
+        WHEN cs_text-op_starts      THEN 'starts with'(076)
+        WHEN cs_text-op_ends        THEN 'ends with'(077)
+        WHEN cs_text-op_empty       THEN 'empty'(078)
+        WHEN cs_text-move_up        THEN 'Move up'(079)
+        WHEN cs_text-move_down      THEN 'Move down'(080)
+        WHEN cs_text-width          THEN 'Width'(081)
+        WHEN cs_text-group_by       THEN 'Group by'(082)
+        WHEN cs_text-public         THEN 'Public'(083)
+        WHEN cs_text-auto_apply     THEN 'Apply automatically'(084)
+        WHEN cs_text-press_go       THEN 'Set the filters and press Go'(085)
+        WHEN cs_text-remove         THEN 'Remove'(086)
+        WHEN cs_text-change_info    THEN 'Change Information'(087)
+        WHEN cs_text-change_docs    THEN 'Changes'(088)
+        WHEN cs_text-expand_all     THEN 'Expand all'(089)
+        WHEN cs_text-collapse_all   THEN 'Collapse all'(090)
+        WHEN cs_text-create_child   THEN 'Create child'(091)
+        WHEN cs_text-total          THEN 'Total'(092)
+        WHEN cs_text-full_screen    THEN 'Full screen'(093)
+        WHEN cs_text-exit_full_screen THEN 'Exit full screen'(094)
+        WHEN cs_text-select_one     THEN 'Select exactly one row'(095)
+        WHEN cs_text-has_children   THEN 'The node has children'(096)
+        WHEN cs_text-open           THEN 'Open'(097)
+        WHEN cs_text-toggle         THEN 'Expand or collapse'(098)
         ELSE key ).
     ENDIF.
 
@@ -806,10 +1436,11 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD render_extension.
     IF mo_ext IS BOUND.
-      mo_ext->extend_view( floorplan = mv_floorplan
-                           spot      = spot
-                           container = io_container
-                           client    = client ).
+      mo_ext->extend_view( floorplan  = mv_floorplan
+                           spot       = spot
+                           container  = io_container
+                           client     = client
+                           section_id = section_id ).
     ENDIF.
   ENDMETHOD.
 
@@ -828,18 +1459,25 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     "the host structure - a dynamic WHERE names it as @<LS_HOST>-field
     "(cv_host), so the name of this field symbol is part of the contract
     FIELD-SYMBOLS <ls_host> TYPE any.
+    DATA lt_virtual TYPE string_table.
+    DATA lt_columns TYPE string_table.
+    DATA lv_fields TYPE string.
+    DATA lv_order_by TYPE string.
+    DATA lv_corresponding TYPE abap_bool.
 
+    CLEAR mv_read_error.
     IF host IS BOUND.
       ASSIGN host->* TO <ls_host>.
     ENDIF.
 
     DATA(lv_where) = get_ext_where( entity_name = entity_name
                                     where       = where ).
+    DATA(ls_read) = get_read_info( entity_name ).
 
     TRY.
         DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( entity_name ) ).
+        DATA(lt_comp) = lo_struct->get_components( ).
         IF with_selection = abap_true.
-          DATA(lt_comp) = lo_struct->get_components( ).
           IF NOT line_exists( lt_comp[ name = cv_select_column ] ).
             APPEND VALUE #( name = cv_select_column
                             type = CAST #( cl_abap_typedescr=>describe_by_name( `ABAP_BOOL` ) ) ) TO lt_comp.
@@ -850,35 +1488,76 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         CREATE DATA result TYPE HANDLE lo_table.
         ASSIGN result->* TO <lt_data>.
 
-        "sorted in the database - UP TO n ROWS without an ORDER BY is n
-        "arbitrary rows, and sorting them afterwards sorts the wrong ones
-        IF with_selection = abap_true AND order_by IS NOT INITIAL.
-          SELECT * FROM (entity_name)
-            WHERE (lv_where)
-            ORDER BY (order_by)
-            INTO CORRESPONDING FIELDS OF TABLE @<lt_data>
-            UP TO @max_rows ROWS.
-        ELSEIF with_selection = abap_true.
-          SELECT * FROM (entity_name)
-            WHERE (lv_where)
-            INTO CORRESPONDING FIELDS OF TABLE @<lt_data>
-            UP TO @max_rows ROWS.
-        ELSEIF order_by IS NOT INITIAL.
-          SELECT * FROM (entity_name)
-            WHERE (lv_where)
-            ORDER BY (order_by)
-            INTO TABLE @<lt_data>
-            UP TO @max_rows ROWS.
+        "a custom entity: its query provider reads it - ABAP SQL cannot
+        IF ls_read-query_class IS NOT INITIAL.
+          query_rows( entity_name = entity_name
+                      query_class = ls_read-query_class
+                      where       = lv_where
+                      host        = host
+                      max_rows    = max_rows
+                      order_by    = order_by
+                      data        = result ).
         ELSE.
-          SELECT * FROM (entity_name)
-            WHERE (lv_where)
-            INTO TABLE @<lt_data>
-            UP TO @max_rows ROWS.
+          "a virtual element has no column: the others are selected, and
+          "a condition or sort criterion on it is left out
+          LOOP AT ls_read-virtual_elements INTO DATA(ls_virtual).
+            APPEND ls_virtual-name TO lt_virtual.
+          ENDLOOP.
+          lv_fields = `*`.
+          lv_order_by = order_by.
+          lv_corresponding = with_selection.
+          IF lt_virtual IS NOT INITIAL.
+            LOOP AT lt_comp INTO DATA(ls_comp).
+              IF ls_comp-name <> cv_select_column AND NOT line_exists( lt_virtual[ table_line = ls_comp-name ] ).
+                APPEND ls_comp-name TO lt_columns.
+              ENDIF.
+            ENDLOOP.
+            lv_fields = concat_lines_of( table = lt_columns sep = `, ` ).
+            lv_where = z2ui5_cl_rap_util=>remove_where_fields( where  = lv_where
+                                                               fields = lt_virtual ).
+            lv_order_by = adjust_virtual_order_by( entity_name      = entity_name
+                                                   order_by         = order_by
+                                                   virtual_elements = ls_read-virtual_elements ).
+            lv_corresponding = abap_true.
+          ENDIF.
+
+          "sorted in the database - UP TO n ROWS without an ORDER BY is n
+          "arbitrary rows, and sorting them afterwards sorts the wrong ones
+          IF lv_corresponding = abap_true AND lv_order_by IS NOT INITIAL.
+            SELECT (lv_fields) FROM (entity_name)
+              WHERE (lv_where)
+              ORDER BY (lv_order_by)
+              INTO CORRESPONDING FIELDS OF TABLE @<lt_data>
+              UP TO @max_rows ROWS.
+          ELSEIF lv_corresponding = abap_true.
+            SELECT (lv_fields) FROM (entity_name)
+              WHERE (lv_where)
+              INTO CORRESPONDING FIELDS OF TABLE @<lt_data>
+              UP TO @max_rows ROWS.
+          ELSEIF lv_order_by IS NOT INITIAL.
+            SELECT (lv_fields) FROM (entity_name)
+              WHERE (lv_where)
+              ORDER BY (lv_order_by)
+              INTO TABLE @<lt_data>
+              UP TO @max_rows ROWS.
+          ELSE.
+            SELECT (lv_fields) FROM (entity_name)
+              WHERE (lv_where)
+              INTO TABLE @<lt_data>
+              UP TO @max_rows ROWS.
+          ENDIF.
         ENDIF.
-      CATCH cx_root.
+      CATCH cx_root INTO DATA(lx_read).
+        mv_read_error = lx_read->get_text( ).
         CLEAR result.
         RETURN.
     ENDTRY.
+
+    IF ls_read-query_class IS INITIAL AND ls_read-virtual_elements IS NOT INITIAL.
+      calculate_virtual_elements( entity_name      = entity_name
+                                  virtual_elements = ls_read-virtual_elements
+                                  data             = result ).
+    ENDIF.
 
     IF mo_ext IS BOUND.
       mo_ext->after_load( floorplan   = mv_floorplan
@@ -901,16 +1580,250 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD count_rows.
 
+    DATA lt_virtual TYPE string_table.
+
+    CLEAR mv_read_error.
     DATA(lv_where) = get_ext_where( entity_name = entity_name
                                     where       = where ).
+    DATA(ls_read) = get_read_info( entity_name ).
     TRY.
+        IF ls_read-query_class IS NOT INITIAL.
+          query_rows( EXPORTING entity_name     = entity_name
+                                query_class     = ls_read-query_class
+                                where           = lv_where
+                                count_requested = abap_true
+                      IMPORTING count           = result ).
+          RETURN.
+        ENDIF.
+        LOOP AT ls_read-virtual_elements INTO DATA(ls_virtual).
+          APPEND ls_virtual-name TO lt_virtual.
+        ENDLOOP.
+        lv_where = z2ui5_cl_rap_util=>remove_where_fields( where  = lv_where
+                                                           fields = lt_virtual ).
         SELECT COUNT(*) FROM (entity_name)
           WHERE (lv_where)
           INTO @result.
-      CATCH cx_root.
+      CATCH cx_root INTO DATA(lx_read).
+        mv_read_error = lx_read->get_text( ).
         result = 0.
     ENDTRY.
 
+  ENDMETHOD.
+
+
+  METHOD get_read_info.
+    result = z2ui5_cl_rap_util=>get_read_info( entity_name ).
+    "the provider is called through the query interfaces - without them
+    "there is nothing to read the entity with
+    IF result-query_class IS NOT INITIAL AND query_available( ) = abap_false.
+      CLEAR result-query_class.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD query_rows.
+
+    FIELD-SYMBOLS <ls_host> TYPE any.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+    DATA lt_host TYPE z2ui5_cl_rap_util=>ty_t_name_value.
+    DATA lt_elements TYPE string_table.
+    DATA lv_total TYPE int8.
+
+    CLEAR count.
+
+    "the host variables of a key condition as their values - a provider
+    "cannot read @<LS_HOST>-field
+    IF host IS BOUND.
+      ASSIGN host->* TO <ls_host>.
+      DATA(lo_host) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_host> ) ).
+      LOOP AT lo_host->components INTO DATA(ls_host_comp).
+        UNASSIGN <lv_value>.
+        ASSIGN COMPONENT ls_host_comp-name OF STRUCTURE <ls_host> TO <lv_value>.
+        IF <lv_value> IS ASSIGNED.
+          APPEND VALUE #( name  = to_upper( ls_host_comp-name )
+                          value = |{ <lv_value> }| ) TO lt_host.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+    "every element of the entity is requested
+    DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( entity_name ) ).
+    LOOP AT lo_struct->components INTO DATA(ls_comp).
+      IF ls_comp-name <> cv_select_column.
+        APPEND |{ ls_comp-name }| TO lt_elements.
+      ENDIF.
+    ENDLOOP.
+
+    z2ui5_cl_rap_query=>select(
+      EXPORTING
+        query_class = query_class
+        entity_name = entity_name
+        filter      = z2ui5_cl_rap_util=>build_query_filter( where       = where
+                                                             host_values = lt_host )
+        sort        = z2ui5_cl_rap_util=>parse_order_by( order_by )
+        elements    = lt_elements
+        page_size   = max_rows
+        data        = data
+        count       = count_requested
+      IMPORTING
+        total       = lv_total ).
+    count = lv_total.
+
+  ENDMETHOD.
+
+
+  METHOD calculate_virtual_elements.
+
+    "the types of IF_SADL_EXIT_CALC_ELEMENT_READ - its parameters are
+    "passed by reference, so they have to be the same
+    TYPES ty_t_elements TYPE SORTED TABLE OF string WITH UNIQUE DEFAULT KEY.
+    DATA lt_elements TYPE ty_t_elements.
+    DATA lt_original TYPE ty_t_elements.
+    DATA lt_classes TYPE string_table.
+    DATA lr_calculated TYPE REF TO data.
+    DATA lo_calc TYPE REF TO object.
+    DATA lv_index TYPE i.
+    DATA(lv_entity) = to_upper( entity_name ).
+    FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_calculated> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <ls_row> TYPE any.
+    FIELD-SYMBOLS <ls_calculated> TYPE any.
+    FIELD-SYMBOLS <lv_target> TYPE any.
+    FIELD-SYMBOLS <lv_source> TYPE any.
+
+    IF data IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN data->* TO <lt_data>.
+    IF <lt_data> IS NOT ASSIGNED OR <lt_data> IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    LOOP AT virtual_elements INTO DATA(ls_virtual) WHERE calc_class IS NOT INITIAL.
+      IF NOT line_exists( lt_classes[ table_line = ls_virtual-calc_class ] ).
+        APPEND ls_virtual-calc_class TO lt_classes.
+      ENDIF.
+    ENDLOOP.
+
+    LOOP AT lt_classes INTO DATA(lv_class).
+      CLEAR: lt_elements, lt_original.
+      LOOP AT virtual_elements INTO ls_virtual WHERE calc_class = lv_class.
+        INSERT ls_virtual-name INTO TABLE lt_elements.
+      ENDLOOP.
+      TRY.
+          CREATE OBJECT lo_calc TYPE (lv_class).
+          CALL METHOD lo_calc->('IF_SADL_EXIT_CALC_ELEMENT_READ~GET_CALCULATION_INFO')
+            EXPORTING
+              it_requested_calc_elements = lt_elements
+              iv_entity                  = lv_entity
+            IMPORTING
+              et_requested_orig_elements = lt_original.
+          "every column is read already - the original elements it asks for
+          "are there
+          CREATE DATA lr_calculated LIKE <lt_data>.
+          ASSIGN lr_calculated->* TO <lt_calculated>.
+          <lt_calculated> = <lt_data>.
+          CALL METHOD lo_calc->('IF_SADL_EXIT_CALC_ELEMENT_READ~CALCULATE')
+            EXPORTING
+              it_original_data           = <lt_data>
+              it_requested_calc_elements = lt_elements
+            CHANGING
+              ct_calculated_data         = <lt_calculated>.
+        CATCH cx_root.
+          "the elements of this class stay empty, the rows are shown
+          CONTINUE.
+      ENDTRY.
+
+      "only the calculated elements are taken over, row by row
+      LOOP AT <lt_data> ASSIGNING <ls_row>.
+        lv_index = sy-tabix.
+        UNASSIGN <ls_calculated>.
+        READ TABLE <lt_calculated> INDEX lv_index ASSIGNING <ls_calculated>.
+        IF <ls_calculated> IS NOT ASSIGNED.
+          EXIT.
+        ENDIF.
+        LOOP AT lt_elements INTO DATA(lv_element).
+          UNASSIGN: <lv_target>, <lv_source>.
+          ASSIGN COMPONENT lv_element OF STRUCTURE <ls_row> TO <lv_target>.
+          ASSIGN COMPONENT lv_element OF STRUCTURE <ls_calculated> TO <lv_source>.
+          IF <lv_target> IS ASSIGNED AND <lv_source> IS ASSIGNED.
+            <lv_target> = <lv_source>.
+          ENDIF.
+        ENDLOOP.
+      ENDLOOP.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD adjust_virtual_order_by.
+
+    "the type of IF_SADL_EXIT_SORT_TRANSFORM=>TT_SORT_ELEMENTS - passed by
+    "reference, so it has to be the same
+    TYPES:
+      BEGIN OF ty_s_sort_element,
+        name    TYPE string,
+        reverse TYPE abap_bool,
+      END OF ty_s_sort_element.
+    TYPES ty_t_sort_elements TYPE STANDARD TABLE OF ty_s_sort_element WITH DEFAULT KEY.
+    DATA lt_mapped TYPE ty_t_sort_elements.
+    DATA lt_sort TYPE z2ui5_cl_rap_util=>ty_t_sort.
+    DATA lo_sort TYPE REF TO object.
+    DATA(lv_entity) = to_upper( entity_name ).
+
+    LOOP AT z2ui5_cl_rap_util=>parse_order_by( order_by ) INTO DATA(ls_sort).
+      READ TABLE virtual_elements INTO DATA(ls_virtual) WITH KEY name = ls_sort-field.
+      IF sy-subrc <> 0.
+        APPEND ls_sort TO lt_sort.
+        CONTINUE.
+      ENDIF.
+      IF ls_virtual-sort_class IS INITIAL.
+        CONTINUE.
+      ENDIF.
+      CLEAR lt_mapped.
+      TRY.
+          CREATE OBJECT lo_sort TYPE (ls_virtual-sort_class).
+          CALL METHOD lo_sort->('IF_SADL_EXIT_SORT_TRANSFORM~MAP_ELEMENT')
+            EXPORTING
+              iv_entity        = lv_entity
+              iv_element       = ls_sort-field
+            IMPORTING
+              et_sort_elements = lt_mapped.
+        CATCH cx_root ##NO_HANDLER.
+          "not sorted by it
+      ENDTRY.
+      LOOP AT lt_mapped INTO DATA(ls_mapped).
+        DATA(lv_name) = to_upper( ls_mapped-name ).
+        IF line_exists( virtual_elements[ name = lv_name ] ) OR line_exists( lt_sort[ field = lv_name ] ).
+          CONTINUE.
+        ENDIF.
+        "reverse: the element sorts the other way round than the virtual one
+        APPEND VALUE #( field      = lv_name
+                        descending = xsdbool( ls_sort-descending <> ls_mapped-reverse ) ) TO lt_sort.
+      ENDLOOP.
+    ENDLOOP.
+
+    result = z2ui5_cl_rap_util=>order_by_to_string( lt_sort ).
+
+  ENDMETHOD.
+
+
+  METHOD aggregate_rows.
+    DATA(lr_rows) = select_rows( entity_name = entity_name
+                                 where       = where
+                                 max_rows    = cv_aggregate_max ).
+    result = z2ui5_cl_rap_util=>aggregate_rows( data     = lr_rows
+                                                group_by = group_by
+                                                measure  = measure
+                                                method   = method ).
+  ENDMETHOD.
+
+
+  METHOD get_load_error.
+    result = |{ get_text( cs_text-load_error ) }: { entity_name }|.
+    IF mv_read_error IS NOT INITIAL.
+      result = |{ result } - { mv_read_error }|.
+    ENDIF.
   ENDMETHOD.
 
 
@@ -921,16 +1834,27 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
 
   METHOD build_search_condition.
+    IF mo_ext IS BOUND AND condense( search ) <> ``.
+      mo_ext->build_search_condition(
+        EXPORTING floorplan   = mv_floorplan
+                  entity_name = entity_name
+                  fields      = it_fields
+                  search      = search
+                  threshold   = z2ui5_cl_rap_util=>get_search_fuzziness( it_fields )
+        CHANGING  condition   = result ).
+      IF result IS NOT INITIAL.
+        RETURN.
+      ENDIF.
+    ENDIF.
     result = z2ui5_cl_rap_util=>build_search_condition( it_fields = it_fields
                                                         search    = search ).
   ENDMETHOD.
 
 
   METHOD criticality_expression.
-    result = `{= ${` && crit_field &&
-             `} === 3 ? 'Success' : (${` && crit_field &&
-             `} === 1 ? 'Error' : (${` && crit_field &&
-             `} === 2 ? 'Warning' : 'None')) }`.
+    "5 is Information since 2026-10, third round
+    result = z2ui5_cl_rap_util=>criticality_binding( criticality = crit_field
+                                                     kind        = kind ).
   ENDMETHOD.
 
 
@@ -939,6 +1863,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       WHEN 1 THEN `Error`
       WHEN 2 THEN `Warning`
       WHEN 3 THEN `Success`
+      WHEN 5 THEN `Information`
       ELSE `None` ).
   ENDMETHOD.
 
@@ -951,13 +1876,33 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     FIELD-SYMBOLS <lt_target> TYPE any.
     FIELD-SYMBOLS <lt_source> TYPE any.
 
-    CLEAR mr_value_lists.
+    DATA lr_rows TYPE REF TO data.
+    FIELD-SYMBOLS <lt_fixed> TYPE ty_t_name_value.
+
+    CLEAR: mr_value_lists, mt_dropdown_text.
 
     LOOP AT it_fields INTO DATA(ls_field)
       WHERE value_help-is_dropdown = abap_true AND is_hidden = abap_false.
-      DATA(lr_rows) = select_rows( entity_name = ls_field-value_help-entity_name ).
-      IF lr_rows IS NOT BOUND OR line_exists( lt_comp[ name = ls_field-name ] ).
+      IF line_exists( lt_comp[ name = ls_field-name ] ).
         CONTINUE.
+      ENDIF.
+      "the fixed values of the field's domain (added 2026-10, third round)
+      IF ls_field-value_help-fixed_values IS NOT INITIAL.
+        CREATE DATA lr_rows TYPE ty_t_name_value.
+        ASSIGN lr_rows->* TO <lt_fixed>.
+        <lt_fixed> = ls_field-value_help-fixed_values.
+      ELSE.
+        lr_rows = select_rows( entity_name = ls_field-value_help-entity_name ).
+        IF lr_rows IS NOT BOUND.
+          CONTINUE.
+        ENDIF.
+        "the entries' text: the text element of the value help's element
+        DATA(ls_list_entity) = z2ui5_cl_rap_util=>read_entity( ls_field-value_help-entity_name ).
+        READ TABLE ls_list_entity-fields INTO DATA(ls_list_element) WITH KEY name = ls_field-value_help-element.
+        IF sy-subrc = 0 AND ls_list_element-text_element IS NOT INITIAL
+          AND line_exists( ls_list_entity-fields[ name = ls_list_element-text_element ] ).
+          APPEND VALUE #( name = ls_field-name value = ls_list_element-text_element ) TO mt_dropdown_text.
+        ENDIF.
       ENDIF.
       APPEND VALUE #( name = ls_field-name
                       type = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_data_ref( lr_rows ) ) )
@@ -1014,7 +1959,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     FIELD-SYMBOLS <lt_target> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
 
-    DATA(lv_field) = client->get_event_arg( 1 ).
+    DATA(lv_field) = client->get_event_arg( ).
     DATA(lv_text) = condense( client->get_event_arg( 2 ) ).
     IF mr_suggestions IS NOT BOUND.
       RETURN.
@@ -1070,7 +2015,37 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     FIELD-SYMBOLS <ls_lists> TYPE any.
     FIELD-SYMBOLS <lt_list> TYPE any.
 
+    FIELD-SYMBOLS <lv_input_text> TYPE any.
+
     DATA(lv_editable) = xsdbool( editable = abap_true AND is_field-is_readonly = abap_false ).
+
+    "the text of the value beside an input (@ObjectModel.text.element of
+    "record) - added 2026-10, third round
+    UNASSIGN <lv_input_text>.
+    IF record IS SUPPLIED AND is_field-text_element IS NOT INITIAL.
+      ASSIGN COMPONENT is_field-text_element OF STRUCTURE record TO <lv_input_text>.
+    ENDIF.
+
+    "a file (@Semantics.largeObject): a download link and an upload
+    "control - the RAWSTRING itself is never bound (added 2026-10, third
+    "round)
+    IF is_field-is_large_object = abap_true.
+      IF record IS SUPPLIED.
+        render_file_field( io_container = io_container
+                           is_field     = is_field
+                           client       = client
+                           value        = value
+                           record       = record
+                           editable     = lv_editable ).
+      ELSE.
+        render_file_field( io_container = io_container
+                           is_field     = is_field
+                           client       = client
+                           value        = value
+                           editable     = lv_editable ).
+      ENDIF.
+      RETURN.
+    ENDIF.
 
     IF is_field-is_boolean = abap_true.
       io_container->tag( `CheckBox`
@@ -1137,6 +2112,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       ASSIGN COMPONENT is_field-name OF STRUCTURE <ls_lists> TO <lt_list>.
       IF sy-subrc = 0.
         DATA(lv_key_path) = |\{{ is_field-value_help-element }\}|.
+        "the entry's text - the value help's text element, the fixed
+        "value's text - and its key beside it (added 2026-10, third round)
+        DATA(lv_list_text_path) = lv_key_path.
+        READ TABLE mt_dropdown_text INTO DATA(ls_dropdown_text) WITH KEY name = is_field-name.
+        IF sy-subrc = 0.
+          lv_list_text_path = |\{{ ls_dropdown_text-value }\}|.
+        ELSEIF is_field-value_help-text_element IS NOT INITIAL.
+          lv_list_text_path = |\{{ is_field-value_help-text_element }\}|.
+        ENDIF.
         "the core prefix is declared here, so no view has to carry it for
         "a ComboBox it may never render
         io_container->ele( `ComboBox`
@@ -1150,11 +2134,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                   b = lv_editable
             )->a( n = `required`
                   b = is_field-is_mandatory
-            )->tag( n  = `Item`
+            )->a( n = `showSecondaryValues`
+                  b = xsdbool( lv_list_text_path <> lv_key_path )
+            )->tag( n  = `ListItem`
                     ns = `core`
                 )->a( n = `key`
                       v = lv_key_path
                 )->a( n = `text`
+                      v = lv_list_text_path
+                )->a( n = `additionalText`
                       v = lv_key_path ).
         add_value_state( io_container     = io_container
                          value_state      = value_state
@@ -1176,6 +2164,10 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                 b = lv_editable
           )->a( n = `required`
                 b = is_field-is_mandatory ).
+      IF <lv_input_text> IS ASSIGNED.
+        lo_input->a( n = `description`
+                     v = client->_bind( <lv_input_text> ) ).
+      ENDIF.
       "suggestions while the user types - a per-keystroke wire: the last
       "keystroke is never lost and the busy indicator stays down
       IF mr_suggestions IS BOUND AND lv_editable = abap_true.
@@ -1212,7 +2204,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ENDIF.
 
     IF is_field-type_kind = `CHAR` AND is_field-length > 0.
-      io_container->tag( `Input`
+      DATA(lo_char_input) = io_container->tag( `Input`
           )->a( n = `value`
                 v = client->_bind( value )
           )->a( n = `maxLength`
@@ -1221,6 +2213,10 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                 b = lv_editable
           )->a( n = `required`
                 b = is_field-is_mandatory ).
+      IF <lv_input_text> IS ASSIGNED.
+        lo_char_input->a( n = `description`
+                          v = client->_bind( <lv_input_text> ) ).
+      ENDIF.
       add_value_state( io_container     = io_container
                        value_state      = value_state
                        value_state_text = value_state_text ).
@@ -1417,16 +2413,151 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ENDIF.
 
     "two JSON objects - the frontend receives them as objects, not strings
+    "a name given several times - the values of several selected rows - is
+    "an array (added 2026-10, third round)
     DATA lt_params TYPE string_table.
+    DATA lt_done TYPE string_table.
+    DATA lt_values TYPE string_table.
     LOOP AT params INTO DATA(ls_param).
-      APPEND |"{ z2ui5_cl_rap_util=>json_escape( ls_param-name ) }":"{ z2ui5_cl_rap_util=>json_escape( ls_param-value ) }"|
-        TO lt_params.
+      IF line_exists( lt_done[ table_line = ls_param-name ] ).
+        CONTINUE.
+      ENDIF.
+      APPEND ls_param-name TO lt_done.
+      CLEAR lt_values.
+      LOOP AT params INTO DATA(ls_same) WHERE name = ls_param-name.
+        IF NOT line_exists( lt_values[ table_line = |"{ z2ui5_cl_rap_util=>json_escape( ls_same-value ) }"| ] ).
+          APPEND |"{ z2ui5_cl_rap_util=>json_escape( ls_same-value ) }"| TO lt_values.
+        ENDIF.
+      ENDLOOP.
+      DATA(lv_value) = COND string( WHEN lines( lt_values ) = 1 THEN lt_values[ 1 ]
+                                    ELSE |[{ concat_lines_of( table = lt_values sep = `,` ) }]| ).
+      APPEND |"{ z2ui5_cl_rap_util=>json_escape( ls_param-name ) }":{ lv_value }| TO lt_params.
     ENDLOOP.
     DATA(lv_target) = |\{"semanticObject":"{ z2ui5_cl_rap_util=>json_escape( semantic_object ) }",| &&
                       |"action":"{ z2ui5_cl_rap_util=>json_escape( action ) }"\}|.
     DATA(lv_params) = |\{{ concat_lines_of( table = lt_params sep = `,` ) }\}|.
     client->follow_up_action( val   = client->cs_event-cross_app_nav_to_ext
                               t_arg = VALUE #( ( lv_target ) ( lv_params ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD get_association_text_key.
+
+    DATA lt_values TYPE string_table.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+
+    READ TABLE is_entity-associations INTO DATA(ls_assoc) WITH KEY name = is_field-text_association.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    LOOP AT ls_assoc-conditions INTO DATA(ls_condition).
+      UNASSIGN <lv_value>.
+      ASSIGN COMPONENT ls_condition-local OF STRUCTURE row TO <lv_value>.
+      IF <lv_value> IS NOT ASSIGNED.
+        CLEAR result.
+        RETURN.
+      ENDIF.
+      APPEND condense( |{ <lv_value> }| ) TO lt_values.
+    ENDLOOP.
+    result = concat_lines_of( table = lt_values sep = `|` ).
+
+  ENDMETHOD.
+
+
+  METHOD read_association_texts.
+
+    DATA lt_keys TYPE string_table.
+    DATA lt_groups TYPE string_table.
+    DATA lt_and TYPE string_table.
+    DATA lt_target_values TYPE string_table.
+    DATA lv_chunk TYPE i.
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_texts> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+    FIELD-SYMBOLS <lv_text> TYPE any.
+
+    IF data IS NOT BOUND OR is_field-text_association IS INITIAL.
+      RETURN.
+    ENDIF.
+    READ TABLE is_entity-associations INTO DATA(ls_assoc) WITH KEY name = is_field-text_association.
+    IF sy-subrc <> 0 OR ls_assoc-conditions IS INITIAL OR ls_assoc-target IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA(ls_target) = z2ui5_cl_rap_util=>read_entity( ls_assoc-target ).
+    READ TABLE ls_target-fields INTO DATA(ls_text_field) WITH KEY is_semantic_text = abap_true.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    READ TABLE ls_target-fields INTO DATA(ls_language) WITH KEY is_language = abap_true.
+    DATA(lv_language) = COND string( WHEN sy-subrc = 0
+                                     THEN z2ui5_cl_rap_util=>build_filter_condition( is_field = ls_language
+                                                                                     value    = |={ sy-langu }| ) ).
+
+    "one condition per distinct value of the rows - at most 200
+    ASSIGN data->* TO <lt_rows>.
+    LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      DATA(lv_key) = get_association_text_key( is_entity = is_entity
+                                               is_field  = is_field
+                                               row       = <ls_row> ).
+      IF lv_key IS INITIAL OR line_exists( lt_keys[ table_line = lv_key ] ).
+        CONTINUE.
+      ENDIF.
+      CLEAR lt_and.
+      LOOP AT ls_assoc-conditions INTO DATA(ls_condition).
+        READ TABLE ls_target-fields INTO DATA(ls_target_field) WITH KEY name = ls_condition-target.
+        ASSIGN COMPONENT ls_condition-local OF STRUCTURE <ls_row> TO <lv_value>.
+        IF sy-subrc <> 0 OR ls_target_field-name <> ls_condition-target.
+          RETURN.
+        ENDIF.
+        APPEND z2ui5_cl_rap_util=>build_filter_condition( is_field = ls_target_field
+                                                          value    = |={ condense( |{ <lv_value> }| ) }| ) TO lt_and.
+      ENDLOOP.
+      APPEND lv_key TO lt_keys.
+      APPEND |( { concat_lines_of( table = lt_and sep = ` AND ` ) } )| TO lt_groups.
+      IF lines( lt_keys ) >= 200.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+    "50 values per read
+    WHILE lt_groups IS NOT INITIAL.
+      DATA(lt_chunk) = VALUE string_table( ).
+      lv_chunk = 0.
+      LOOP AT lt_groups INTO DATA(lv_group).
+        lv_chunk = lv_chunk + 1.
+        IF lv_chunk > 50.
+          EXIT.
+        ENDIF.
+        APPEND lv_group TO lt_chunk.
+      ENDLOOP.
+      DELETE lt_groups TO lines( lt_chunk ).
+      DATA(lv_where) = |( { concat_lines_of( table = lt_chunk sep = ` OR ` ) } )|.
+      IF lv_language IS NOT INITIAL.
+        lv_where = |{ lv_where } AND { lv_language }|.
+      ENDIF.
+      DATA(lr_texts) = select_rows( entity_name = ls_assoc-target
+                                    where       = lv_where
+                                    max_rows    = 1000 ).
+      IF lr_texts IS NOT BOUND.
+        RETURN.
+      ENDIF.
+      ASSIGN lr_texts->* TO <lt_texts>.
+      LOOP AT <lt_texts> ASSIGNING FIELD-SYMBOL(<ls_text>).
+        CLEAR lt_target_values.
+        LOOP AT ls_assoc-conditions INTO ls_condition.
+          ASSIGN COMPONENT ls_condition-target OF STRUCTURE <ls_text> TO <lv_value>.
+          IF sy-subrc = 0.
+            APPEND condense( |{ <lv_value> }| ) TO lt_target_values.
+          ENDIF.
+        ENDLOOP.
+        DATA(lv_text_key) = concat_lines_of( table = lt_target_values sep = `|` ).
+        ASSIGN COMPONENT ls_text_field-name OF STRUCTURE <ls_text> TO <lv_text>.
+        IF sy-subrc = 0 AND NOT line_exists( result[ name = lv_text_key ] ).
+          APPEND VALUE #( name = lv_text_key value = |{ <lv_text> }| ) TO result.
+        ENDIF.
+      ENDLOOP.
+    ENDWHILE.
 
   ENDMETHOD.
 
@@ -1533,6 +2664,27 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "the record's own permissions, its read-only fields and - without a
+    "draft - that nobody changed it meanwhile (since 2026-10, third round)
+    IF ls_caps-is_rap_bo = abap_true AND ( operation = `UPDATE` OR operation = `DELETE` ).
+      IF original IS SUPPLIED.
+        result-messages = check_rap_write( entity_name = entity_name
+                                           operation   = operation
+                                           row         = row
+                                           original    = original
+                                           context     = context ).
+      ELSE.
+        result-messages = check_rap_write( entity_name = entity_name
+                                           operation   = operation
+                                           row         = row
+                                           original    = row
+                                           context     = context ).
+      ENDIF.
+      IF result-messages IS NOT INITIAL.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
     CREATE DATA lr_row LIKE row.
     ASSIGN lr_row->* TO <ls_row>.
     <ls_row> = row.
@@ -1553,16 +2705,25 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN `CREATE`.
           result = z2ui5_cl_rap_eml=>create( entity_name = entity_name
                                              row         = <ls_row>
-                                             context     = context ).
+                                             context     = context
+                                             in_draft    = in_draft ).
         WHEN `UPDATE`.
-          result = z2ui5_cl_rap_eml=>update( entity_name = entity_name
-                                             row         = <ls_row>
-                                             original    = original
-                                             context     = context ).
+          IF in_draft = abap_true.
+            result = z2ui5_cl_rap_eml=>update_draft( entity_name = entity_name
+                                                     row         = <ls_row>
+                                                     original    = original
+                                                     context     = context ).
+          ELSE.
+            result = z2ui5_cl_rap_eml=>update( entity_name = entity_name
+                                               row         = <ls_row>
+                                               original    = original
+                                               context     = context ).
+          ENDIF.
         WHEN `DELETE`.
           result = z2ui5_cl_rap_eml=>delete( entity_name = entity_name
                                              row         = <ls_row>
-                                             context     = context ).
+                                             context     = context
+                                             in_draft    = in_draft ).
       ENDCASE.
     ELSEIF original IS SUPPLIED.
       result = write_table_row( entity_name = entity_name
@@ -1588,7 +2749,12 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     DATA lv_tabname TYPE c LENGTH 30.
     DATA lv_varkey TYPE c LENGTH 120.
-    DATA lt_ddic TYPE ddfields.
+    DATA lt_ddic TYPE z2ui5_cl_rap_util=>ty_t_ddic_field.
+    "the authorization object and the lock function modules by name - none
+    "of them is released for ABAP Cloud, where this path is off
+    DATA lv_auth_object TYPE c LENGTH 10 VALUE 'S_TABU_NAM'.
+    DATA lv_enqueue TYPE c LENGTH 30 VALUE 'ENQUEUE_E_TABLE'.
+    DATA lv_dequeue TYPE c LENGTH 30 VALUE 'DEQUEUE_E_TABLE'.
     DATA lt_keys TYPE string_table.
     DATA lr_current TYPE REF TO data.
     DATA lr_seen TYPE REF TO data.
@@ -1601,9 +2767,14 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     lv_tabname = to_upper( entity_name ).
 
+    IF z2ui5_cl_rap_util=>get_environment( ) = z2ui5_cl_rap_util=>cs_environment-cloud.
+      APPEND |{ get_text( cs_text-read_only ) }: { lv_tabname }| TO result-messages.
+      RETURN.
+    ENDIF.
+
     "the authorization of table maintenance by table name - what SM30 and
     "SE16 ask before a change
-    AUTHORITY-CHECK OBJECT 'S_TABU_NAM'
+    AUTHORITY-CHECK OBJECT lv_auth_object
       ID 'ACTVT' FIELD '02'
       ID 'TABLE' FIELD lv_tabname.
     IF sy-subrc <> 0.
@@ -1613,22 +2784,13 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     TRY.
         DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( lv_tabname ) ).
-        lo_struct->get_ddic_field_list(
-          RECEIVING
-            p_field_list = lt_ddic
-          EXCEPTIONS
-            not_found    = 1
-            no_ddic_type = 2
-            OTHERS       = 3 ).
-        IF sy-subrc <> 0.
-          CLEAR lt_ddic.
-        ENDIF.
+        lt_ddic = z2ui5_cl_rap_util=>get_ddic_fields( lo_struct ).
       CATCH cx_root.
         CLEAR lt_ddic.
     ENDTRY.
     "the key without the client - ABAP SQL adds the client by itself
     LOOP AT lt_ddic INTO DATA(ls_ddic) WHERE keyflag = abap_true AND datatype <> `CLNT`.
-      APPEND CONV string( ls_ddic-fieldname ) TO lt_keys.
+      APPEND ls_ddic-fieldname TO lt_keys.
     ENDLOOP.
     IF lt_keys IS INITIAL.
       APPEND |{ get_text( cs_text-read_only ) }: { lv_tabname }| TO result-messages.
@@ -1637,7 +2799,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     lv_varkey = get_table_varkey( row        = row
                                   key_fields = lt_ddic ).
-    CALL FUNCTION 'ENQUEUE_E_TABLE'
+    CALL FUNCTION lv_enqueue
       EXPORTING
         mode_rstable   = 'E'
         tabname        = lv_tabname
@@ -1715,7 +2877,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         APPEND lx->get_text( ) TO result-messages.
     ENDTRY.
 
-    CALL FUNCTION 'DEQUEUE_E_TABLE'
+    CALL FUNCTION lv_dequeue
       EXPORTING
         mode_rstable = 'E'
         tabname      = lv_tabname
@@ -1731,7 +2893,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     FIELD-SYMBOLS <lv_value> TYPE any.
 
     LOOP AT key_fields INTO DATA(ls_field) WHERE keyflag = abap_true.
-      DATA(lv_length) = CONV i( ls_field-leng ).
+      DATA(lv_length) = ls_field-leng.
       "only character-like keys have an internal form that is their text
       IF ls_field-inttype NA `CNDT` OR lv_offset + lv_length > 120.
         RETURN.
@@ -1757,12 +2919,11 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     DATA(ls_entity) = get_capabilities( entity_name = entity_name
                                         context     = context ).
     result = ls_entity.
-    IF mo_ext IS NOT BOUND.
-      RETURN.
+    IF mo_ext IS BOUND.
+      mo_ext->adjust_capabilities( EXPORTING floorplan   = mv_floorplan
+                                             entity_name = to_upper( entity_name )
+                                   CHANGING  caps        = result ).
     ENDIF.
-    mo_ext->adjust_capabilities( EXPORTING floorplan   = mv_floorplan
-                                           entity_name = to_upper( entity_name )
-                                 CHANGING  caps        = result ).
 
     "the extension decides what is offered, not what the entity is: it may
     "withhold an operation of a business object and allow the writes of a
@@ -1776,6 +2937,40 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       result-can_delete = xsdbool( result-can_delete = abap_true AND ls_entity-can_delete = abap_true ).
     ELSEIF ls_entity-is_table = abap_false.
       CLEAR: result-can_create, result-can_update, result-can_delete.
+    ENDIF.
+    IF ls_entity-is_rap_bo = abap_false.
+      RETURN.
+    ENDIF.
+
+    "nor what GET PERMISSIONS forbids (since 2026-10, third round): global
+    "feature control and authorization, an internal operation - and a
+    "create by association as the parent's association allows it
+    IF context-association IS NOT INITIAL AND context-parent IS NOT INITIAL.
+      DATA(lv_parent) = to_upper( context-parent ).
+      DATA(lr_parent) = create_host( entity_name = lv_parent
+                                     values      = context-parent_keys ).
+      IF lr_parent IS BOUND.
+        ASSIGN lr_parent->* TO FIELD-SYMBOL(<ls_parent>).
+        DATA(ls_parent_perm) = get_row_permissions( entity_name = lv_parent
+                                                    context     = VALUE #( bdef      = context-bdef
+                                                                           root_keys = context-root_keys )
+                                                    row         = <ls_parent> ).
+        result-can_create = xsdbool( result-can_create = abap_true
+          AND z2ui5_cl_rap_util=>is_permitted( ops  = ls_parent_perm-associations
+                                               name = context-association ) = abap_true ).
+      ENDIF.
+    ELSE.
+      DATA(ls_perm) = get_permissions( entity_name = entity_name
+                                       context     = context ).
+      IF ls_perm-answered = abap_true.
+        result-can_create = xsdbool( result-can_create = abap_true AND ls_perm-global-can_create = abap_true ).
+      ENDIF.
+    ENDIF.
+    ls_perm = get_permissions( entity_name = entity_name
+                               context     = context ).
+    IF ls_perm-answered = abap_true.
+      result-can_update = xsdbool( result-can_update = abap_true AND ls_perm-global-can_update = abap_true ).
+      result-can_delete = xsdbool( result-can_delete = abap_true AND ls_perm-global-can_delete = abap_true ).
     ENDIF.
 
   ENDMETHOD.
@@ -1862,6 +3057,16 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       APPEND get_text( cs_text-read_only ) TO result-messages.
       RETURN.
     ENDIF.
+    IF check = abap_true.
+      result-messages = check_rap_write( entity_name = entity_name
+                                         operation   = `UPDATE`
+                                         row         = row
+                                         original    = original
+                                         context     = context ).
+      IF result-messages IS NOT INITIAL.
+        RETURN.
+      ENDIF.
+    ENDIF.
 
     CREATE DATA lr_row LIKE row.
     ASSIGN lr_row->* TO <ls_row>.
@@ -1888,28 +3093,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
   METHOD run_action.
 
     DATA lv_cancel TYPE abap_bool.
+    DATA lv_static TYPE abap_bool.
+    DATA lr_rows TYPE REF TO data.
     FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
-
-    IF rows IS NOT BOUND.
-      APPEND get_text( cs_text-no_selection ) TO result-messages.
-      RETURN.
-    ENDIF.
-    ASSIGN rows->* TO <lt_rows>.
-    IF <lt_rows> IS INITIAL.
-      APPEND get_text( cs_text-no_selection ) TO result-messages.
-      RETURN.
-    ENDIF.
-
-    IF mo_ext IS BOUND.
-      mo_ext->before_save( EXPORTING entity_name = entity_name
-                                     operation   = |ACTION:{ action }|
-                                     data        = rows
-                           CHANGING  messages    = result-messages
-                                     cancel      = lv_cancel ).
-      IF lv_cancel = abap_true.
-        RETURN.
-      ENDIF.
-    ENDIF.
 
     IF eml_available( ) = abap_false
       OR get_entity_capabilities( entity_name = entity_name
@@ -1918,17 +3104,180 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "a static action runs without rows, an instance action needs them
+    lv_static = is_static_action( entity_name = entity_name
+                                  action      = action
+                                  context     = context ).
+    lr_rows = rows.
+    IF lv_static = abap_true AND lr_rows IS NOT BOUND.
+      lr_rows = create_entity_table( entity_name ).
+    ENDIF.
+    IF lr_rows IS NOT BOUND.
+      APPEND get_text( cs_text-no_selection ) TO result-messages.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_rows->* TO <lt_rows>.
+    IF <lt_rows> IS INITIAL AND lv_static = abap_false.
+      APPEND get_text( cs_text-no_selection ) TO result-messages.
+      RETURN.
+    ENDIF.
+
+    "an action the record's feature control or authorization disables
+    "is refused, whoever asks (since 2026-10, third round)
+    DATA(ls_perm) = get_permissions( entity_name = entity_name
+                                     context     = context
+                                     rows        = COND #( WHEN lv_static = abap_false THEN lr_rows ) ).
+    IF ls_perm-answered = abap_true.
+      IF z2ui5_cl_rap_util=>is_permitted( ops  = ls_perm-global-actions
+                                          name = action ) = abap_false.
+        APPEND |{ get_text( cs_text-not_allowed ) }: { action }| TO result-messages.
+        RETURN.
+      ENDIF.
+      DATA(lv_refused) = 0.
+      IF lv_static = abap_false.
+        LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_action_row>).
+          DATA(ls_row_perm) = z2ui5_cl_rap_util=>get_instance_permissions(
+            is_permissions = ls_perm
+            keys           = get_keys_of_row( entity_name = entity_name
+                                              row         = <ls_action_row> ) ).
+          IF z2ui5_cl_rap_util=>is_permitted( ops  = ls_row_perm-actions
+                                              name = action ) = abap_false.
+            lv_refused = lv_refused + 1.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+      IF lv_refused > 0.
+        APPEND |{ get_text( cs_text-not_allowed ) }: { action } ({ lv_refused })| TO result-messages.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
+    IF mo_ext IS BOUND.
+      mo_ext->before_save( EXPORTING entity_name = entity_name
+                                     operation   = |ACTION:{ action }|
+                                     data        = lr_rows
+                           CHANGING  messages    = result-messages
+                                     cancel      = lv_cancel ).
+      IF lv_cancel = abap_true.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
     result = z2ui5_cl_rap_eml=>execute_action( entity_name = entity_name
                                                action      = action
                                                rows        = <lt_rows>
                                                param       = param
-                                               context     = context ).
+                                               context     = context
+                                               is_static   = lv_static
+                                               isolated    = xsdbool( to_upper( invocation_grouping ) CS `ISOLATED` ) ).
 
     IF result-success = abap_true AND mo_ext IS BOUND.
       mo_ext->after_save( entity_name = entity_name
                           operation   = |ACTION:{ action }|
-                          data        = rows ).
+                          data        = lr_rows ).
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD is_static_action.
+
+    DATA lr_table TYPE REF TO data.
+    DATA lt_names TYPE string_table.
+    FIELD-SYMBOLS <lt_table> TYPE STANDARD TABLE.
+
+    IF eml_available( ) = abap_false.
+      RETURN.
+    ENDIF.
+    DATA(lv_entity) = to_upper( entity_name ).
+    DATA(lv_bdef) = COND string( WHEN context-bdef IS NOT INITIAL THEN to_upper( context-bdef ) ELSE lv_entity ).
+    DATA(lv_type) = |\\BDEF={ lv_bdef }\\ENTITY={ lv_entity }\\ACTION={ to_upper( action ) }\\TYPE=IMPORTING|.
+    TRY.
+        CREATE DATA lr_table TYPE (lv_type).
+        ASSIGN lr_table->* TO <lt_table>.
+        APPEND INITIAL LINE TO <lt_table> ASSIGNING FIELD-SYMBOL(<ls_line>).
+        DATA(lo_line) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_line> ) ).
+        LOOP AT lo_line->components INTO DATA(ls_comp).
+          APPEND CONV string( ls_comp-name ) TO lt_names.
+        ENDLOOP.
+        result = z2ui5_cl_rap_util=>is_static_action_line( lt_names ).
+      CATCH cx_root.
+        result = abap_false.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD is_hidden_by_annotation.
+
+    FIELD-SYMBOLS <lv_value> TYPE any.
+
+    IF value IS INITIAL.
+      RETURN.
+    ENDIF.
+    IF to_upper( value ) = `TRUE`.
+      result = abap_true.
+      RETURN.
+    ENDIF.
+    IF row IS NOT SUPPLIED.
+      RETURN.
+    ENDIF.
+    "a path: the field of the record decides
+    ASSIGN COMPONENT value OF STRUCTURE row TO <lv_value>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    DATA(lv_text) = to_upper( condense( |{ <lv_value> }| ) ).
+    result = xsdbool( lv_text = `X` OR lv_text = `TRUE` OR lv_text = `1` ).
+
+  ENDMETHOD.
+
+
+  METHOD get_action_button_type.
+
+    FIELD-SYMBOLS <lv_value> TYPE any.
+
+    DATA(lv_crit) = is_action-criticality.
+    IF lv_crit IS INITIAL.
+      result = `Default`.
+      RETURN.
+    ENDIF.
+    "a field holds the criticality - only a record can tell
+    IF lv_crit CN `0123456789` AND lv_crit <> `POSITIVE` AND lv_crit <> `NEGATIVE`
+      AND lv_crit <> `CRITICAL` AND lv_crit <> `NEUTRAL`.
+      CLEAR lv_crit.
+      IF row IS SUPPLIED.
+        ASSIGN COMPONENT is_action-criticality OF STRUCTURE row TO <lv_value>.
+        IF sy-subrc = 0.
+          lv_crit = |{ <lv_value> }|.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+    result = z2ui5_cl_rap_util=>criticality_button_type( lv_crit ).
+
+  ENDMETHOD.
+
+
+  METHOD get_action_entries.
+
+    "an action of a group sits in the group's menu, the others alone
+    LOOP AT it_actions INTO DATA(ls_action).
+      IF ls_action-group_id IS NOT INITIAL
+        AND line_exists( it_groups[ id = ls_action-group_id source = ls_action-source ] ).
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( position = ls_action-position action = ls_action ) TO result.
+    ENDLOOP.
+    LOOP AT it_groups INTO DATA(ls_group).
+      DATA(ls_entry) = VALUE ty_s_action_entry( position = ls_group-position group = ls_group ).
+      LOOP AT it_actions INTO ls_action WHERE group_id = ls_group-id AND source = ls_group-source.
+        APPEND ls_action TO ls_entry-items.
+      ENDLOOP.
+      IF ls_entry-items IS NOT INITIAL.
+        APPEND ls_entry TO result.
+      ENDIF.
+    ENDLOOP.
+    SORT result STABLE BY position.
 
   ENDMETHOD.
 
@@ -1961,17 +3310,547 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD show_messages.
 
-    IF messages IS INITIAL.
+    DATA lt_all TYPE ty_t_message.
+    DATA lt_texts TYPE string_table.
+    DATA lt_groups TYPE string_table.
+
+    "the messages with their severity, and the texts that are none of them
+    "(the floorplan's own, a refusal of the framework) with type
+    lt_all = details.
+    LOOP AT messages INTO DATA(lv_text).
+      IF NOT line_exists( lt_all[ text = lv_text ] ).
+        APPEND VALUE #( text = lv_text type = type ) TO lt_all.
+      ENDIF.
+    ENDLOOP.
+    lt_all = z2ui5_cl_rap_util=>prepare_messages( lt_all ).
+
+    CASE z2ui5_cl_rap_util=>get_message_display( lt_all ).
+      WHEN z2ui5_cl_rap_util=>cs_message_display-none.
+        RETURN.
+      WHEN z2ui5_cl_rap_util=>cs_message_display-toast.
+        LOOP AT lt_all INTO DATA(ls_toast).
+          APPEND ls_toast-text TO lt_texts.
+        ENDLOOP.
+        client->message_toast_display( concat_lines_of( table = lt_texts sep = cl_abap_char_utilities=>newline ) ).
+      WHEN z2ui5_cl_rap_util=>cs_message_display-box.
+        DATA(ls_single) = lt_all[ 1 ].
+        client->message_box_display( text = ls_single-text
+                                     type = ls_single-type ).
+      WHEN OTHERS.
+        mt_message_items = z2ui5_cl_rap_util=>get_message_items( messages  = lt_all
+                                                                  it_fields = fields ).
+        LOOP AT mt_message_items INTO DATA(ls_item) WHERE group_name IS NOT INITIAL.
+          IF NOT line_exists( lt_groups[ table_line = ls_item-group_name ] ).
+            APPEND ls_item-group_name TO lt_groups.
+          ENDIF.
+        ENDLOOP.
+        render_message_view( client  = client
+                             grouped = xsdbool( lines( lt_groups ) > 1 ) ).
+    ENDCASE.
+
+  ENDMETHOD.
+
+
+  METHOD render_message_view.
+
+    "the dialog's state: its most severe message
+    DATA(lv_dialog_state) = `None`.
+    IF line_exists( mt_message_items[ type = `Error` ] ).
+      lv_dialog_state = `Error`.
+    ELSEIF line_exists( mt_message_items[ type = `Warning` ] ).
+      lv_dialog_state = `Warning`.
+    ENDIF.
+
+    DATA(lo_popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+    DATA(lo_msg_dialog) = lo_popup->ele( n  = `FragmentDefinition`
+                                          ns = `core`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+        )->ele( `Dialog`
+            )->a( n = `title`
+                  t = get_text( cs_text-messages )
+            )->a( n = `state`
+                  v = lv_dialog_state
+            )->a( n = `contentWidth`
+                  v = `640px`
+            )->a( n = `contentHeight`
+                  v = `440px`
+            )->a( n = `verticalScrolling`
+                  b = abap_false
+            )->a( n = `resizable`
+                  b = abap_true
+            )->a( n = `draggable`
+                  b = abap_true ).
+
+    lo_msg_dialog->ele( `content`
+        )->ele( `MessageView`
+            )->a( n = `items`
+                  v = client->_bind( mt_message_items )
+            )->a( n = `groupItems`
+                  b = grouped
+            )->ele( `items`
+                )->tag( `MessageItem`
+                    )->a( n = `type`
+                          v = `{TYPE}`
+                    )->a( n = `title`
+                          v = `{TITLE}`
+                    )->a( n = `subtitle`
+                          v = `{SUBTITLE}`
+                    )->a( n = `description`
+                          v = `{DESCRIPTION}`
+                    )->a( n = `groupName`
+                          v = `{GROUP_NAME}` ).
+
+    "closed in the browser - nothing waits for it on the server
+    lo_msg_dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-close )
+            )->a( n = `press`
+                  v = client->follow_up_action( client->cs_event-popup_close ) ).
+
+    client->popup_display( lo_popup->stringify( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD get_max_file_size.
+    result = cv_file_max_size.
+  ENDMETHOD.
+
+
+  METHOD render_file_field.
+
+    FIELD-SYMBOLS <lv_file_name> TYPE any.
+
+    "the file's name, if the record has a field for it
+    DATA(lv_link_text) = get_text( cs_text-download ).
+    IF is_field-lob_file_name_field IS NOT INITIAL AND record IS SUPPLIED.
+      ASSIGN COMPONENT is_field-lob_file_name_field OF STRUCTURE record TO <lv_file_name>.
+      IF sy-subrc = 0 AND <lv_file_name> IS NOT INITIAL.
+        lv_link_text = <lv_file_name>.
+      ENDIF.
+    ENDIF.
+
+    "controls a form takes as they are - a ColumnLayout refuses a box
+    "around them, and the upload control, so that opens in a dialog
+    IF value IS NOT INITIAL.
+      io_container->tag( `Link`
+          )->a( n = `text`
+                t = lv_link_text
+          )->a( n = `press`
+                v = client->_event( val = cv_event_download
+                                    arg = is_field-name ) ).
+    ELSE.
+      io_container->tag( `Text`
+          )->a( n = `text`
+                t = get_text( cs_text-no_file ) ).
+    ENDIF.
+
+    IF editable = abap_true AND is_field-is_readonly = abap_false.
+      io_container->tag( `Button`
+          )->a( n = `icon`
+                v = `sap-icon://upload`
+          )->a( n = `text`
+                t = get_text( cs_text-upload )
+          )->a( n = `tooltip`
+                t = is_field-tooltip
+          )->a( n = `press`
+                v = client->_event( val = cv_event_upload_open
+                                    arg = is_field-name ) ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD render_upload_popup.
+
+    CLEAR: mv_file_value, mv_file_name.
+    DATA(lo_upload_popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+    DATA(lo_upload_dialog) = lo_upload_popup->ele( n  = `FragmentDefinition`
+                                                    ns = `core`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+        )->a( n = `xmlns:z2ui5`
+              v = `z2ui5.cc`
+        )->ele( `Dialog`
+            )->a( n = `title`
+                  t = is_field-label
+            )->a( n = `contentWidth`
+                  v = `450px` ).
+
+    lo_upload_dialog->ele( `content`
+        )->ele( `VBox`
+            )->a( n = `class`
+                  v = `sapUiSmallMargin`
+            )->tag( n  = `FileUploader`
+                    ns = `z2ui5`
+                )->a( n = `value`
+                      v = client->_bind( mv_file_value )
+                )->a( n = `path`
+                      v = client->_bind( mv_file_name )
+                )->a( n = `fileType`
+                      t = z2ui5_cl_rap_util=>get_file_extensions( is_field-lob_mime_types )
+                )->a( n = `uploadButtonText`
+                      t = get_text( cs_text-upload )
+                )->a( n = `upload`
+                      v = client->_event( val = cv_event_upload
+                                          arg = is_field-name ) ).
+
+    lo_upload_dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-cancel )
+            )->a( n = `press`
+                  v = client->_event( cv_event_upload_cancel ) ).
+
+    client->popup_display( lo_upload_popup->stringify( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD apply_upload.
+
+    FIELD-SYMBOLS <lv_content> TYPE any.
+    FIELD-SYMBOLS <lv_mime> TYPE any.
+    FIELD-SYMBOLS <lv_name> TYPE any.
+
+    DATA(lv_field) = to_upper( client->get_event_arg( ) ).
+    DATA(lv_uri) = mv_file_value.
+    DATA(lv_file_name) = mv_file_name.
+    "the browser's copy of the file is not needed any more
+    CLEAR: mv_file_value, mv_file_name.
+
+    "only a file field the floorplan shows, and one that is not read-only
+    READ TABLE it_fields INTO DATA(ls_field) WITH KEY name = lv_field.
+    IF sy-subrc <> 0 OR ls_field-is_large_object = abap_false OR ls_field-is_readonly = abap_true.
       RETURN.
     ENDIF.
-    client->message_box_display( text = concat_lines_of( table = messages sep = cl_abap_char_utilities=>newline )
-                                 type = type ).
+    ASSIGN COMPONENT ls_field-name OF STRUCTURE target TO <lv_content>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    "the browser hands over a path - the name is its last part
+    DATA(lv_slash) = find( val = lv_file_name sub = `/` occ = -1 ).
+    DATA(lv_backslash) = find( val = lv_file_name sub = `\` occ = -1 ).
+    IF lv_backslash > lv_slash.
+      lv_slash = lv_backslash.
+    ENDIF.
+    IF lv_slash >= 0.
+      lv_file_name = substring( val = lv_file_name off = lv_slash + 1 ).
+    ENDIF.
+
+    DATA(ls_file) = z2ui5_cl_rap_util=>parse_data_uri( uri       = lv_uri
+                                                        file_name = lv_file_name ).
+    DATA(lv_max) = get_max_file_size( ).
+    CASE z2ui5_cl_rap_util=>check_file( file     = ls_file
+                                        accepted = ls_field-lob_mime_types
+                                        max_size = lv_max ).
+      WHEN z2ui5_cl_rap_util=>cs_file_check-empty.
+        client->message_box_display( text = get_text( cs_text-file_empty )
+                                     type = `error` ).
+        RETURN.
+      WHEN z2ui5_cl_rap_util=>cs_file_check-too_large.
+        client->message_box_display( text = replace( val  = get_text( cs_text-file_too_large )
+                                                     sub  = `&1`
+                                                     with = |{ lv_max DIV 1024 }| )
+                                     type = `error` ).
+        RETURN.
+      WHEN z2ui5_cl_rap_util=>cs_file_check-type.
+        client->message_box_display( text = |{ get_text( cs_text-file_type ) }: { ls_file-mime_type }|
+                                     type = `error` ).
+        RETURN.
+    ENDCASE.
+
+    TRY.
+        <lv_content> = ls_file-content.
+        IF ls_field-lob_mime_field IS NOT INITIAL.
+          ASSIGN COMPONENT ls_field-lob_mime_field OF STRUCTURE target TO <lv_mime>.
+          IF sy-subrc = 0.
+            <lv_mime> = ls_file-mime_type.
+          ENDIF.
+        ENDIF.
+        IF ls_field-lob_file_name_field IS NOT INITIAL.
+          ASSIGN COMPONENT ls_field-lob_file_name_field OF STRUCTURE target TO <lv_name>.
+          IF sy-subrc = 0.
+            <lv_name> = ls_file-file_name.
+          ENDIF.
+        ENDIF.
+        result = abap_true.
+      CATCH cx_root INTO DATA(lx_upload).
+        client->message_box_display( text = lx_upload->get_text( )
+                                     type = `error` ).
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD download_file.
+
+    FIELD-SYMBOLS <lv_content> TYPE any.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+    DATA lv_content TYPE xstring.
+    DATA lv_mime TYPE string.
+    DATA lv_name TYPE string.
+
+    DATA(lv_field) = to_upper( client->get_event_arg( ) ).
+    READ TABLE it_fields INTO DATA(ls_field) WITH KEY name = lv_field.
+    IF sy-subrc <> 0 OR ls_field-is_large_object = abap_false.
+      RETURN.
+    ENDIF.
+    ASSIGN COMPONENT ls_field-name OF STRUCTURE source TO <lv_content>.
+    IF sy-subrc <> 0 OR <lv_content> IS INITIAL.
+      RETURN.
+    ENDIF.
+    TRY.
+        lv_content = <lv_content>.
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+    IF ls_field-lob_mime_field IS NOT INITIAL.
+      ASSIGN COMPONENT ls_field-lob_mime_field OF STRUCTURE source TO <lv_value>.
+      IF sy-subrc = 0.
+        lv_mime = <lv_value>.
+      ENDIF.
+    ENDIF.
+    IF ls_field-lob_file_name_field IS NOT INITIAL.
+      UNASSIGN <lv_value>.
+      ASSIGN COMPONENT ls_field-lob_file_name_field OF STRUCTURE source TO <lv_value>.
+      IF sy-subrc = 0.
+        lv_name = <lv_value>.
+      ENDIF.
+    ENDIF.
+    IF lv_name IS INITIAL.
+      lv_name = to_lower( ls_field-name ).
+    ENDIF.
+    "contentDispositionPreference is read (lob_disposition), the browser
+    "downloads the file either way - a data URI opened in a new tab is
+    "refused by the browsers
+    client->follow_up_action( val   = client->cs_event-download_b64_file
+                              t_arg = VALUE #( ( z2ui5_cl_rap_util=>to_data_uri( content   = lv_content
+                                                                                 mime_type = lv_mime ) )
+                                               ( lv_name ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD get_default_function_name.
+    result = |GetDefaultsFor{ action }|.
+  ENDMETHOD.
+
+
+  METHOD apply_action_defaults.
+
+    FIELD-SYMBOLS <lv_default> TYPE any.
+    FIELD-SYMBOLS <lv_target> TYPE any.
+
+    IF eml_available( ) = abap_false
+      OR get_capabilities( entity_name = entity_name
+                           context     = context )-is_rap_bo = abap_false.
+      RETURN.
+    ENDIF.
+    DATA(lr_defaults) = z2ui5_cl_rap_eml=>read_action_defaults(
+                          entity_name = entity_name
+                          function    = get_default_function_name( action )
+                          rows        = rows
+                          context     = context
+                          is_static   = is_static_action( entity_name = entity_name
+                                                          action      = action
+                                                          context     = context )
+                          is_draft    = is_draft ).
+    IF lr_defaults IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_defaults->* TO FIELD-SYMBOL(<ls_defaults>).
+    DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_defaults> ) ).
+    LOOP AT lo_struct->components INTO DATA(ls_comp).
+      ASSIGN COMPONENT ls_comp-name OF STRUCTURE <ls_defaults> TO <lv_default>.
+      IF sy-subrc <> 0 OR <lv_default> IS INITIAL.
+        CONTINUE.
+      ENDIF.
+      ASSIGN COMPONENT ls_comp-name OF STRUCTURE param TO <lv_target>.
+      IF sy-subrc = 0 AND <lv_target> IS INITIAL.
+        TRY.
+            <lv_target> = <lv_default>.
+          CATCH cx_root ##NO_HANDLER.
+        ENDTRY.
+      ENDIF.
+    ENDLOOP.
 
   ENDMETHOD.
 
 
   METHOD normalize_key_value.
     result = z2ui5_cl_rap_util=>normalize_value( val ).
+  ENDMETHOD.
+
+
+  METHOD get_permissions.
+    IF eml_available( ) = abap_false
+      OR get_capabilities( entity_name = entity_name
+                           context     = context )-is_rap_bo = abap_false.
+      RETURN.
+    ENDIF.
+    result = z2ui5_cl_rap_eml=>get_permissions( entity_name = entity_name
+                                                context     = context
+                                                rows        = rows ).
+  ENDMETHOD.
+
+
+  METHOD get_row_permissions.
+
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+
+    DATA(lr_rows) = create_entity_table( entity_name ).
+    IF lr_rows IS BOUND.
+      ASSIGN lr_rows->* TO <lt_rows>.
+      APPEND INITIAL LINE TO <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      MOVE-CORRESPONDING row TO <ls_row>.
+    ENDIF.
+    result = z2ui5_cl_rap_util=>get_instance_permissions(
+      is_permissions = get_permissions( entity_name = entity_name
+                                        context     = context
+                                        rows        = lr_rows )
+      keys           = get_keys_of_row( entity_name = entity_name
+                                        row         = row ) ).
+
+  ENDMETHOD.
+
+
+  METHOD get_keys_of_row.
+
+    FIELD-SYMBOLS <lv_key> TYPE any.
+    LOOP AT z2ui5_cl_rap_util=>get_key_fields( entity_name ) INTO DATA(lv_key).
+      UNASSIGN <lv_key>.
+      ASSIGN COMPONENT lv_key OF STRUCTURE row TO <lv_key>.
+      IF <lv_key> IS ASSIGNED.
+        APPEND VALUE #( name = to_upper( lv_key ) value = |{ <lv_key> }| ) TO result.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD read_drafts.
+    IF eml_available( ) = abap_false OR rows IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    result = z2ui5_cl_rap_eml=>read_instances( entity_name = entity_name
+                                               context     = context
+                                               rows        = rows
+                                               is_draft    = abap_true ).
+  ENDMETHOD.
+
+
+  METHOD read_draft_children.
+    IF eml_available( ) = abap_false OR rows IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    result = z2ui5_cl_rap_eml=>read_by_association( entity_name = entity_name
+                                                    association = association
+                                                    context     = context
+                                                    rows        = rows
+                                                    is_draft    = abap_true ).
+  ENDMETHOD.
+
+
+  METHOD get_etag_field.
+    result = z2ui5_cl_rap_util=>get_etag_field( z2ui5_cl_rap_util=>read_entity( entity_name )-fields ).
+  ENDMETHOD.
+
+
+  METHOD check_etag.
+
+    DATA lt_names TYPE string_table.
+    FIELD-SYMBOLS <lv_seen> TYPE any.
+    FIELD-SYMBOLS <lv_now> TYPE any.
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+
+    result = abap_true.
+    DATA(lv_field) = get_etag_field( entity_name ).
+    IF lv_field IS INITIAL.
+      RETURN.
+    ENDIF.
+    ASSIGN COMPONENT lv_field OF STRUCTURE row TO <lv_seen>.
+    IF sy-subrc <> 0 OR <lv_seen> IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA(lt_keys) = get_keys_of_row( entity_name = entity_name
+                                     row         = row ).
+    IF lt_keys IS INITIAL.
+      RETURN.
+    ENDIF.
+    LOOP AT lt_keys INTO DATA(ls_key).
+      APPEND ls_key-name TO lt_names.
+    ENDLOOP.
+
+    DATA(lr_rows) = select_rows( entity_name = entity_name
+                                 where       = build_key_condition( lt_names )
+                                 max_rows    = 1
+                                 host        = create_host( entity_name = entity_name
+                                                            values      = lt_keys ) ).
+    IF lr_rows IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_rows->* TO <lt_rows>.
+    READ TABLE <lt_rows> INDEX 1 ASSIGNING FIELD-SYMBOL(<ls_now>).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    ASSIGN COMPONENT lv_field OF STRUCTURE <ls_now> TO <lv_now>.
+    IF sy-subrc = 0 AND <lv_now> <> <lv_seen>.
+      result = abap_false.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD check_rap_write.
+
+    DATA lt_fields TYPE string_table.
+    FIELD-SYMBOLS <lv_new> TYPE any.
+    FIELD-SYMBOLS <lv_old> TYPE any.
+
+    DATA(ls_perm) = get_row_permissions( entity_name = entity_name
+                                         context     = context
+                                         row         = original ).
+    IF ( operation = `UPDATE` AND ls_perm-can_update = abap_false )
+      OR ( operation = `DELETE` AND ls_perm-can_delete = abap_false ).
+      APPEND get_text( cs_text-not_allowed ) TO result.
+      RETURN.
+    ENDIF.
+
+    IF operation = `UPDATE`.
+      "a field its field control makes read-only is not changed
+      LOOP AT ls_perm-fields INTO DATA(ls_field)
+        WHERE read_only = abap_true OR read_only_update = abap_true.
+        UNASSIGN: <lv_new>, <lv_old>.
+        ASSIGN COMPONENT ls_field-name OF STRUCTURE row TO <lv_new>.
+        ASSIGN COMPONENT ls_field-name OF STRUCTURE original TO <lv_old>.
+        IF <lv_new> IS ASSIGNED AND <lv_old> IS ASSIGNED AND <lv_new> <> <lv_old>.
+          APPEND ls_field-name TO lt_fields.
+        ENDIF.
+      ENDLOOP.
+      IF lt_fields IS NOT INITIAL.
+        APPEND |{ get_text( cs_text-field_read_only ) }: { concat_lines_of( table = lt_fields sep = `, ` ) }| TO result.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
+    "a draft keeps the record locked while it is edited - without one, the
+    "record as the user saw it is compared with the stored one
+    DATA(lv_bdef) = COND string( WHEN context-bdef IS NOT INITIAL THEN context-bdef ELSE entity_name ).
+    IF is_draft_enabled( lv_bdef ) = abap_false
+      AND check_etag( entity_name = entity_name
+                      row         = original ) = abap_false.
+      APPEND get_text( cs_text-changed ) TO result.
+    ENDIF.
+
   ENDMETHOD.
 
 ENDCLASS.

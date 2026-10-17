@@ -3,8 +3,12 @@
 "!   ...?app_start=zcl_my_rap_start&amp;floorplan=OBJECT_PAGE&amp;entity=I_COUNTRY&amp;Country=DE
 "! or the same as startup parameters of a launchpad tile. floorplan is
 "! OBJECT_PAGE (the default when keys are given), LIST_REPORT or WORKLIST;
-"! every other parameter is a key of the object page. The floorplan
-"! replaces this app (nav_app_leave), so Back does not return to it.
+"! every other parameter is a key of the object page - or, for a list
+"! report or a worklist, the value of the filter of the field it names
+"! (since 2026-10, third round; map_parameters, a parameter that names no
+"! field is ignored). mode=edit opens the object page in edit mode. The
+"! floorplan replaces this app (nav_app_leave), so Back does not return
+"! to it.
 "!
 "! A URL can name any entity, so this class opens none by itself: a
 "! subclass lists the entities it may open (get_allowed_entities) and can
@@ -23,7 +27,17 @@ CLASS z2ui5_cl_rap_start DEFINITION
       BEGIN OF cs_param,
         floorplan TYPE string VALUE `floorplan`,
         entity    TYPE string VALUE `entity`,
+        "added 2026-10, third round: display (the default) or edit - the
+        "mode the object page opens in
+        mode      TYPE string VALUE `mode`,
       END OF cs_param.
+
+    " the values of cs_param-mode
+    CONSTANTS:
+      BEGIN OF cs_mode,
+        display TYPE string VALUE `display`,
+        edit    TYPE string VALUE `edit`,
+      END OF cs_mode.
 
     "! the absolute URL that opens floorplan (one of
     "! z2ui5_cl_rap_floorplan=>cs_floorplan) for entity_name, with keys,
@@ -60,6 +74,19 @@ CLASS z2ui5_cl_rap_start DEFINITION
     METHODS get_parameters
       IMPORTING
         client        TYPE REF TO z2ui5_if_client
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value.
+
+    "! the parameters that are no floorplan, entity or mode - as the
+    "! extension maps them (z2ui5_if_rap_ext~map_inbound_parameter): a
+    "! renamed one gets its new name, one whose name the extension clears
+    "! is left out. Redefine it to map them here (added 2026-10, third
+    "! round)
+    METHODS map_parameters
+      IMPORTING
+        floorplan     TYPE string
+        entity_name   TYPE string
+        params        TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value
       RETURNING
         VALUE(result) TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value.
 
@@ -118,24 +145,44 @@ CLASS z2ui5_cl_rap_start IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD map_parameters.
+
+    DATA(lo_ext) = get_extension( entity_name ).
+    LOOP AT params INTO DATA(ls_param).
+      IF lo_ext IS BOUND.
+        lo_ext->map_inbound_parameter( EXPORTING floorplan   = floorplan
+                                                 entity_name = entity_name
+                                       CHANGING  name        = ls_param-name
+                                                 value       = ls_param-value ).
+      ENDIF.
+      IF ls_param-name IS NOT INITIAL.
+        APPEND ls_param TO result.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
   METHOD open.
 
     DATA lt_keys TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value.
+    DATA lt_others TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value.
     DATA lo_floorplan TYPE REF TO z2ui5_cl_rap_floorplan.
 
     DATA(lt_params) = get_parameters( client ).
     DATA(lv_entity) = ``.
     DATA(lv_floorplan) = ``.
+    DATA(lv_mode) = cs_mode-display.
     LOOP AT lt_params INTO DATA(ls_param).
       CASE to_lower( ls_param-name ).
         WHEN cs_param-entity.
           lv_entity = to_upper( ls_param-value ).
         WHEN cs_param-floorplan.
           lv_floorplan = to_upper( ls_param-value ).
+        WHEN cs_param-mode.
+          lv_mode = to_lower( ls_param-value ).
         WHEN OTHERS.
-          IF NOT line_exists( lt_keys[ name = to_upper( ls_param-name ) ] ).
-            APPEND VALUE #( name = to_upper( ls_param-name ) value = ls_param-value ) TO lt_keys.
-          ENDIF.
+          APPEND ls_param TO lt_others.
       ENDCASE.
     ENDLOOP.
 
@@ -150,17 +197,36 @@ CLASS z2ui5_cl_rap_start IMPLEMENTATION.
     ENDIF.
 
     IF lv_floorplan IS INITIAL.
-      lv_floorplan = COND #( WHEN lt_keys IS INITIAL THEN z2ui5_cl_rap_floorplan=>cs_floorplan-list_report
+      lv_floorplan = COND #( WHEN lt_others IS INITIAL THEN z2ui5_cl_rap_floorplan=>cs_floorplan-list_report
                              ELSE z2ui5_cl_rap_floorplan=>cs_floorplan-object_page ).
     ENDIF.
+    IF lv_floorplan <> z2ui5_cl_rap_floorplan=>cs_floorplan-worklist
+      AND lv_floorplan <> z2ui5_cl_rap_floorplan=>cs_floorplan-object_page.
+      lv_floorplan = z2ui5_cl_rap_floorplan=>cs_floorplan-list_report.
+    ENDIF.
+
+    "the other parameters: keys of an object page, filter values of a list
+    LOOP AT map_parameters( floorplan   = lv_floorplan
+                            entity_name = lv_entity
+                            params      = lt_others ) INTO DATA(ls_mapped).
+      IF NOT line_exists( lt_keys[ name = to_upper( ls_mapped-name ) ] ).
+        APPEND VALUE #( name = to_upper( ls_mapped-name ) value = ls_mapped-value ) TO lt_keys.
+      ENDIF.
+    ENDLOOP.
+
     CASE lv_floorplan.
       WHEN z2ui5_cl_rap_floorplan=>cs_floorplan-worklist.
-        lo_floorplan = NEW z2ui5_cl_rap_worklist( cds_view_name = lv_entity ).
+        DATA(lo_worklist) = NEW z2ui5_cl_rap_worklist( cds_view_name = lv_entity ).
+        lo_worklist->set_filter_presets( lt_keys ).
+        lo_floorplan = lo_worklist.
       WHEN z2ui5_cl_rap_floorplan=>cs_floorplan-object_page.
         lo_floorplan = NEW z2ui5_cl_rap_object_page( cds_view_name = lv_entity
-                                                      keys          = lt_keys ).
+                                                      keys          = lt_keys
+                                                      editable      = xsdbool( lv_mode = cs_mode-edit ) ).
       WHEN OTHERS.
-        lo_floorplan = NEW z2ui5_cl_rap_list_report( cds_view_name = lv_entity ).
+        DATA(lo_list) = NEW z2ui5_cl_rap_list_report( cds_view_name = lv_entity ).
+        lo_list->set_filter_presets( lt_keys ).
+        lo_floorplan = lo_list.
     ENDCASE.
 
     DATA(lo_ext) = get_extension( lv_entity ).

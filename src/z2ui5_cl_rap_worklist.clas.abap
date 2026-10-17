@@ -111,8 +111,8 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     IF mv_segment_field IS INITIAL.
       READ TABLE ms_entity-selection_variants INTO DATA(ls_variant) WITH KEY qualifier = mv_segment.
       IF sy-subrc = 0.
-        DATA(lv_variant_where) = z2ui5_cl_rap_util=>selection_filter_to_where( filter    = ls_variant-filter
-                                                                              it_fields = ms_entity-fields ).
+        DATA(lv_variant_where) = z2ui5_cl_rap_util=>selection_variant_where( is_variant = ls_variant
+                                                                            it_fields  = ms_entity-fields ).
         IF lv_variant_where IS NOT INITIAL.
           result = COND #( WHEN result IS INITIAL THEN lv_variant_where ELSE |{ result } AND { lv_variant_where }| ).
         ENDIF.
@@ -157,8 +157,8 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     IF mv_segment_field IS INITIAL.
       DATA lt_variant_tab TYPE ty_t_segment.
       LOOP AT ms_entity-selection_variants INTO DATA(ls_variant) WHERE qualifier IS NOT INITIAL.
-        DATA(lv_variant_where) = z2ui5_cl_rap_util=>selection_filter_to_where( filter    = ls_variant-filter
-                                                                              it_fields = ms_entity-fields ).
+        DATA(lv_variant_where) = z2ui5_cl_rap_util=>selection_variant_where( is_variant = ls_variant
+                                                                            it_fields  = ms_entity-fields ).
         IF lv_variant_where IS INITIAL.
           CONTINUE.
         ENDIF.
@@ -186,15 +186,29 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     DATA(lv_select) = |{ mv_segment_field } AS segment_key, COUNT(*) AS segment_count|.
     DATA(lv_where) = get_ext_where( entity_name = mv_cds_view
                                     where       = where ).
-    TRY.
-        SELECT (lv_select) FROM (mv_cds_view)
-          WHERE (lv_where)
-          GROUP BY (mv_segment_field)
-          INTO CORRESPONDING FIELDS OF TABLE @lt_group
-          UP TO 20 ROWS.
-      CATCH cx_root.
-        RETURN.
-    ENDTRY.
+    IF get_read_info( mv_cds_view )-query_class IS NOT INITIAL.
+      "a custom entity: ABAP SQL cannot group it - its rows are counted
+      LOOP AT aggregate_rows( entity_name = mv_cds_view
+                              where       = where
+                              group_by    = mv_segment_field
+                              method      = `COUNT` ) INTO DATA(ls_aggregate).
+        IF lines( lt_group ) >= 20.
+          EXIT.
+        ENDIF.
+        APPEND VALUE #( segment_key   = ls_aggregate-group_key
+                        segment_count = ls_aggregate-row_count ) TO lt_group.
+      ENDLOOP.
+    ELSE.
+      TRY.
+          SELECT (lv_select) FROM (mv_cds_view)
+            WHERE (lv_where)
+            GROUP BY (mv_segment_field)
+            INTO CORRESPONDING FIELDS OF TABLE @lt_group
+            UP TO 20 ROWS.
+        CATCH cx_root.
+          RETURN.
+      ENDTRY.
+    ENDIF.
 
     "all items - counted, not summed up from the first 20 groups
     APPEND VALUE #( key   = cv_segment_all
@@ -214,7 +228,7 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
   METHOD render_page.
 
     IF mr_data IS NOT BOUND.
-      client->message_box_display( text = |{ get_text( cs_text-load_error ) }: { mv_cds_view }|
+      client->message_box_display( text = get_load_error( mv_cds_view )
                                    type = `error` ).
       RETURN.
     ENDIF.
@@ -313,15 +327,14 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     render_variant_controls( io_toolbar = lo_toolbar
                              client     = client ).
 
-    "@UI.lineItem actions of type #FOR_ACTION - on the selected rows
-    LOOP AT get_line_item_actions( abap_false ) INTO DATA(ls_action).
-      lo_toolbar->tag( `Button`
-          )->a( n = `text`
-                t = ls_action-label
-          )->a( n = `press`
-                v = client->_event( val = ls_event-action
-                                    arg = ls_action-name ) ).
-    ENDLOOP.
+    "@UI.lineItem actions of type #FOR_ACTION - on the selected rows, a
+    "static one without; by position, an action group as a menu
+    render_action_buttons( io_container     = lo_toolbar
+                           it_actions       = get_line_item_actions( abap_false )
+                           it_groups        = ms_entity-action_groups
+                           client           = client
+                           event            = ls_event-action
+                           enabled_values   = get_action_enabled( ) ).
 
     "@UI.lineItem #FOR_INTENT_BASED_NAVIGATION - to another app
     LOOP AT get_line_item_intents( ) INTO DATA(ls_intent).

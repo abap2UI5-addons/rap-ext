@@ -1,0 +1,49 @@
+// The ABAP Cloud check (npm run lint:cloud, part of npm run check): the
+// same sources against the ABAP Cloud language version and the released
+// API set alone - errorNamespace "." makes every SAP object that is not in
+// the steampunk-2305 API set an error, where abaplint.jsonc (^Z) treats it
+// as void. What it shows: no static reference to an on-premise object (the
+// annotation service, DDFIELDS, DD02L, ENQUEUE_E_TABLE, ...) is left, so
+// the classes activate in ABAP Cloud and the on-premise paths are reached
+// dynamically only. What it does not show: whether a method of a released
+// class is released itself, an authorization object, the system fields an
+// ABAP Cloud syntax check warns about - see README "ABAP Cloud" and
+// ROADMAP.md. Style rules stay in abaplint.jsonc; this file checks syntax
+// and the API set only.
+{
+  "global": {
+    "files": "/src/**/*.*",
+    // the dynamic EML statements abaplint cannot parse - as in abaplint.jsonc
+    "noIssues": [
+      "/src/z2ui5_cl_rap_eml_perm.clas.abap",
+      "/src/z2ui5_cl_rap_eml_read.clas.abap",
+      "/src/z2ui5_cl_rap_eml_key.clas.abap"
+    ]
+  },
+  "dependencies": [
+    {
+      "url": "https://github.com/abapedia/steampunk-2305-api",
+      "folder": "/deps",
+      "files": "/src/**/*.*"
+    },
+    {
+      // the same release as abaplint.jsonc - scripts/core-pin.mjs moves both
+      "url": "https://github.com/abap2UI5/abap2UI5",
+      "branch": "1.146.0",
+      "folder": "/abap2UI5",
+      "files": "/src/**/*.*"
+    }
+  ],
+  "syntax": {
+    "version": "Cloud",
+    "errorNamespace": "."
+  },
+  "rules": {
+    "check_syntax": true,
+    "parser_error": true,
+    "unknown_types": true,
+    "cloud_types": true,
+    "check_ddic": true,
+    "xml_consistency": true
+  }
+}

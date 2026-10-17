@@ -12,7 +12,12 @@
 "! object edits and activates the ROOT, whose keys are context-root_keys.
 "!
 "! This is the only class of the addon that contains EML statements abaplint
-"! can parse. They need a release with RAP; the floorplans ask
+"! can parse. The three dynamic forms abaplint cannot parse - GET PERMISSIONS
+"! OPERATIONS, READ ENTITIES OPERATIONS, CONVERT KEY - sit in a class of
+"! their own each (cs_dynamic, since 2026-10, third round), outside every
+"! gate, and are called dynamically: where one does not activate, only its
+"! feature is lost (feature control, reading a draft back, the keys of late
+"! numbering). They need a release with RAP; the floorplans ask
 "! z2ui5_cl_rap_floorplan=>eml_available( ) first - which answers from RTTI
 "! without loading this class - so a system that cannot activate it still
 "! runs every floorplan read-only.
@@ -33,17 +38,34 @@ CLASS z2ui5_cl_rap_eml DEFINITION
 
   PUBLIC SECTION.
 
+    " the classes of the dynamic EML statements abaplint cannot parse - in
+    " global.noIssues of abaplint.jsonc, named here as literals so that
+    " this class activates without them (added 2026-10, third round)
+    CONSTANTS:
+      BEGIN OF cs_dynamic,
+        "GET PERMISSIONS OPERATIONS - method GET
+        permissions TYPE string VALUE `Z2UI5_CL_RAP_EML_PERM`,
+        "READ ENTITIES OPERATIONS - method READ
+        read        TYPE string VALUE `Z2UI5_CL_RAP_EML_READ`,
+        "COMMIT ENTITIES BEGIN, CONVERT KEY, COMMIT ENTITIES END - method
+        "COMMIT
+        convert_key TYPE string VALUE `Z2UI5_CL_RAP_EML_KEY`,
+      END OF cs_dynamic.
+
     TYPES ty_s_result TYPE z2ui5_cl_rap_floorplan=>ty_s_result.
     TYPES ty_s_context TYPE z2ui5_cl_rap_floorplan=>ty_s_rap_context.
 
     "! create one instance - fields with a value are sent. With
     "! context-association it is created by association under
-    "! context-parent
+    "! context-parent. in_draft (added 2026-10, third round): the parent is
+    "! a draft the object page edits - the child is created in that draft,
+    "! committed, without Edit and Activate of the root
     CLASS-METHODS create
       IMPORTING
         entity_name   TYPE clike
         row           TYPE data
         context       TYPE ty_s_context OPTIONAL
+        in_draft      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -57,11 +79,15 @@ CLASS z2ui5_cl_rap_eml DEFINITION
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
+    "! delete one instance. in_draft (added 2026-10, third round): a child
+    "! of the draft the object page edits - deleted in that draft,
+    "! committed, without Edit and Activate of the root
     CLASS-METHODS delete
       IMPORTING
         entity_name   TYPE clike
         row           TYPE data
         context       TYPE ty_s_context OPTIONAL
+        in_draft      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -74,7 +100,13 @@ CLASS z2ui5_cl_rap_eml DEFINITION
         VALUE(result) TYPE abap_bool.
 
     "! execute an action for every row of rows (a table of the entity);
-    "! param is the action's parameter structure, if it has one
+    "! param is the action's parameter structure, if it has one. A static
+    "! action (is_static) runs once, without rows. Every instance gets a
+    "! %cid where its type has one - a factory action needs it - and the
+    "! keys of what the action created (MAPPED) are the result's keys.
+    "! isolated (@UI...invocationGrouping: #ISOLATED): one request and
+    "! commit per row, so a row that fails does not stop the others -
+    "! success then means every row succeeded
     CLASS-METHODS execute_action
       IMPORTING
         entity_name   TYPE clike
@@ -82,6 +114,9 @@ CLASS z2ui5_cl_rap_eml DEFINITION
         rows          TYPE ANY TABLE
         param         TYPE REF TO data OPTIONAL
         context       TYPE ty_s_context OPTIONAL
+        "added 2026-10, third round
+        is_static     TYPE abap_bool DEFAULT abap_false
+        isolated      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -109,6 +144,71 @@ CLASS z2ui5_cl_rap_eml DEFINITION
         context       TYPE ty_s_context OPTIONAL
       RETURNING
         VALUE(result) TYPE ty_s_result.
+
+    "! GET PERMISSIONS for entity_name - the global and static permissions,
+    "! and those of every instance of rows (a table of the entity) when
+    "! given. answered stays abap_false when the statement's class or the
+    "! derived types are missing (added 2026-10, third round)
+    CLASS-METHODS get_permissions
+      IMPORTING
+        entity_name   TYPE clike
+        context       TYPE ty_s_context OPTIONAL
+        rows          TYPE REF TO data OPTIONAL
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_s_permissions.
+
+    "! READ ENTITIES of the instances of rows (a table of the entity) -
+    "! their drafts when is_draft is set: a table of the READ RESULT type,
+    "! one line per instance found (an own draft, read back). Unbound when
+    "! the read could not be made (added 2026-10, third round)
+    CLASS-METHODS read_instances
+      IMPORTING
+        entity_name   TYPE clike
+        context       TYPE ty_s_context OPTIONAL
+        rows          TYPE REF TO data
+        is_draft      TYPE abap_bool DEFAULT abap_true
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
+    "! The default values of an action's parameter: the %param of what the
+    "! default function of the action answers (BDEF `default function
+    "! GetDefaultsFor...` - function is its name), executed with READ
+    "! ENTITIES OPERATIONS for the first instance of rows (a table of the
+    "! entity) - for a static action (is_static) without one. is_draft
+    "! addresses the draft of the instance. Unbound when the business object
+    "! has no such function or it could not be run. The derived types of a
+    "! function (\FUNCTION=...\TYPE=IMPORTING / RESULT) and the operation
+    "! IF_ABAP_BEHV=>OP-R-EXECUTE are written from the documentation and
+    "! read dynamically - docs/system-test.md (added 2026-10, third round)
+    CLASS-METHODS read_action_defaults
+      IMPORTING
+        entity_name   TYPE clike
+        function      TYPE clike
+        rows          TYPE REF TO data OPTIONAL
+        context       TYPE ty_s_context OPTIONAL
+        is_static     TYPE abap_bool DEFAULT abap_false
+        is_draft      TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
+    "! READ ENTITIES BY association of the instances of rows (a table of
+    "! entity_name, the parent): the rows of the association's target the
+    "! instances lead to - their drafts when is_draft is set - as a table
+    "! of the READ RESULT type of the association. What the object page
+    "! shows of the children of the draft it edits; unbound when the read
+    "! could not be made. The derived type names (\ASSOC= or
+    "! \ASSOCIATION=...\TYPE=READ_I / READ_R) and IF_ABAP_BEHV=>OP-R-READ_BA
+    "! are written from the documentation - docs/system-test.md (added
+    "! 2026-10, third round)
+    CLASS-METHODS read_by_association
+      IMPORTING
+        entity_name   TYPE clike
+        association   TYPE clike
+        rows          TYPE REF TO data
+        context       TYPE ty_s_context OPTIONAL
+        is_draft      TYPE abap_bool DEFAULT abap_true
+      RETURNING
+        VALUE(result) TYPE REF TO data.
 
   PRIVATE SECTION.
 
@@ -174,6 +274,7 @@ CLASS z2ui5_cl_rap_eml DEFINITION
         entity_name   TYPE string
         row           TYPE data
         context       TYPE ty_s_context
+        in_draft      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -213,8 +314,28 @@ CLASS z2ui5_cl_rap_eml DEFINITION
         op            TYPE clike
         sub_name      TYPE string OPTIONAL
         instances     TYPE REF TO data
+        "the MAPPED keys are the result's keys - a create, a factory action
+        with_keys     TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
+
+    "! the instances of an action, one request per instance - each
+    "! committed, the messages of all of them in the result
+    CLASS-METHODS run_isolated
+      IMPORTING
+        entity_name   TYPE string
+        action        TYPE string
+        instances     TYPE REF TO data
+      RETURNING
+        VALUE(result) TYPE ty_s_result.
+
+    "! the parameter and the content ID of one action instance
+    CLASS-METHODS fill_action_instance
+      IMPORTING
+        param    TYPE REF TO data
+        cid      TYPE string
+      CHANGING
+        instance TYPE data.
 
     "! a derived type of the BDEF bdef (the entity itself when empty)
     CLASS-METHODS create_instances
@@ -252,6 +373,86 @@ CLASS z2ui5_cl_rap_eml DEFINITION
       CHANGING
         instance TYPE data.
 
+    "! the first of names that can be created as a type - unbound when none
+    CLASS-METHODS create_first_type
+      IMPORTING
+        names         TYPE string_table
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
+    "! every flag (an elementary component of one byte) of data, in every
+    "! substructure, set to IF_ABAP_BEHV=>MK-ON - a permission request for
+    "! everything the entity has
+    CLASS-METHODS request_everything
+      CHANGING
+        data TYPE data.
+
+    "! one global or instance permission structure of a PERMISSIONS RESULT
+    CLASS-METHODS read_permission_set
+      IMPORTING
+        structure     TYPE data
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_s_perm_set.
+
+    "! the flag name of structure as an integer - -1 when it has none
+    CLASS-METHODS get_flag
+      IMPORTING
+        structure     TYPE data
+        name          TYPE string
+      RETURNING
+        VALUE(result) TYPE i.
+
+    "! the elementary components of structure whose name has no % - the
+    "! key fields of a response or permission line; only_filled leaves out
+    "! the initial ones
+    CLASS-METHODS get_plain_fields
+      IMPORTING
+        structure     TYPE data
+        only_filled   TYPE abap_bool DEFAULT abap_true
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value.
+
+    "! the first instance of a MAPPED response - its entity and the entry
+    CLASS-METHODS get_mapped_entry
+      IMPORTING
+        mapped      TYPE ANY TABLE
+      EXPORTING
+        entity_name TYPE string
+        entry       TYPE REF TO data.
+
+    "! COMMIT ENTITIES with the final key of a created instance that has
+    "! only a preliminary one (late numbering, %pid of entry): COMMIT
+    "! ENTITIES BEGIN, CONVERT KEY, COMMIT ENTITIES END
+    "! (z2ui5_cl_rap_eml_key). subrc -1: the statement's class could not be
+    "! called, nothing was committed
+    CLASS-METHODS commit_late_numbering
+      IMPORTING
+        entity_name TYPE string
+        entry       TYPE REF TO data
+      EXPORTING
+        keys        TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value
+        subrc       TYPE i
+      CHANGING
+        failed      TYPE abp_behv_response_tab
+        reported    TYPE abp_behv_response_tab.
+
+    "! every field of the %control of instance set - a read of all fields
+    CLASS-METHODS set_control_all
+      CHANGING
+        instance TYPE data.
+
+    "! one message (msg, an IF_ABAP_BEHV_MESSAGE) into messages and, with
+    "! its severity, the fields of the %element of entry (a response entry,
+    "! when there is one) and target (the entity), into details
+    CLASS-METHODS add_message
+      IMPORTING
+        msg      TYPE any
+        entry    TYPE any OPTIONAL
+        target   TYPE string OPTIONAL
+      CHANGING
+        messages TYPE string_table
+        details  TYPE z2ui5_cl_rap_floorplan=>ty_t_message.
+
 ENDCLASS.
 
 
@@ -264,7 +465,8 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     IF context-association IS NOT INITIAL.
       result = create_by_association( entity_name = lv_entity
                                       row         = row
-                                      context     = context ).
+                                      context     = context
+                                      in_draft    = in_draft ).
       RETURN.
     ENDIF.
 
@@ -334,13 +536,22 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     FIELD-SYMBOLS <lt_inst> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lt_target> TYPE STANDARD TABLE.
 
+    "\ASSOC= is the documented form of the absolute name, \ASSOCIATION=
+    "the one used up to 2026-10 - whichever the system knows
+    DATA lr_inst TYPE REF TO data.
     TRY.
-        DATA(lr_inst) = create_instances( entity_name = lv_parent
-                                          bdef        = lv_bdef
-                                          type_suffix = |\\ASSOCIATION={ lv_assoc }\\TYPE=CREATE| ).
+        lr_inst = create_instances( entity_name = lv_parent
+                                    bdef        = lv_bdef
+                                    type_suffix = |\\ASSOC={ lv_assoc }\\TYPE=CREATE| ).
       CATCH cx_sy_create_data_error.
-        result-messages = VALUE #( ( |{ entity_name } cannot be created under { lv_parent }| ) ).
-        RETURN.
+        TRY.
+            lr_inst = create_instances( entity_name = lv_parent
+                                        bdef        = lv_bdef
+                                        type_suffix = |\\ASSOCIATION={ lv_assoc }\\TYPE=CREATE| ).
+          CATCH cx_sy_create_data_error.
+            result-messages = VALUE #( ( |{ entity_name } cannot be created under { lv_parent }| ) ).
+            RETURN.
+        ENDTRY.
     ENDTRY.
     ASSIGN lr_inst->* TO <lt_inst>.
     APPEND INITIAL LINE TO <lt_inst> ASSIGNING FIELD-SYMBOL(<ls_inst>).
@@ -386,7 +597,8 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
                                sub_name    = lv_assoc
                                instances   = lr_inst ) )
         is_create = abap_true ) ).
-    IF lv_draft = abap_true.
+    "a child of the draft the page edits stays in that draft
+    IF lv_draft = abap_true AND in_draft = abap_false.
       TRY.
           wrap_in_root_draft( EXPORTING bdef      = lv_bdef
                                         root_keys = context-root_keys
@@ -518,6 +730,13 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     ENDIF.
 
     set_draft( CHANGING instance = <ls_inst> ).
+    "a child of the draft the page edits is deleted in that draft
+    IF in_draft = abap_true.
+      result = run( entity_name = lv_entity
+                    op          = if_abap_behv=>op-m-delete
+                    instances   = lr_inst ).
+      RETURN.
+    ENDIF.
     DATA(lt_steps) = VALUE ty_t_steps(
       ( ops = VALUE #( ( op = if_abap_behv=>op-m-delete entity_name = lv_entity instances = lr_inst ) ) ) ).
     TRY.
@@ -551,27 +770,91 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     ENDTRY.
     ASSIGN lr_inst->* TO <lt_inst>.
 
-    LOOP AT rows ASSIGNING FIELD-SYMBOL(<ls_row>).
-      APPEND INITIAL LINE TO <lt_inst> ASSIGNING FIELD-SYMBOL(<ls_inst>).
-      MOVE-CORRESPONDING <ls_row> TO <ls_inst>.
-      IF param IS BOUND.
-        ASSIGN COMPONENT `%PARAM` OF STRUCTURE <ls_inst> TO FIELD-SYMBOL(<ls_param>).
-        IF sy-subrc = 0.
-          ASSIGN param->* TO FIELD-SYMBOL(<ls_param_value>).
-          MOVE-CORRESPONDING <ls_param_value> TO <ls_param>.
-        ENDIF.
-      ENDIF.
-    ENDLOOP.
+    IF is_static = abap_true.
+      "a static action has no instance - one call, its content ID and
+      "parameter only
+      APPEND INITIAL LINE TO <lt_inst> ASSIGNING FIELD-SYMBOL(<ls_static>).
+      fill_action_instance( EXPORTING param    = param
+                                      cid      = `Z2UI5_ACTION_1`
+                            CHANGING  instance = <ls_static> ).
+    ELSE.
+      LOOP AT rows ASSIGNING FIELD-SYMBOL(<ls_row>).
+        APPEND INITIAL LINE TO <lt_inst> ASSIGNING FIELD-SYMBOL(<ls_inst>).
+        MOVE-CORRESPONDING <ls_row> TO <ls_inst>.
+        fill_action_instance( EXPORTING param    = param
+                                        cid      = |Z2UI5_ACTION_{ lines( <lt_inst> ) }|
+                              CHANGING  instance = <ls_inst> ).
+      ENDLOOP.
+    ENDIF.
 
     IF <lt_inst> IS INITIAL.
       result-messages = VALUE #( ( `Select at least one row` ) ).
       RETURN.
     ENDIF.
 
+    IF isolated = abap_true AND lines( <lt_inst> ) > 1.
+      result = run_isolated( entity_name = lv_entity
+                             action      = lv_action
+                             instances   = lr_inst ).
+      RETURN.
+    ENDIF.
+
     result = run( entity_name = lv_entity
                   op          = if_abap_behv=>op-m-action
                   sub_name    = lv_action
-                  instances   = lr_inst ).
+                  instances   = lr_inst
+                  with_keys   = abap_true ).
+
+  ENDMETHOD.
+
+
+  METHOD fill_action_instance.
+
+    IF param IS BOUND.
+      ASSIGN COMPONENT `%PARAM` OF STRUCTURE instance TO FIELD-SYMBOL(<ls_param>).
+      IF sy-subrc = 0.
+        ASSIGN param->* TO FIELD-SYMBOL(<ls_param_value>).
+        MOVE-CORRESPONDING <ls_param_value> TO <ls_param>.
+      ENDIF.
+    ENDIF.
+    "a static or factory action refers to what it creates by its content ID
+    ASSIGN COMPONENT `%CID` OF STRUCTURE instance TO FIELD-SYMBOL(<lv_cid>).
+    IF sy-subrc = 0.
+      <lv_cid> = cid.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD run_isolated.
+
+    DATA lr_one TYPE REF TO data.
+    FIELD-SYMBOLS <lt_all> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_one> TYPE STANDARD TABLE.
+
+    ASSIGN instances->* TO <lt_all>.
+    result-success = abap_true.
+    LOOP AT <lt_all> ASSIGNING FIELD-SYMBOL(<ls_inst>).
+      CREATE DATA lr_one LIKE <lt_all>.
+      ASSIGN lr_one->* TO <lt_one>.
+      APPEND <ls_inst> TO <lt_one>.
+      DATA(ls_one) = run( entity_name = entity_name
+                          op          = if_abap_behv=>op-m-action
+                          sub_name    = action
+                          instances   = lr_one
+                          with_keys   = abap_true ).
+      LOOP AT ls_one-messages INTO DATA(lv_message).
+        IF NOT line_exists( result-messages[ table_line = lv_message ] ).
+          APPEND lv_message TO result-messages.
+        ENDIF.
+      ENDLOOP.
+      APPEND LINES OF ls_one-details TO result-details.
+      IF ls_one-success = abap_false.
+        result-success = abap_false.
+      ELSEIF ls_one-keys IS NOT INITIAL.
+        result-keys = ls_one-keys.
+      ENDIF.
+    ENDLOOP.
 
   ENDMETHOD.
 
@@ -651,7 +934,7 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
                     sub_name    = sub_name
                     instances   = instances ) TO lt_op.
     result = run_steps( VALUE #( ( ops       = lt_op
-                                   is_create = xsdbool( op = if_abap_behv=>op-m-create ) ) ) ).
+                                   is_create = xsdbool( op = if_abap_behv=>op-m-create OR with_keys = abap_true ) ) ) ).
 
   ENDMETHOD.
 
@@ -660,6 +943,10 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
 
     DATA lt_commit_failed TYPE abp_behv_response_tab.
     DATA lt_commit_reported TYPE abp_behv_response_tab.
+    "late numbering: the created instance has only a preliminary key
+    DATA lr_late_entry TYPE REF TO data.
+    DATA lv_late_entity TYPE string.
+    DATA lv_subrc TYPE i.
 
     TRY.
         DATA lt_previous_keys TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value.
@@ -699,11 +986,31 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
           lt_previous_keys = get_mapped_keys( lt_mapped ).
           IF ls_step-is_create = abap_true.
             result-keys = lt_previous_keys.
+            CLEAR lr_late_entry.
+            IF lt_previous_keys IS INITIAL.
+              get_mapped_entry( EXPORTING mapped      = lt_mapped
+                                IMPORTING entity_name = lv_late_entity
+                                          entry       = lr_late_entry ).
+            ENDIF.
           ENDIF.
         ENDLOOP.
 
-        COMMIT ENTITIES RESPONSES FAILED lt_commit_failed REPORTED lt_commit_reported.
-        IF sy-subrc <> 0.
+        "the final key of a late numbering exists only during the save -
+        "CONVERT KEY between COMMIT ENTITIES BEGIN and END (ROADMAP 4)
+        lv_subrc = -1.
+        IF lr_late_entry IS BOUND AND result-keys IS INITIAL.
+          commit_late_numbering( EXPORTING entity_name = lv_late_entity
+                                           entry       = lr_late_entry
+                                 IMPORTING keys        = result-keys
+                                           subrc       = lv_subrc
+                                 CHANGING  failed      = lt_commit_failed
+                                           reported    = lt_commit_reported ).
+        ENDIF.
+        IF lv_subrc = -1.
+          COMMIT ENTITIES RESPONSES FAILED lt_commit_failed REPORTED lt_commit_reported.
+          lv_subrc = sy-subrc.
+        ENDIF.
+        IF lv_subrc <> 0.
           collect_messages( EXPORTING responses = lt_commit_reported
                             CHANGING  messages  = result-messages
                                       details   = result-details ).
@@ -834,21 +1141,43 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     "a response row names its entity and points at the entries of it; the
     "entries carry %msg, and %element flags the fields a message is about.
     "Read generically - every data reference in the row is followed,
-    "whatever the component is called
+    "whatever the component is called. Since 2026-10 (third round) the
+    "messages of no entity (%other) are collected too: an entry that is a
+    "message itself, and a table of messages in the row - how the dynamic
+    "form hands %other over is not documented (docs/system-test.md)
     FIELD-SYMBOLS <lr_entries> TYPE any.
     FIELD-SYMBOLS <lt_entries> TYPE ANY TABLE.
     FIELD-SYMBOLS <lo_msg> TYPE any.
-    FIELD-SYMBOLS <ls_element> TYPE any.
-    FIELD-SYMBOLS <lv_flag> TYPE any.
+    FIELD-SYMBOLS <lv_entity> TYPE any.
     DATA lr_ref TYPE REF TO data.
+    DATA lv_target TYPE string.
+    DATA lv_kind TYPE abap_typekind.
 
     LOOP AT responses ASSIGNING FIELD-SYMBOL(<ls_response>).
+      CLEAR lv_target.
+      ASSIGN COMPONENT `ENTITY_NAME` OF STRUCTURE <ls_response> TO <lv_entity>.
+      IF sy-subrc = 0.
+        lv_target = <lv_entity>.
+      ENDIF.
       DO.
         ASSIGN COMPONENT sy-index OF STRUCTURE <ls_response> TO <lr_entries>.
         IF sy-subrc <> 0.
           EXIT.
         ENDIF.
-        IF cl_abap_typedescr=>describe_by_data( <lr_entries> )->type_kind <> cl_abap_typedescr=>typekind_dref.
+        lv_kind = cl_abap_typedescr=>describe_by_data( <lr_entries> )->type_kind.
+        IF lv_kind = cl_abap_typedescr=>typekind_table.
+          "%other: a table of messages in the row itself
+          ASSIGN <lr_entries> TO <lt_entries>.
+          LOOP AT <lt_entries> ASSIGNING <lo_msg>.
+            IF cl_abap_typedescr=>describe_by_data( <lo_msg> )->type_kind = cl_abap_typedescr=>typekind_oref.
+              add_message( EXPORTING msg      = <lo_msg>
+                           CHANGING  messages = messages
+                                     details  = details ).
+            ENDIF.
+          ENDLOOP.
+          CONTINUE.
+        ENDIF.
+        IF lv_kind <> cl_abap_typedescr=>typekind_dref.
           CONTINUE.
         ENDIF.
         lr_ref = <lr_entries>.
@@ -860,42 +1189,23 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
           CONTINUE.
         ENDIF.
         LOOP AT <lt_entries> ASSIGNING FIELD-SYMBOL(<ls_entry>).
-          ASSIGN COMPONENT `%MSG` OF STRUCTURE <ls_entry> TO <lo_msg>.
-          IF sy-subrc <> 0 OR <lo_msg> IS INITIAL.
+          "a message of no instance - an entry that is the message itself
+          IF cl_abap_typedescr=>describe_by_data( <ls_entry> )->type_kind = cl_abap_typedescr=>typekind_oref.
+            add_message( EXPORTING msg      = <ls_entry>
+                                   target   = lv_target
+                         CHANGING  messages = messages
+                                   details  = details ).
             CONTINUE.
           ENDIF.
-          TRY.
-              DATA(lo_message) = CAST if_message( <lo_msg> ).
-              DATA(lv_text) = lo_message->get_text( ).
-              IF lv_text IS INITIAL OR line_exists( messages[ table_line = lv_text ] ).
-                CONTINUE.
-              ENDIF.
-              APPEND lv_text TO messages.
-
-              DATA(ls_detail) = VALUE z2ui5_cl_rap_floorplan=>ty_s_message( text = lv_text type = `error` ).
-              TRY.
-                  ls_detail-type = SWITCH #( CAST if_abap_behv_message( <lo_msg> )->m_severity
-                    WHEN if_abap_behv_message=>severity-warning     THEN `warning`
-                    WHEN if_abap_behv_message=>severity-success     THEN `success`
-                    WHEN if_abap_behv_message=>severity-information THEN `information`
-                    WHEN if_abap_behv_message=>severity-none        THEN `information`
-                    ELSE `error` ).
-                CATCH cx_root ##NO_HANDLER.
-              ENDTRY.
-              UNASSIGN <ls_element>.
-              ASSIGN COMPONENT `%ELEMENT` OF STRUCTURE <ls_entry> TO <ls_element>.
-              IF <ls_element> IS ASSIGNED.
-                DATA(lo_element) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_element> ) ).
-                LOOP AT lo_element->components INTO DATA(ls_comp).
-                  ASSIGN COMPONENT ls_comp-name OF STRUCTURE <ls_element> TO <lv_flag>.
-                  IF sy-subrc = 0 AND <lv_flag> = if_abap_behv=>mk-on.
-                    APPEND CONV string( ls_comp-name ) TO ls_detail-fields.
-                  ENDIF.
-                ENDLOOP.
-              ENDIF.
-              APPEND ls_detail TO details.
-            CATCH cx_root ##NO_HANDLER.
-          ENDTRY.
+          ASSIGN COMPONENT `%MSG` OF STRUCTURE <ls_entry> TO <lo_msg>.
+          IF sy-subrc <> 0.
+            CONTINUE.
+          ENDIF.
+          add_message( EXPORTING msg      = <lo_msg>
+                                 entry    = <ls_entry>
+                                 target   = lv_target
+                       CHANGING  messages = messages
+                                 details  = details ).
         ENDLOOP.
       ENDDO.
     ENDLOOP.
@@ -903,13 +1213,75 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD add_message.
+
+    FIELD-SYMBOLS <ls_element> TYPE any.
+    FIELD-SYMBOLS <lv_flag> TYPE any.
+
+    IF msg IS INITIAL.
+      RETURN.
+    ENDIF.
+    TRY.
+        DATA(lo_message) = CAST if_message( msg ).
+        DATA(lv_text) = lo_message->get_text( ).
+        IF lv_text IS INITIAL OR line_exists( messages[ table_line = lv_text ] ).
+          RETURN.
+        ENDIF.
+        APPEND lv_text TO messages.
+
+        DATA(ls_detail) = VALUE z2ui5_cl_rap_floorplan=>ty_s_message( text   = lv_text
+                                                                      type   = `error`
+                                                                      target = target ).
+        TRY.
+            ls_detail-type = SWITCH #( CAST if_abap_behv_message( msg )->m_severity
+              WHEN if_abap_behv_message=>severity-warning     THEN `warning`
+              WHEN if_abap_behv_message=>severity-success     THEN `success`
+              WHEN if_abap_behv_message=>severity-information THEN `information`
+              WHEN if_abap_behv_message=>severity-none        THEN `information`
+              ELSE `error` ).
+          CATCH cx_root ##NO_HANDLER.
+        ENDTRY.
+        IF entry IS SUPPLIED.
+          ASSIGN COMPONENT `%ELEMENT` OF STRUCTURE entry TO <ls_element>.
+          IF sy-subrc = 0.
+            DATA(lo_element) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_element> ) ).
+            LOOP AT lo_element->components INTO DATA(ls_comp).
+              ASSIGN COMPONENT ls_comp-name OF STRUCTURE <ls_element> TO <lv_flag>.
+              IF sy-subrc = 0 AND <lv_flag> = if_abap_behv=>mk-on.
+                APPEND CONV string( ls_comp-name ) TO ls_detail-fields.
+              ENDIF.
+            ENDLOOP.
+          ENDIF.
+        ENDIF.
+        APPEND ls_detail TO details.
+      CATCH cx_root ##NO_HANDLER.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
   METHOD get_mapped_keys.
+
+    get_mapped_entry( EXPORTING mapped = mapped
+                      IMPORTING entry  = DATA(lr_entry) ).
+    IF lr_entry IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_entry->* TO FIELD-SYMBOL(<ls_entry>).
+    "the flat components - %cid, %pid, %key, %tky are RAP's own
+    result = get_plain_fields( <ls_entry> ).
+
+  ENDMETHOD.
+
+
+  METHOD get_mapped_entry.
 
     FIELD-SYMBOLS <lr_entries> TYPE any.
     FIELD-SYMBOLS <lt_entries> TYPE ANY TABLE.
-    FIELD-SYMBOLS <lv_value> TYPE any.
+    FIELD-SYMBOLS <lv_entity> TYPE any.
     DATA lr_ref TYPE REF TO data.
 
+    CLEAR: entity_name, entry.
     LOOP AT mapped ASSIGNING FIELD-SYMBOL(<ls_response>).
       DO.
         ASSIGN COMPONENT sy-index OF STRUCTURE <ls_response> TO <lr_entries>.
@@ -927,21 +1299,339 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
         IF sy-subrc <> 0.
           CONTINUE.
         ENDIF.
-        LOOP AT <lt_entries> ASSIGNING FIELD-SYMBOL(<ls_entry>).
-          "the flat components - %cid, %pid, %key, %tky are RAP's own
-          DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_entry> ) ).
-          LOOP AT lo_struct->components INTO DATA(ls_comp).
-            IF ls_comp-name(1) = `%`.
-              CONTINUE.
-            ENDIF.
-            ASSIGN COMPONENT ls_comp-name OF STRUCTURE <ls_entry> TO <lv_value>.
-            IF sy-subrc = 0 AND <lv_value> IS NOT INITIAL.
-              APPEND VALUE #( name = ls_comp-name value = |{ <lv_value> }| ) TO result.
-            ENDIF.
-          ENDLOOP.
+        LOOP AT <lt_entries> REFERENCE INTO entry.
+          ASSIGN COMPONENT `ENTITY_NAME` OF STRUCTURE <ls_response> TO <lv_entity>.
+          IF sy-subrc = 0.
+            entity_name = to_upper( condense( |{ <lv_entity> }| ) ).
+          ENDIF.
           RETURN.
         ENDLOOP.
       ENDDO.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_plain_fields.
+
+    FIELD-SYMBOLS <lv_value> TYPE any.
+
+    DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( structure ) ).
+    LOOP AT lo_struct->components INTO DATA(ls_comp).
+      IF ls_comp-name IS INITIAL OR ls_comp-name(1) = `%`.
+        CONTINUE.
+      ENDIF.
+      ASSIGN COMPONENT ls_comp-name OF STRUCTURE structure TO <lv_value>.
+      IF sy-subrc <> 0
+        OR cl_abap_typedescr=>describe_by_data( <lv_value> )->kind <> cl_abap_typedescr=>kind_elem.
+        CONTINUE.
+      ENDIF.
+      IF only_filled = abap_true AND <lv_value> IS INITIAL.
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( name = ls_comp-name value = |{ <lv_value> }| ) TO result.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD commit_late_numbering.
+
+    DATA lv_pid TYPE abp_behv_pid.
+    DATA lr_key TYPE REF TO data.
+    DATA lv_entity TYPE abp_entity_name.
+    FIELD-SYMBOLS <ls_new_key> TYPE any.
+
+    CLEAR keys.
+    subrc = -1.
+    ASSIGN entry->* TO FIELD-SYMBOL(<ls_entry>).
+    ASSIGN COMPONENT `%PID` OF STRUCTURE <ls_entry> TO FIELD-SYMBOL(<lv_pid>).
+    IF sy-subrc <> 0 OR <lv_pid> IS INITIAL.
+      RETURN.
+    ENDIF.
+    ASSIGN COMPONENT `%KEY` OF STRUCTURE <ls_entry> TO FIELD-SYMBOL(<ls_key>).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    lv_pid = <lv_pid>.
+    lv_entity = entity_name.
+    CREATE DATA lr_key LIKE <ls_key>.
+    ASSIGN lr_key->* TO <ls_new_key>.
+
+    DATA(lv_class) = cs_dynamic-convert_key.
+    DATA(lv_method) = `COMMIT`.
+    TRY.
+        CALL METHOD (lv_class)=>(lv_method)
+          EXPORTING
+            entity_name = lv_entity
+            pid         = lv_pid
+          CHANGING
+            key         = <ls_new_key>
+            failed      = failed
+            reported    = reported
+            subrc       = subrc.
+      CATCH cx_root.
+        "not called - the caller commits without the key
+        subrc = -1.
+        RETURN.
+    ENDTRY.
+    IF subrc = 0.
+      keys = get_plain_fields( <ls_new_key> ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD get_permissions.
+
+    DATA lt_ops TYPE abp_behv_permissions_tab.
+    DATA lt_failed TYPE abp_behv_response_tab.
+    DATA lt_reported TYPE abp_behv_response_tab.
+    FIELD-SYMBOLS <lt_keys> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
+    FIELD-SYMBOLS <ls_request> TYPE any.
+    FIELD-SYMBOLS <ls_result> TYPE any.
+    FIELD-SYMBOLS <ls_global> TYPE any.
+    FIELD-SYMBOLS <lt_instances> TYPE ANY TABLE.
+
+    DATA(lv_entity) = to_upper( entity_name ).
+    DATA(lv_bdef) = get_bdef( entity_name = lv_entity
+                              context     = context ).
+    DATA(lr_keys) = create_first_type( z2ui5_cl_rap_util=>get_permission_type_names( bdef        = lv_bdef
+                                                                                    entity_name = lv_entity
+                                                                                    kind        = `KEY` ) ).
+    DATA(lr_request) = create_first_type( z2ui5_cl_rap_util=>get_permission_type_names( bdef        = lv_bdef
+                                                                                       entity_name = lv_entity
+                                                                                       kind        = `REQUEST` ) ).
+    DATA(lr_result) = create_first_type( z2ui5_cl_rap_util=>get_permission_type_names( bdef        = lv_bdef
+                                                                                      entity_name = lv_entity
+                                                                                      kind        = `RESULT` ) ).
+    IF lr_keys IS NOT BOUND OR lr_request IS NOT BOUND OR lr_result IS NOT BOUND.
+      RETURN.
+    ENDIF.
+
+    ASSIGN lr_request->* TO <ls_request>.
+    request_everything( CHANGING data = <ls_request> ).
+    ASSIGN lr_keys->* TO <lt_keys>.
+    IF rows IS BOUND.
+      ASSIGN rows->* TO <lt_rows>.
+      LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+        APPEND INITIAL LINE TO <lt_keys> ASSIGNING FIELD-SYMBOL(<ls_key>).
+        MOVE-CORRESPONDING <ls_row> TO <ls_key>.
+      ENDLOOP.
+    ENDIF.
+    APPEND VALUE #( entity_name = lv_entity
+                    request     = lr_request
+                    instances   = lr_keys
+                    results     = lr_result ) TO lt_ops.
+
+    DATA(lv_class) = cs_dynamic-permissions.
+    DATA(lv_method) = `GET`.
+    TRY.
+        CALL METHOD (lv_class)=>(lv_method)
+          CHANGING
+            operations = lt_ops
+            failed     = lt_failed
+            reported   = lt_reported.
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+
+    result-answered = abap_true.
+    ASSIGN lr_result->* TO <ls_result>.
+    ASSIGN COMPONENT `GLOBAL` OF STRUCTURE <ls_result> TO <ls_global>.
+    IF sy-subrc = 0.
+      result-global = read_permission_set( <ls_global> ).
+    ELSE.
+      result-global = VALUE #( can_create = abap_true
+                               can_update = abap_true
+                               can_delete = abap_true ).
+    ENDIF.
+    ASSIGN COMPONENT `INSTANCES` OF STRUCTURE <ls_result> TO <lt_instances>.
+    IF sy-subrc = 0.
+      LOOP AT <lt_instances> ASSIGNING FIELD-SYMBOL(<ls_instance>).
+        DATA(ls_set) = read_permission_set( <ls_instance> ).
+        ls_set-keys = get_plain_fields( structure   = <ls_instance>
+                                        only_filled = abap_false ).
+        APPEND ls_set TO result-instances.
+      ENDLOOP.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD create_first_type.
+    LOOP AT names INTO DATA(lv_name).
+      TRY.
+          CREATE DATA result TYPE (lv_name).
+          RETURN.
+        CATCH cx_sy_create_data_error.
+          CLEAR result.
+      ENDTRY.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD request_everything.
+
+    FIELD-SYMBOLS <lv_comp> TYPE any.
+
+    DATA(lo_type) = cl_abap_typedescr=>describe_by_data( data ).
+    IF lo_type->kind = cl_abap_typedescr=>kind_struct.
+      DATA(lo_struct) = CAST cl_abap_structdescr( lo_type ).
+      LOOP AT lo_struct->components INTO DATA(ls_comp).
+        ASSIGN COMPONENT ls_comp-name OF STRUCTURE data TO <lv_comp>.
+        IF sy-subrc = 0.
+          request_everything( CHANGING data = <lv_comp> ).
+        ENDIF.
+      ENDLOOP.
+    ELSEIF lo_type->kind = cl_abap_typedescr=>kind_elem AND lo_type->length = 1.
+      data = if_abap_behv=>mk-on.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD get_flag.
+
+    result = -1.
+    ASSIGN COMPONENT name OF STRUCTURE structure TO FIELD-SYMBOL(<lv_flag>).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    TRY.
+        result = <lv_flag>.
+      CATCH cx_root.
+        result = -1.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD read_permission_set.
+
+    FIELD-SYMBOLS <ls_sub> TYPE any.
+    FIELD-SYMBOLS <lv_flag> TYPE any.
+    DATA lv_value TYPE i.
+
+    "what GET PERMISSIONS does not name is allowed
+    result-can_create = xsdbool( get_flag( structure = structure name = `%CREATE` ) <= 0 ).
+    result-can_update = xsdbool( get_flag( structure = structure name = `%UPDATE` ) <= 0 ).
+    result-can_delete = xsdbool( get_flag( structure = structure name = `%DELETE` ) <= 0 ).
+
+    DO 3 TIMES.
+      DATA(lv_sub) = SWITCH string( sy-index WHEN 1 THEN `%ACTION` WHEN 2 THEN `%ASSOC` ELSE `%FIELD` ).
+      UNASSIGN <ls_sub>.
+      ASSIGN COMPONENT lv_sub OF STRUCTURE structure TO <ls_sub>.
+      IF <ls_sub> IS NOT ASSIGNED
+        OR cl_abap_typedescr=>describe_by_data( <ls_sub> )->kind <> cl_abap_typedescr=>kind_struct.
+        CONTINUE.
+      ENDIF.
+      DATA(lo_sub) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_sub> ) ).
+      LOOP AT lo_sub->components INTO DATA(ls_comp).
+        ASSIGN COMPONENT ls_comp-name OF STRUCTURE <ls_sub> TO <lv_flag>.
+        IF sy-subrc <> 0.
+          CONTINUE.
+        ENDIF.
+        TRY.
+            lv_value = <lv_flag>.
+          CATCH cx_root.
+            CONTINUE.
+        ENDTRY.
+        CASE lv_sub.
+          WHEN `%ACTION`.
+            APPEND VALUE #( name    = ls_comp-name
+                            enabled = z2ui5_cl_rap_util=>is_operation_enabled( lv_value ) ) TO result-actions.
+          WHEN `%ASSOC`.
+            APPEND VALUE #( name    = ls_comp-name
+                            enabled = z2ui5_cl_rap_util=>is_operation_enabled( lv_value ) ) TO result-associations.
+          WHEN OTHERS.
+            APPEND z2ui5_cl_rap_util=>decode_field_permission( name  = CONV #( ls_comp-name )
+                                                               value = lv_value ) TO result-fields.
+        ENDCASE.
+      ENDLOOP.
+    ENDDO.
+
+  ENDMETHOD.
+
+
+  METHOD read_instances.
+
+    DATA lt_ops TYPE abp_behv_retrievals_tab.
+    DATA lt_failed TYPE abp_behv_response_tab.
+    DATA lt_reported TYPE abp_behv_response_tab.
+    DATA lr_in TYPE REF TO data.
+    DATA lr_out TYPE REF TO data.
+    FIELD-SYMBOLS <lt_in> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
+
+    IF rows IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    DATA(lv_entity) = to_upper( entity_name ).
+    DATA(lv_bdef) = get_bdef( entity_name = lv_entity
+                              context     = context ).
+    TRY.
+        lr_in = create_instances( entity_name = lv_entity
+                                  bdef        = lv_bdef
+                                  type_suffix = `\TYPE=READ_I` ).
+        lr_out = create_instances( entity_name = lv_entity
+                                   bdef        = lv_bdef
+                                   type_suffix = `\TYPE=READ_R` ).
+      CATCH cx_sy_create_data_error.
+        RETURN.
+    ENDTRY.
+
+    ASSIGN lr_in->* TO <lt_in>.
+    ASSIGN rows->* TO <lt_rows>.
+    LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      APPEND INITIAL LINE TO <lt_in> ASSIGNING FIELD-SYMBOL(<ls_in>).
+      MOVE-CORRESPONDING <ls_row> TO <ls_in>.
+      IF is_draft = abap_true.
+        set_draft( CHANGING instance = <ls_in> ).
+      ENDIF.
+      set_control_all( CHANGING instance = <ls_in> ).
+    ENDLOOP.
+    IF <lt_in> IS INITIAL.
+      result = lr_out.
+      RETURN.
+    ENDIF.
+
+    APPEND VALUE #( op          = if_abap_behv=>op-r-read
+                    entity_name = lv_entity
+                    instances   = lr_in
+                    results     = lr_out ) TO lt_ops.
+    DATA(lv_class) = cs_dynamic-read.
+    DATA(lv_method) = `READ`.
+    TRY.
+        CALL METHOD (lv_class)=>(lv_method)
+          CHANGING
+            operations = lt_ops
+            failed     = lt_failed
+            reported   = lt_reported.
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+    result = lr_out.
+
+  ENDMETHOD.
+
+
+  METHOD set_control_all.
+
+    FIELD-SYMBOLS <ls_control> TYPE any.
+    FIELD-SYMBOLS <lv_flag> TYPE any.
+
+    ASSIGN COMPONENT `%CONTROL` OF STRUCTURE instance TO <ls_control>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    DATA(lo_control) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_control> ) ).
+    LOOP AT lo_control->components INTO DATA(ls_comp).
+      ASSIGN COMPONENT ls_comp-name OF STRUCTURE <ls_control> TO <lv_flag>.
+      IF sy-subrc = 0.
+        <lv_flag> = if_abap_behv=>mk-on.
+      ENDIF.
     ENDLOOP.
 
   ENDMETHOD.
@@ -979,6 +1669,201 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
       ENDIF.
       <lv_flag> = if_abap_behv=>mk-on.
     ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD read_action_defaults.
+
+    DATA lt_ops TYPE abp_behv_retrievals_tab.
+    DATA lt_failed TYPE abp_behv_response_tab.
+    DATA lt_reported TYPE abp_behv_response_tab.
+    DATA lr_in TYPE REF TO data.
+    DATA lr_out TYPE REF TO data.
+    DATA lt_kinds TYPE string_table.
+    FIELD-SYMBOLS <lt_in> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_out> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
+    FIELD-SYMBOLS <lv_op> TYPE any.
+    FIELD-SYMBOLS <lv_comp> TYPE any.
+
+    DATA(lv_entity) = to_upper( entity_name ).
+    DATA(lv_function) = to_upper( function ).
+    DATA(lv_bdef) = get_bdef( entity_name = lv_entity
+                              context     = context ).
+    "the operation of a function - read by name, so a release without it
+    "only loses the defaults
+    ASSIGN (`IF_ABAP_BEHV=>OP-R-EXECUTE`) TO <lv_op>.
+    IF sy-subrc <> 0 OR lv_function IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    "a function's derived types are named like an action's (\ACTION=);
+    "\FUNCTION= is tried first
+    lt_kinds = VALUE #( ( `\FUNCTION=` ) ( `\ACTION=` ) ).
+    LOOP AT lt_kinds INTO DATA(lv_kind).
+      TRY.
+          lr_in = create_instances( entity_name = lv_entity
+                                    bdef        = lv_bdef
+                                    type_suffix = |{ lv_kind }{ lv_function }\\TYPE=IMPORTING| ).
+          lr_out = create_instances( entity_name = lv_entity
+                                     bdef        = lv_bdef
+                                     type_suffix = |{ lv_kind }{ lv_function }\\TYPE=RESULT| ).
+          EXIT.
+        CATCH cx_sy_create_data_error.
+          CLEAR: lr_in, lr_out.
+      ENDTRY.
+    ENDLOOP.
+    IF lr_in IS NOT BOUND OR lr_out IS NOT BOUND.
+      RETURN.
+    ENDIF.
+
+    ASSIGN lr_in->* TO <lt_in>.
+    APPEND INITIAL LINE TO <lt_in> ASSIGNING FIELD-SYMBOL(<ls_in>).
+    IF is_static = abap_false.
+      IF rows IS NOT BOUND.
+        RETURN.
+      ENDIF.
+      ASSIGN rows->* TO <lt_rows>.
+      IF lines( <lt_rows> ) = 0.
+        RETURN.
+      ENDIF.
+      LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+        MOVE-CORRESPONDING <ls_row> TO <ls_in>.
+        EXIT.
+      ENDLOOP.
+      IF is_draft = abap_true.
+        set_draft( CHANGING instance = <ls_in> ).
+      ENDIF.
+    ENDIF.
+    ASSIGN COMPONENT `%CID` OF STRUCTURE <ls_in> TO <lv_comp>.
+    IF sy-subrc = 0.
+      <lv_comp> = `Z2UI5_DEFAULTS_1`.
+    ENDIF.
+
+    APPEND INITIAL LINE TO lt_ops ASSIGNING FIELD-SYMBOL(<ls_op>).
+    <ls_op>-op = <lv_op>.
+    <ls_op>-entity_name = lv_entity.
+    <ls_op>-instances = lr_in.
+    <ls_op>-results = lr_out.
+    "the function's name - SUB_NAME, read by name like the operation
+    ASSIGN COMPONENT `SUB_NAME` OF STRUCTURE <ls_op> TO <lv_comp>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    <lv_comp> = lv_function.
+
+    DATA(lv_class) = cs_dynamic-read.
+    DATA(lv_method) = `READ`.
+    TRY.
+        CALL METHOD (lv_class)=>(lv_method)
+          CHANGING
+            operations = lt_ops
+            failed     = lt_failed
+            reported   = lt_reported.
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+
+    ASSIGN lr_out->* TO <lt_out>.
+    LOOP AT <lt_out> ASSIGNING FIELD-SYMBOL(<ls_out>).
+      ASSIGN COMPONENT `%PARAM` OF STRUCTURE <ls_out> TO FIELD-SYMBOL(<ls_param>).
+      IF sy-subrc = 0.
+        CREATE DATA result LIKE <ls_param>.
+        ASSIGN result->* TO FIELD-SYMBOL(<ls_result>).
+        <ls_result> = <ls_param>.
+      ENDIF.
+      EXIT.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD read_by_association.
+
+    DATA lt_ops TYPE abp_behv_retrievals_tab.
+    DATA lt_failed TYPE abp_behv_response_tab.
+    DATA lt_reported TYPE abp_behv_response_tab.
+    DATA lr_in TYPE REF TO data.
+    DATA lr_out TYPE REF TO data.
+    DATA lt_kinds TYPE string_table.
+    FIELD-SYMBOLS <lt_in> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
+    FIELD-SYMBOLS <lv_op> TYPE any.
+    FIELD-SYMBOLS <lv_comp> TYPE any.
+
+    IF rows IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    DATA(lv_entity) = to_upper( entity_name ).
+    DATA(lv_assoc) = to_upper( association ).
+    DATA(lv_bdef) = get_bdef( entity_name = lv_entity
+                              context     = context ).
+    "the operation, read by name - a release without it only loses the
+    "children of a draft
+    ASSIGN (`IF_ABAP_BEHV=>OP-R-READ_BA`) TO <lv_op>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    "\ASSOC= is the documented form, \ASSOCIATION= the one create uses as
+    "its second try
+    lt_kinds = VALUE #( ( `\ASSOC=` ) ( `\ASSOCIATION=` ) ).
+    LOOP AT lt_kinds INTO DATA(lv_kind).
+      TRY.
+          lr_in = create_instances( entity_name = lv_entity
+                                    bdef        = lv_bdef
+                                    type_suffix = |{ lv_kind }{ lv_assoc }\\TYPE=READ_I| ).
+          lr_out = create_instances( entity_name = lv_entity
+                                     bdef        = lv_bdef
+                                     type_suffix = |{ lv_kind }{ lv_assoc }\\TYPE=READ_R| ).
+          EXIT.
+        CATCH cx_sy_create_data_error.
+          CLEAR: lr_in, lr_out.
+      ENDTRY.
+    ENDLOOP.
+    IF lr_in IS NOT BOUND OR lr_out IS NOT BOUND.
+      RETURN.
+    ENDIF.
+
+    ASSIGN lr_in->* TO <lt_in>.
+    ASSIGN rows->* TO <lt_rows>.
+    LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      APPEND INITIAL LINE TO <lt_in> ASSIGNING FIELD-SYMBOL(<ls_in>).
+      MOVE-CORRESPONDING <ls_row> TO <ls_in>.
+      IF is_draft = abap_true.
+        set_draft( CHANGING instance = <ls_in> ).
+      ENDIF.
+      set_control_all( CHANGING instance = <ls_in> ).
+    ENDLOOP.
+    IF <lt_in> IS INITIAL.
+      result = lr_out.
+      RETURN.
+    ENDIF.
+
+    APPEND INITIAL LINE TO lt_ops ASSIGNING FIELD-SYMBOL(<ls_op>).
+    <ls_op>-op = <lv_op>.
+    <ls_op>-entity_name = lv_entity.
+    <ls_op>-instances = lr_in.
+    <ls_op>-results = lr_out.
+    "the association's name - SUB_NAME, read by name like the operation
+    ASSIGN COMPONENT `SUB_NAME` OF STRUCTURE <ls_op> TO <lv_comp>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    <lv_comp> = lv_assoc.
+
+    DATA(lv_class) = cs_dynamic-read.
+    DATA(lv_method) = `READ`.
+    TRY.
+        CALL METHOD (lv_class)=>(lv_method)
+          CHANGING
+            operations = lt_ops
+            failed     = lt_failed
+            reported   = lt_reported.
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+    result = lr_out.
 
   ENDMETHOD.
 

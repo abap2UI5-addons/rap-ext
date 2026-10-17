@@ -39,8 +39,11 @@ Good for:
 
 What it is not:
 
-- **Not for ABAP Cloud.** The annotations are read through on-premise DDIC
-  APIs (`CL_DD_DDL_ANNOTATION_SERVICE`) that are not released for ABAP Cloud.
+- **Not the whole addon in ABAP Cloud.** On premise the annotations are read
+  through the DDIC API `CL_DD_DDL_ANNOTATION_SERVICE`, which ABAP Cloud does
+  not release. There the addon reads through the released XCO API instead,
+  and a database table is read-only - see [ABAP Cloud](#abap-cloud) for
+  what works, what is off and what is not verified yet.
 - **Not for a plain internal table.** This addon renders from **CDS
   annotations**. For a list report over a plain internal table there is no
   counterpart in the abap2UI5 core today — an RTTI-based
@@ -53,7 +56,9 @@ What it is not:
 **Requirements**
 
 - Standard ABAP 7.58 or higher - the release the code is checked against;
-  not ABAP Cloud
+  ABAP Cloud as an additional path with the limits in
+  [ABAP Cloud](#abap-cloud) (the sources are also checked against the ABAP
+  Cloud language version, `npm run lint:cloud`)
 - [abap2UI5](https://github.com/abap2UI5/abap2UI5) - the checks run against
   the release pinned in `abaplint.jsonc`
 - UI5 1.77 or higher in the browser (the object page uses
@@ -81,6 +86,8 @@ come from `z2ui5_cl_rap_test_start` (see [Deep links](#deep-links)).
 | --- | --- |
 | List Report | `z2ui5_cl_rap_list_report` |
 | Worklist | `z2ui5_cl_rap_worklist` |
+| Tree (a list report of a hierarchy) | `z2ui5_cl_rap_tree` |
+| Flexible Column Layout (list and object pages side by side) | `z2ui5_cl_rap_fcl` |
 | Object Page | `z2ui5_cl_rap_object_page` |
 | Overview Page | `z2ui5_cl_rap_overview_page` |
 | Value Help | `z2ui5_cl_rap_value_help` |
@@ -173,13 +180,16 @@ ENDCLASS.
 ```
 
 Overridable steps per floorplan:
-- **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `on_action`, `execute_action`, `on_navigated`, `load_data`, `get_where_clause`, `get_line_item_fields`, `get_selection_fields`, `get_row_key_fields`, `get_line_item_actions`, `get_line_item_intents`, `get_visible_columns`, `get_missing_filters`, `on_nav_path`, `on_intent`, `on_export`, `render_export_button`, `init_variants`, `render_variant_controls`, `render_variant_popup`, `render_column_popup`, `on_variant_event`, `capture_variant`, `apply_variant`, `on_event`
+- **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `on_action`, `execute_action`, `render_action_buttons`, `open_created`, `on_navigated`, `load_data`, `get_where_clause`, `get_line_item_fields`, `get_selection_fields`, `get_row_key_fields`, `get_line_item_actions`, `get_line_item_intents`, `get_visible_columns`, `get_missing_filters`, `on_nav_path`, `on_intent`, `on_export`, `render_export_button`, `init_variants`, `get_action_rows`, `apply_filter_presets`, `render_variant_controls`, `render_variant_popup`, `render_column_popup`, `on_variant_event`, `capture_variant`, `apply_variant`, `apply_row_states`, `fill_draft_status`, `update_action_state`, `get_action_enabled`, `has_row_column`, `create_filter`, `update_filter_tokens`, `take_filter_inputs`, `apply_presentation_variants`, `on_filter_event`, `render_condition_popup`, `render_adapt_popup`, `get_adaptable_fields`, `clear_rows`, `is_initial_load`, `apply_text_columns`, `get_text_column`, `has_selection`, `get_condition_operators`, `get_ordered_columns`, `get_variant_key`, `render_toolbar_content`, `render_grid_table`, `render_grid_column`, `apply_analytics`, `read_aggregates`, `add_row_columns`, `get_selected_rows`, `on_event`
 - **Worklist**: everything of the list report (it is a subclass of it), plus `load_segments`
-- **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_content`, `render_section_form`, `render_section_fields`, `render_section_table`, `get_sections`, `save_data`, `delete_data`, `reload_data`, `load_child_rows`, `get_association_target`, `get_child_filter`, `get_child_context`, `on_child_create`, `get_bdef`, `get_root_keys`, `get_own_keys`, `start_draft`, `save_draft`, `find_created_record`, `get_link`, `on_action`, `execute_action`, `on_child_row`, `format_value`, `on_event`
+- **Tree**: everything of the list report (it is a subclass of it), plus `get_hierarchy`, `get_delete_mode`, `build_tree_rows`, `refresh_tree_state`, `get_node_key`, `get_node_row`, `get_selected_node`, `on_create_child`, `render_delete_popup`, `delete_node`
+- **Flexible Column Layout** (`z2ui5_cl_rap_fcl`): `dispatch`, `open_column`, `close_column`, `render`, `render_skeleton`, `update_layout`, `get_column_app`
+- **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_content`, `render_section_form`, `render_section_fields`, `render_section_table`, `get_sections`, `save_data`, `delete_data`, `reload_data`, `load_child_rows`, `get_association_target`, `get_child_filter`, `get_child_context`, `on_child_create`, `get_bdef`, `get_root_keys`, `get_own_keys`, `start_draft`, `save_draft`, `find_created_record`, `get_link`, `on_action`, `execute_action`, `get_record_actions`, `get_identification_fields`, `render_section_actions`, `render_action_buttons`, `on_child_action`, `execute_child_action`, `open_created`, `on_child_row`, `format_value`, `load_permissions`, `get_field_for_edit`, `read_own_draft`, `read_draft_status`, `resume_draft`, `render_draft_info`, `get_disabled_actions`, `apply_start_mode`, `get_custom_sections`, `render_section`, `render_custom_section`, `get_side_effect_fields`, `on_side_effect`, `get_admin_fields`, `render_admin_fields`, `get_change_documents`, `get_path_children`, `render_path_input`, `add_path_token`, `delete_path_token`, `get_path_as_child`, `get_token_key`, `get_token_keys`, `read_child_rows`, `add_row_flags`, `render_child_cell`, `on_child_row_add`, `on_child_row_delete`, `get_child_original`, `write_children`, `on_event`
 - **Overview Page**: `render_page`, `render_table_card`, `render_kpi_card`, `render_chart_card`, `render_card_link`, `load_all_cards`, `load_kpi_value`, `load_chart_rows`, `collect_card_rows`, `display`, `on_card`, `on_card_row`, `on_event`
 - **Value Help**: `render_dialog`, `render_filter_dialog`, `load_data`, `get_where_clause`, `on_confirm`, `on_event`
-- **Action Dialog**: `render_action_dialog`, `get_control_for_field`, `render_value_help`, `handle_value_help_confirm`, `apply_default_values`, `get_missing_fields`, `on_event`
-- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `navigate_to_intent`, `read_association_target`, `get_text`, ...
+- **Action Dialog**: `render_action_dialog`, `get_control_for_field`, `render_value_help`, `handle_value_help_confirm`, `apply_default_values`, `get_mandatory_parameters`, `apply_mandatory_parameters`, `get_missing_fields`, `on_event`
+- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `get_read_info`, `query_rows`, `calculate_virtual_elements`, `adjust_virtual_order_by`, `aggregate_rows`, `get_load_error`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `is_static_action`, `get_action_entries`, `get_action_button_type`, `is_hidden_by_annotation`, `navigate_to_intent`, `read_association_target`, `get_permissions`, `get_row_permissions`, `get_keys_of_row`, `read_drafts`, `read_draft_children`, `get_etag_field`, `check_etag`, `show_messages`, `render_message_view`, `render_file_field`, `render_upload_popup`, `apply_upload`, `download_file`, `get_max_file_size`, `get_default_function_name`, `apply_action_defaults`, `read_association_texts`, `get_association_text_key`, `get_text`, ...
+- **Deep links** (`z2ui5_cl_rap_start`): `get_allowed_entities`, `get_extension`, `get_parameters`, `map_parameters`, `open`, `render_message`
 
 ## Extension points without a subclass
 
@@ -245,7 +255,13 @@ client->nav_app_call( lo_report ).
 | `resolve_association` | the target entity of a `#LINEITEM_REFERENCE` facet - decided before the DDL source is asked |
 | `adjust_capabilities` | what may be written: switch on the writes of a database table, withhold an operation of a business object |
 | `get_start_app` | the `z2ui5_cl_rap_start` subclass whose links the object page copies (see "Deep links") |
-| `extend_view` | add controls at fixed places (`z2ui5_cl_rap_floorplan=>cs_spot`): the table toolbar, the object page's header actions and sections, the dialog's content, the overview's cards - their events arrive in `on_event` first |
+| `map_inbound_parameter` | a parameter of a link or a launchpad tile before `z2ui5_cl_rap_start` uses it - rename it to the field it fills, change its value, clear its name to ignore it |
+| `extend_view` | add controls at fixed places (`z2ui5_cl_rap_floorplan=>cs_spot`): the table toolbar, the object page's header actions, header content (`HEADER_CONTENT`, behind the header facets) and sections, the content of a custom section (`CUSTOM_SECTION`, its id in `section_id`), the dialog's content, the overview's cards - their events arrive in `on_event` first |
+| `get_custom_sections` | sections of the object page with their place: `id`, `title`, `anchor` (the id of a `@UI.facet`) and `placement` `BEFORE` or `AFTER` (default); no anchor, or one the page does not show, is the end - the content comes from `extend_view` |
+| `get_side_effect_fields` | the fields whose change updates the draft at once (`*` every field) - default `*` with draft, none without (see "Object page: children, side effects, sections") |
+| `get_change_documents` | the CDS entity of the record's change documents and its filter (its field = the record's field; empty: the keys) - a read-only section "Changes" |
+| `build_search_condition` | the WHERE of a free-text search instead of the `LIKE` - e.g. the keys a HANA fuzzy search found (see "CDS List Report") |
+| `adjust_hierarchy` | the hierarchy of a tree: node and parent field, the order of the siblings, the delete mode (see "CDS Tree") |
 
 The built-in texts are German for a German logon (`sy-langu` `D`) and
 otherwise the text pool of `z2ui5_cl_rap_floorplan` (English, translatable in
@@ -259,33 +275,52 @@ includes `if_serializable_object`, so keep its attributes serializable.
 `z2ui5_cl_rap_util=>read_entity( )` reads the fields (RTTI), the keys and the
 data element texts (DDIC), the associations and every annotation - through
 `CL_DD_DDL_ANNOTATION_SERVICE=>GET_ANNOS`, so **metadata extensions** are
-included (RAP objects keep their `@UI` annotations there). Annotation arrays
+included (RAP objects keep their `@UI` annotations there); in ABAP Cloud
+the same through XCO (see [ABAP Cloud](#abap-cloud)). Annotation arrays
 and qualifiers are read per entry:
 
 | Annotation | Used for |
 | --- | --- |
-| `@UI.headerInfo` | titles, object page header |
-| `@UI.lineItem` | columns (position, label, importance, criticality); `type: #FOR_ACTION` entries are actions (`inline: true` per row); `#WITH_URL` a link to the URL in another field, `#WITH_NAVIGATION_PATH` the object page of the record the association (`targetElement`) leads to, `#WITH_INTENT_BASED_NAVIGATION` and `#FOR_INTENT_BASED_NAVIGATION` a navigation in the Fiori launchpad (`semanticObject`, `semanticObjectAction`) |
-| `@UI.selectionField` | filter bar |
-| `@UI.identification` | object page header attributes; `#FOR_ACTION` entries are header actions |
-| `@UI.fieldGroup` | object page forms - a field can sit in several groups |
+| `@UI.headerInfo` | titles, object page header; `imageUrl` (a field) is the header's avatar, `typeImageUrl` (a URL or `sap-icon://`) stands in when the record has no image |
+| `@UI.lineItem` | columns (position, label, importance - a semantic key without one is HIGH -, criticality with its icon unless `criticalityRepresentation: #WITHOUT_ICON`, `cssDefault.width`, `iconUrl`, `hidden: true` or `#(Field)` per row); `#AS_FIELDGROUP` with `valueQualifier` a cell with the fields of that field group one under the other; a qualified `@UI.lineItem` is the table of a presentation variant whose `visualizations` names it; the entity's own `@UI.lineItem` `criticality` highlights the rows; `type: #FOR_ACTION` entries are actions (`inline: true` per row) - by `position`, `criticality` the button's type (positive Accept, negative Reject, critical Emphasized; a field's value on the object page), `actionGroupId` puts one into the menu button of a `#FOR_ACTION_GROUP` entry (`id`, `label`), `invocationGrouping: #ISOLATED` runs it row by row; `#WITH_URL` a link to the URL in another field, `#WITH_NAVIGATION_PATH` the object page of the record the association (`targetElement`) leads to, `#WITH_INTENT_BASED_NAVIGATION` and `#FOR_INTENT_BASED_NAVIGATION` a navigation in the Fiori launchpad (`semanticObject`, `semanticObjectAction`, `semanticObjectBinding` - the parameters the row's, the selected rows' or the record's fields fill; a toolbar navigation with bindings makes the rows selectable) |
+| `@UI.selectionField` | filter bar - each filter with the control of its type (see "Filter syntax") |
+| `@UI.identification` | object page header attributes (the unqualified entries; `criticality` an ObjectStatus with its icon, `importance` LOW left out on phones and tablets, MEDIUM on phones, `hidden` true or a field of the record); a `qualifier` puts the field (with its `label`) into the `#IDENTIFICATION_REFERENCE` facet of that `targetQualifier` only; `#FOR_ACTION` entries are header actions, qualified ones the actions of that section (groups, criticality and position as in `@UI.lineItem`) |
+| `value: '_Assoc.Element'` (in `@UI.identification`, `@UI.fieldGroup`) | a 1:n child as a MultiInput: a token per child of the association with its element's value - in edit mode a token creates a child by association, a deleted token deletes it; the value help is the element's (see "Object page: children, side effects, sections"). On any element, the association itself included; such an entry is no entry of the element that carries it. A `@UI.lineItem` entry of that kind is read (`path_fields`) but no column yet |
+| `@UI.fieldGroup` | object page forms - a field can sit in several groups, with the entry's `label`, `criticality`, `criticalityRepresentation`, `importance` and `hidden` (as in `@UI.identification`); a `#FOR_ACTION` entry is an action of the group's section |
+| `@UI.createHidden`, `.updateHidden`, `.deleteHidden` | no Create (list report, child tables), Edit or Delete (object page): `true`, or a field of the record (`#(IsLocked)`) whose value decides on the object page |
 | `@UI.facet` | object page sections: `#COLLECTION`, `#FIELDGROUP_REFERENCE`, `#IDENTIFICATION_REFERENCE`, `#LINEITEM_REFERENCE` - on the entity or on an element; with `purpose: #HEADER` (`#DATAPOINT_REFERENCE`, `#FIELDGROUP_REFERENCE`) the object page header |
 | `@UI.dataPoint` | status with criticality, KPI cards; `criticalityCalculation` (`#MAXIMIZE`, `#MINIMIZE`, `#TARGET` with tolerance/deviation values) colors a KPI card |
-| `@UI.presentationVariant` | the default sort order (`sortOrder`) of list report and worklist; an overview card's content (`visualizations`, `sortOrder`, `maxItems`) |
-| `@UI.selectionVariant` | worklist tabs - one per variant, its `filter` string (`Status EQ O AND Priority GE 3`; EQ NE GT GE LT LE) |
+| `@UI.presentationVariant` | the default sort order (`sortOrder`) and grouping (`groupBy`) of list report and worklist, the qualified `@UI.lineItem` of its `visualizations`; an overview card's content (`visualizations` - a chart or a qualified line item -, `sortOrder`, `maxItems`) |
+| `@UI.selectionPresentationVariant` | which presentation variant (`presentationVariantQualifier`) and selection variant (`selectionVariantQualifier`) a list report starts with - the unqualified one, else the first |
+| `@UI.selectionVariant` | the filter values a list report starts with (the unqualified one, or the one its selection presentation variant names: `selectOptions` and the comparisons of an AND in `filter`; an OR is applied as it is); worklist tabs - one per variant, its `filter` string and `selectOptions` (`propertyName`, `ranges` with `sign`, `option`, `low`, `high`), the `filter` string (`Status EQ O AND Priority GE 3`, `(Status EQ O OR Status EQ A) AND Priority GE 3`; EQ NE GT GE LT LE, AND before OR, parentheses) |
 | `@UI.textArrangement` | how value and text are shown: `#TEXT_FIRST` (default), `#TEXT_LAST`, `#TEXT_ONLY`, `#TEXT_SEPARATE` |
 | `@UI.chart` | chart cards (first dimension, first measure); `chartType` `#BAR`/`#COLUMN` bars, `#DONUT`/`#PIE` shares, `#LINE`/`#AREA` a trend |
 | `@UI.hidden`, `@UI.multiLineText`, `@UI.defaultValue` | visibility, text areas, dialog defaults |
-| `@ObjectModel.text.element` | "Text (Value)" cells, value help descriptions |
-| `@ObjectModel.semanticKey` | the key when the DDIC has none |
+| `@ObjectModel.text.element` | "Text (Value)" cells, value help descriptions, the text beside an input in edit mode (`description`) |
+| `@ObjectModel.text.association` | the text of a field from its association's target - the target's `@Semantics.text` field, in the logon language by its `@Semantics.language` field (list report cells, object page) |
+| `@ObjectModel.semanticKey` | the key when the DDIC has none; its fields bold (`ObjectIdentifier`) and of HIGH importance in the list |
+| `@Semantics.imageUrl` | the value is an image: an `Avatar` in a cell and on the object page |
+| `@Consumption.hidden` | the field is offered nowhere - no column, no filter, not in "adapt filters" |
+| `@Consumption.semanticObject`, `.semanticObjectMapping.additionalBinding` | the value is a link that navigates to the semantic object (`display`), with the value (under the mapped name) and the row's keys - in the list and on the object page |
 | `@ObjectModel.mandatory` / `.readOnly` | required fields (checked before save/confirm), read-only inputs |
-| `@ObjectModel.resultSet.sizeCategory: #XS` | a dropdown instead of a value help |
+| `@ObjectModel.resultSet.sizeCategory: #XS` | a dropdown instead of a value help - its entries with the value help's text element and the key beside it; in the filter bar a list |
+| domain fixed values | a field without an annotated value help whose domain has fixed values gets a dropdown of them (edit mode, action dialog) and a list in the filter bar (`CL_ABAP_ELEMDESCR->GET_DDIC_FIXED_VALUES`, called dynamically; in ABAP Cloud the domain through `XCO_CP_ABAP_DICTIONARY`) |
 | `@Consumption.valueHelpDefinition` | value helps, with `additionalBinding` (usage `#FILTER` and `#RESULT`) |
 | `@Consumption.filter` | filter bar: `defaultValue`, `mandatory` (no rows until it has a value), `selectionType: #SINGLE` / `multipleSelections: false` (the value help selects one), `hidden` |
-| `@Search.searchable`, `@Search.defaultSearchElement` | the search field and what it searches |
+| `@Search.searchable`, `@Search.defaultSearchElement` | the search field and what it searches: the `defaultSearchElement` fields (also when `@UI.hidden`), else every visible text and string field; a case-insensitive `LIKE` |
+| `@Search.fuzzinessThreshold` | read (`search_fuzziness`); the threshold `z2ui5_if_rap_ext~build_search_condition` is handed - a fuzzy search is HANA SQL (`CONTAINS ... FUZZY`, `z2ui5_cl_rap_util=>build_fuzzy_search`), which ABAP SQL has not: without the hook the search stays a `LIKE` |
+| `@Aggregation.default` | `#SUM`, `#MIN`, `#MAX`, `#AVG`, `#COUNT_DISTINCT`: the subtotals and the total of an analytical list report (`analytical = abap_true`) |
+| `@Hierarchy.parentChild` (`recurse.parent` / `.child`, `recurseBy`, `siblingsOrder`), `@ObjectModel.hierarchy.association`, `@OData.hierarchy.recursiveHierarchy` | the hierarchy of a tree (`z2ui5_cl_rap_tree`): the parent and node fields, or the association to the parent (its ON condition), or the CDS hierarchy (`define hierarchy ... as parent child hierarchy( source ... child to parent association ... siblings order by ... )`, read from its DDL source); without any of them a to-one association of the entity to itself whose target fields are keys |
+| `@ObjectModel.query.implementedBy` | a custom entity - read through its query provider (see "Reading") |
+| `@ObjectModel.virtualElementCalculatedBy` | a virtual element - calculated after each read; not a filter field, not searched, sortable only with `@ObjectModel.sort.transformedBy` (see "Reading") |
 | `@Semantics.amount.currencyCode`, `.quantity.unitOfMeasure`, `.booleanIndicator` | numbers with units, Yes/No |
-| `@Semantics.user.createdBy`, `.systemDateTime.createdAt` | a record created with late numbering is found again by them |
-| `@EndUserText.label` / `.quickInfo` | labels, tooltips |
+| `@Semantics.user.createdBy`, `.systemDateTime.createdAt` | a record created with late numbering is found again by them; with `.user.lastChangedBy` and `.systemDateTime.lastChangedAt` the object page's section "Change Information" (also when `@UI.hidden`; not when one of them is in a field group or the identification) |
+| `@Semantics.systemDateTime.localInstanceLastChangedAt`, `.lastChangedAt` | the field of the optimistic check before an update without a draft (the first one, else the second) |
+| `@Semantics.user.lastChangedBy` | of a draft: whose draft it is - another user's locks the record |
+| `@Semantics.largeObject` (`mimeType`, `fileName`, `acceptableMimeTypes`, `contentDispositionPreference`), `@Semantics.mimeType` | a file field (a `RAWSTRING`): a link that downloads it, in edit mode and in the action dialog an Upload button; the MIME type and file name go into their fields; the size (`get_max_file_size`, 5 MB) and the type are checked on the server (see "Files") |
+| BDEF `default function GetDefaultsFor<Action>` | the default values of the action's parameter dialog (see "Writing") |
+| BDEF feature control (via `GET PERMISSIONS`) | `features`, `authorization`, `field ( readonly )`, `readonly : update`, `mandatory`, `mandatory : create`, internal operations - what is offered, enabled and accepted |
+| `@EndUserText.label` / `.quickInfo` | labels; the quick info is the tooltip of the label in the object page's forms and the action dialog and of the column headers |
 
 The **associations** come from the entity's DDL source (`DDDDLSRC`, read by
 name): `association [..] to X as _A on ...`, `association to parent`,
@@ -295,6 +330,100 @@ takes what it does not redirect from its base, and a composition takes its
 ON condition from the child's association to parent. The object page reads
 the rows of a `#LINEITEM_REFERENCE` table by that ON condition (else by the
 keys under the same names), and `resolve_association` still decides first.
+Where `DDDDLSRC` cannot be read (ABAP Cloud), XCO describes the
+declarations of a view entity or projection view, and they are parsed the
+same way (see [ABAP Cloud](#abap-cloud)).
+
+## ABAP Cloud
+
+On premise nothing changes: the annotations come from
+`CL_DD_DDL_ANNOTATION_SERVICE`, the keys and labels from the DDIC field
+list, the associations from the DDL source. The same classes also activate
+in ABAP Cloud (SAP BTP ABAP environment, S/4HANA Cloud) - every
+on-premise object is named only dynamically, and `npm run lint:cloud`
+checks the sources against the ABAP Cloud language version and the
+released API set - and there they take another path. **Written without an
+ABAP Cloud system** - the checklist is [docs/system-test.md](docs/system-test.md),
+section 12.
+
+**How the reader is chosen.** `z2ui5_cl_rap_util=>get_environment( )`
+answers `ON_PREMISE` when RTTI knows `CL_DD_DDL_ANNOTATION_SERVICE`, else
+`CLOUD` - once per session. `get_annotation_reader( )` follows it (AUTO):
+the annotation service on premise, `z2ui5_cl_rap_anno_xco` in ABAP Cloud.
+`z2ui5_cl_rap_util=>set_annotation_reader( z2ui5_cl_rap_util=>cs_anno_reader-xco )`
+(or `-ddic`, `-auto`) chooses for the rest of the session - for example to
+compare both readers on premise, where an XCO read that finds nothing falls
+back to the service. `read_raw_annotations( )-reader` says who read them.
+Call it before the first floorplan reads (a subclass's constructor, the
+app that opens it): the setting lives in the ABAP session, like the
+annotation cache.
+
+**What works in ABAP Cloud**
+
+| Part | How |
+| --- | --- |
+| annotations of the entity and its elements | `XCO_CP_CDS=>ANNOTATIONS`: `direct`, `metadata_extension` and `inherited`, walked with `IF_XCO_CDS_ANN_VT_VISITOR` into the keys `GET_ANNOS` returns (`UI.LINEITEM$1$.POSITION`, strings in quotes, enums with `#`) - every annotation in the table above is read the same way |
+| metadata extensions | the extension annotations XCO returns, already merged over all layers by the system; merged over the entity's own: an annotation of a higher layer replaces the same annotation of a lower one - a whole array (`@UI.lineItem` with all its entries) or one value (`@UI.headerInfo.typeName`) (`merge_annotation_layers`, by `get_layer_priority`: CUSTOMER > PARTNER > INDUSTRY > LOCALIZATION > CORE > entity > propagated) |
+| propagated element annotations | `inherited` of XCO; where that answers nothing, a projection view takes the direct element annotations of its base by the original element names - not when the entity has `@Metadata.ignorePropagatedAnnotations: true` |
+| keys and labels | the key flag of the CDS field and the medium label of its data element (`read_raw_annotations( )-ddic_fields`), where the DDIC field list is not released |
+| associations | view entities: the associations (target, `to parent`, the ON condition as XCO prints it, cardinality) and compositions (target, cardinality); projection views: the base and the `redirected to [composition child / parent]` of each field - written as DDL and read by `parse_ddl_associations`, so a projection, a composition and its child's association to parent are completed as on premise |
+| domain fixed values | `XCO_CP_ABAP_DICTIONARY=>DATA_ELEMENT( )` -> its domain's fixed values (intervals left out) |
+| reading, RAP writes, actions, drafts, feature control, custom entities | as on premise - EML, `IF_RAP_QUERY_*` and RTTI are released |
+| texts | the text pool of `z2ui5_cl_rap_floorplan` (text symbols are released) - translated with the system's translation tool instead of SE63 |
+
+**What is off in ABAP Cloud**
+
+| Part | Why |
+| --- | --- |
+| writing a database table (`write_table_row`) | DD02L, `S_TABU_NAM` and `ENQUEUE_E_TABLE` are not released: `get_capabilities` reports no table, a table is read-only, and `write_table_row` answers "read-only" - write through a RAP business object |
+| the DDL source (`DDDDLSRC`) | not released: not read; a CDS hierarchy named by `@OData.hierarchy.recursiveHierarchy` is not parsed, a tree needs `@Hierarchy.parentChild`, `@ObjectModel.hierarchy.association` or a parent association |
+| associations of other entity kinds | XCO describes associations for view entities and projection views here - a classic DDIC-based view, an abstract or a custom entity has none (`resolve_association` still can name them) |
+| layer of a single metadata extension | the 2305 API set gives the merged annotations of all extensions, not each extension with its layer; `merge_annotation_layers` takes single layers as soon as a release offers them |
+
+**Hooks**: `z2ui5_cl_rap_util=>get_environment`, `set_annotation_reader`,
+`get_annotation_reader`, `flatten_annotation`, `merge_annotation_layers`,
+`get_layer_priority`, `get_ddic_fields` (public now, typed
+`ty_t_ddic_field`); the class `z2ui5_cl_rap_anno_xco` (`read_annotations`,
+`read_ddl_source`, `read_fixed_values`).
+
+## Reading - views, custom entities, virtual elements
+
+Every floorplan reads through `select_rows` and `count_rows`
+(`z2ui5_cl_rap_floorplan`), and so does every value help, child table and
+overview card. How an entity is read is decided by `get_read_info`:
+
+- **A CDS view or a table** is read with ABAP SQL, as before.
+- **A custom entity** (`@ObjectModel.query.implementedBy: 'ABAP:ZCL_...'`)
+  is read through its query provider: `z2ui5_cl_rap_query` calls
+  `IF_RAP_QUERY_PROVIDER~SELECT` with its own request and response. The
+  provider is given the filter as ABAP SQL (`get_as_sql_string`, the key
+  values of an object page as literals) and as ranges (`get_as_ranges` -
+  it raises `CX_RAP_QUERY_FILTER_NO_RANGE` when the filter is no AND of one
+  range per field, e.g. an OR over two fields), the search apart from the
+  filter (`get_search_expression`), the sort order, the page (offset 0,
+  `max_rows`), every element as requested, and whether rows
+  (`is_data_requested`) or the count (`is_total_numb_of_rec_requested`) are
+  wanted - a list asks twice, once for each. No aggregation is requested and
+  no entity parameter is supplied; `get_as_tree` answers no tree. The
+  worklist's tabs and the overview's KPI and chart cards aggregate the rows
+  in ABAP (`aggregate_rows`, at most 5000 rows). A provider that raises is
+  shown as an error (`get_load_error`: the load error, the entity and the
+  exception's text) - never as an empty list.
+- **A virtual element** (`@ObjectModel.virtualElementCalculatedBy`) has no
+  column: the other columns are selected, a condition on it is left out of
+  the WHERE (`remove_where_fields`) and it is not offered as a filter or
+  searched. After the read its class is called -
+  `IF_SADL_EXIT_CALC_ELEMENT_READ~GET_CALCULATION_INFO` and `~CALCULATE`,
+  dynamically, once per class for the rows read. It is sortable only with
+  `@ObjectModel.sort.transformedBy`: the sort is then by the elements
+  `IF_SADL_EXIT_SORT_TRANSFORM~MAP_ELEMENT` names (`adjust_virtual_order_by`).
+  `@ObjectModel.filter.transformedBy` is read but not called - its
+  transformation builds conditions with SADL objects no release offers here,
+  so a virtual element stays no filter field.
+
+A subclass can change all of it: `get_read_info` names a provider or a
+calculation the annotations do not show, `query_rows` builds the request,
+`calculate_virtual_elements` and `adjust_virtual_order_by` call the exits.
 
 ## Writing - RAP, tables, read-only
 
@@ -304,7 +433,15 @@ the entity is written through **dynamic EML** (`MODIFY ENTITIES OPERATIONS`,
 `COMMIT ENTITIES`), and only the operations its BDEF defines are offered
 (Create, Edit, Delete, and the `#FOR_ACTION` actions - with a parameter
 dialog when the action has a parameter). The messages of `REPORTED` and
-`FAILED` are shown. A CDS view that is no business object is read-only: no
+`FAILED` are shown. A **static action** (its derived type
+`\ACTION=...\TYPE=IMPORTING` carries no `%KEY`) runs without selected
+rows, with a `%cid`; a **factory action** - static or not - opens the
+object page of the record it created, by the keys `MAPPED` returns. An
+action with `invocationGrouping: #ISOLATED` runs row by row, each in a
+request of its own, so a row that fails does not stop the others. The
+toolbar actions of a child's `@UI.lineItem` run on the selected rows of its
+table on the object page, and after any action the page reads the record
+and its tables again. A CDS view that is no business object is read-only: no
 Create, Edit or Delete.
 
 A **transparent table is read-only too, unless an extension allows its
@@ -349,22 +486,117 @@ business object edits and activates the root.
 
 On the object page, a **draft business object is edited in a draft that spans
 roundtrips**: Edit creates it (committed), Save writes the changes into it
-and activates it, and Cancel or leaving the page discards it. When the
-activation is refused the draft keeps the changes and the page stays in edit
-mode. A draft that exists already (another user's, or one left by another
-app) is the business object's message; one of the user's own can be
-discarded - resuming it needs the draft read back, which is open.
+and activates it, and Cancel discards it. When the activation is refused the
+draft keeps the changes and the page stays in edit mode. Leaving the page
+while editing asks whether to **keep or discard the draft**. A record that has
+a draft of the user's own is **read back** (`READ ENTITIES` with `%is_draft`)
+and opens to be edited further; a draft left by another app makes Edit offer
+"Resume draft" or "Discard draft"; another user's draft locks the record
+("Locked by ..." above the header, no Edit or Delete). Whose draft it is, is
+decided by the draft's `@Semantics.user.lastChangedBy` field (none: the
+user's own). A record found only as a draft - what a factory action of a
+draft business object creates - opens in edit mode.
+
+**Feature control** (`GET PERMISSIONS`): the global, static and instance
+permissions decide what is offered and what is accepted on the server -
+Create, Edit, Delete, a create by association (`%assoc`), the actions
+(their buttons shown disabled; in the list report per row for an inline
+action and by the selected rows for a toolbar action), and the field control
+in edit mode: `field ( readonly )`, `readonly : update`, `mandatory`,
+`mandatory : create`, instance field control. A key is never typed in on
+change; on create it is read-only when the field control says so (early or
+managed numbering) or when it is a UUID (`RAW16`). An internal operation is
+not offered where `GET PERMISSIONS` reports it as disabled. An update of a
+read-only field, and an action a row does not allow, are refused.
+
+**Optimistic check**: before an update or delete of a business object
+without a draft, the record's etag field - the
+`@Semantics.systemDateTime.localInstanceLastChangedAt` field, else the
+`lastChangedAt` one - is compared with the stored record; a change in
+between is refused. The BDEF's `etag master` is not read (its source has no
+readable table here) - redefine `get_etag_field` to name another field.
 
 Keys are compared with **typed host variables**, not literals, so a RAW key
 (a UUID) reads the record again. A record created with **late numbering**
-(no key in `MAPPED`) is found again by `@Semantics.user.createdBy` and
-`@Semantics.systemDateTime.createdAt`; without them the page returns to the
-list. The fields a RAP message names (`%element`) are marked in edit mode.
+(no key in `MAPPED`, only a `%pid`) gets its final key with `CONVERT KEY`
+between `COMMIT ENTITIES BEGIN` and `END`; where that cannot run it is found
+again by `@Semantics.user.createdBy` and `@Semantics.systemDateTime.createdAt`,
+and without them the page returns to the list. The fields a RAP message
+names (`%element`) are marked in edit mode.
 
-Not yet: feature control (`GET PERMISSIONS`) and reading a draft back -
-see [ROADMAP.md](ROADMAP.md).
+`GET PERMISSIONS OPERATIONS`, `READ ENTITIES OPERATIONS` and `CONVERT KEY`
+are in three small classes of their own (`z2ui5_cl_rap_eml_perm`, `_read`,
+`_key`) that no offline gate reads, called dynamically: on a system where
+one does not activate, only its feature is lost.
+
+**Messages by severity** (since 2026-10, third round): what a write reports
+is shown by its severity - only success and information messages as a
+toast; one message of the floorplan itself (no field, no entity) as a
+message box; everything else in a dialog with a `sap.m.MessageView` that
+lists each message with its own type, the labels of the fields it names
+(`%element`) as subtitle and, when there are several, grouped by entity. A
+success message is left out when there is an error. The messages of
+`REPORTED` without an entity (`%other`) are collected too. The fields a
+message names keep their value state in edit mode. `show_messages`
+decides it (`z2ui5_cl_rap_util=>prepare_messages`, `get_message_display`).
+
+**Action dialogs**: the parameter dialog of an action is filled by its
+**default function** (`default function GetDefaultsFor<Action>` in the BDEF):
+before the dialog opens it is executed (`READ ENTITIES OPERATIONS`, through
+`z2ui5_cl_rap_eml_read`) for the first selected row, the record of the object
+page or - for a static action - without one, and its result fills the
+parameter's empty fields; `@UI.defaultValue` fills what is still empty.
+`get_default_function_name` names another function. A parameter is mandatory
+by `@ObjectModel.mandatory`, the extension, or - where `GET PERMISSIONS`
+answers for the abstract entity - by its BDEF's `field ( mandatory )`
+(`get_mandatory_parameters`; whether RAP answers that for an abstract entity
+is for the system test).
+
+### Files
+
+A field with `@Semantics.largeObject` (a `RAWSTRING`) is a file: the object
+page shows a link that downloads it (named by its `fileName` field), and in
+edit mode an Upload button opens a dialog with the core's upload control
+(`z2ui5.cc.FileUploader`). The file is taken into the record - its MIME type
+and file name into their fields - and written with the next Save (or into
+the draft). The server checks it: its size (`get_max_file_size`, by default
+`cv_file_max_size`, 5 MB) and its type (`acceptableMimeTypes`, `image/*`
+included; a browser that names no type is judged by the file's extension);
+the file dialog offers the known extensions of the accepted types. A file
+parameter of an action is the same: a `@Semantics.largeObject` field of the
+abstract entity. The list report does not send files to the browser - the
+object page reads its record again with them. `contentDispositionPreference`
+is read; the file is downloaded either way (a browser refuses to open a
+data URI in a new tab).
+
+```cds
+@Semantics.largeObject: { mimeType: 'MimeType', fileName: 'FileName',
+                          acceptableMimeTypes: [ 'image/png', 'application/pdf' ],
+                          contentDispositionPreference: #ATTACHMENT }
+Attachment : abap.rawstring(0);
+@Semantics.mimeType: true
+MimeType   : abap.char(128);
+FileName   : abap.char(128);
+```
 
 ## Filter syntax
+
+Each filter of the filter bar has the control of its field's type
+(`z2ui5_cl_rap_util=>get_filter_control`): a list for a boolean (Yes, No,
+all), for fixed values and for a dropdown value help; a date picker for a
+date of a single value, else a date range; a `MultiInput` with a token per
+value for a field with a value help that takes several (the value help
+adds tokens, a typed value becomes one on Enter or Go, a token's delete
+removes it); an input with the syntax below for every other field. The
+filter button next to an input or a MultiInput opens **Define
+conditions**: rows of an operator (equal to, not equal to, between,
+greater, greater or equal, less, less or equal, contains, starts with,
+ends with, empty) with its values, each including or excluding - written
+into the same syntax (`conditions_to_filter`, read back by
+`filter_to_conditions`). A mandatory filter without a value is marked as
+an error on Go. **Adapt filters** adds a filter for any visible field and
+removes one again (a mandatory filter stays); the views keep the filter
+fields.
 
 The filter bar (and `build_filter_condition`) understands:
 
@@ -377,8 +609,11 @@ The filter bar (and `build_filter_condition`) understands:
 | `a..z` | between |
 | `>x` `>=x` `<x` `<=x` | compare |
 | `a;b` | several, ORed |
+| `=` | empty |
 
-Dates can be typed as `2024-01-15`. A value help in the filter bar fills
+An excluding part (`!...`) is ANDed with the others since 2026-10 (third
+round): `=A;=B;!=C` is `( A OR B ) AND NOT C`. Dates can be typed as
+`2024-01-15`, a range as `2024-01-01..2024-01-31`. A value help in the filter bar fills
 exact values (`=US;=DE`).
 
 ## CDS Action Dialog (Popup)
@@ -470,16 +705,143 @@ Renders a Fiori-Elements-style list report for any CDS view, driven entirely by 
 - Sorting in the database - a select of the columns and a direction button, the default from `@UI.presentationVariant`; "More" loads the next rows from the database
 - Actions from `@UI.lineItem` `#FOR_ACTION` (toolbar on the selected rows, or inline per row); links and launchpad navigations from `#WITH_URL`, `#WITH_NAVIGATION_PATH`, `#WITH_INTENT_BASED_NAVIGATION` and `#FOR_INTENT_BASED_NAVIGATION`
 - Mandatory and single-value filters from `@Consumption.filter`
-- Views per user (filters, search, sort order, hidden columns; one the default), a columns dialog, and the export of every matching row as a CSV file
+- Views per user (filters, the filter fields, search, sort order, the columns - hidden, order, width -, the group field; one the default, each public or private and applied automatically or not), a columns dialog (visible, order, width, group by), and the export of every matching row as a CSV file
+- Filters by type (lists, dates, date ranges, MultiInputs with tokens), "define conditions", "adapt filters", the error state of a missing mandatory filter
+- Grouping (`@UI.presentationVariant.groupBy` or the user's group field): the rows ordered by it in the database, a group header per value
+- The start from `@UI.selectionPresentationVariant` (sort, group, a qualified `@UI.lineItem`, the selection variant's filter values); `initial_load` (`AUTO` - unless the default view does not apply automatically -, `ENABLED`, `DISABLED`: the rows only on Go)
+- Row highlight by the entity's `@UI.lineItem.criticality`, criticality icons, `#AS_FIELDGROUP` cells, images, icons, the semantic key bold, texts of a text association, links to semantic objects
 - Create where the entity allows it; row navigation to a generated object page
+- RAP feature control: an inline action enabled per row, a toolbar action by the selected rows; a draft business object shows the editing status of each row (own draft, locked by another user) and filters by it
+- A **grid table** (`table_type = cs_table_type-grid`, a `sap.ui.table.Table` for long lists - a check box column for the selection, a navigation column, the inline actions as button columns, the toolbar in its extension; no annotation needed). The `sap.ui.table` library is declared only then
+- An **analytical list** (`analytical = abap_true`): the fields with `@Aggregation.default` summed up (`SUM`, `MIN`, `MAX`, `AVG`, `COUNT_DISTINCT`) over every row that matches the filters - a group header row per value of the group field ("Status: Open" with the subtotals) and a total row at the end. Aggregated by `GROUP BY` in the database; a custom entity, a virtual element or an aggregate the database refuses is computed from the rows (at most 5000, `aggregate_rows`). Group and total rows do not navigate and are never selected. Works with both tables
+- **Fuzzy search**: `z2ui5_if_rap_ext~build_search_condition` replaces the `LIKE` of the search with a condition of its own. HANA's fuzzy search (`@Search.fuzzinessThreshold`) is no ABAP SQL - run `z2ui5_cl_rap_util=>build_fuzzy_search` (`CONTAINS( ( "NAME", "CITY" ), 'text', FUZZY( 0.8 ) )`) through ADBC or an AMDP and answer the keys it found
 
 ### abap2UI5 List Report Call
 ```abap
 client->nav_app_call( NEW z2ui5_cl_rap_list_report(
   cds_view_name = `I_COUNTRY`
   title         = `Countries`
-  max_rows      = 500 ) ).
+  max_rows      = 500
+  initial_load  = z2ui5_cl_rap_list_report=>cs_initial_load-disabled ) ).
+
+"a grid table with subtotals per group and a total
+client->nav_app_call( NEW z2ui5_cl_rap_list_report(
+  cds_view_name = `ZC_SALES_ORDER`
+  table_type    = z2ui5_cl_rap_list_report=>cs_table_type-grid
+  analytical    = abap_true ) ).
 ```
+
+```abap
+"a fuzzy search through ADBC - the keys it found as the search's WHERE
+METHOD z2ui5_if_rap_ext~build_search_condition.
+  IF entity_name <> `ZC_CUSTOMER` OR threshold IS INITIAL.
+    RETURN.
+  ENDIF.
+  DATA(lv_sql) = |SELECT "ID" FROM "ZCUSTOMER" WHERE |
+              && z2ui5_cl_rap_util=>build_fuzzy_search( it_fields  = fields
+                                                        search    = search
+                                                        threshold = threshold ).
+  "... run lv_sql with cl_sql_statement, then e.g.
+  condition = |ID IN ( { lv_ids } )|.
+ENDMETHOD.
+```
+
+A view can be **public** (every user sees it with its owner's name; only
+the owner saves or deletes it) and **apply automatically** - the list is
+read as soon as it is chosen; one that does not sets its filters and waits
+for Go. Both need the columns `IS_PUBLIC` and `AUTO_APPLY` of
+`z2ui5_t_rap_var` (added 2026-10, third round); a system whose table lacks
+them keeps private views that always apply.
+
+## CDS Tree
+
+`z2ui5_cl_rap_tree` (added 2026-10, third round) is a list report whose rows
+are the nodes of the entity's hierarchy - each under its parent, indented by
+its level, with a button that expands and collapses it; Expand all and
+Collapse all in the toolbar. The hierarchy comes from the annotations
+(`z2ui5_cl_rap_util=>read_hierarchy`, see "Metadata"), from the constructor
+or from `z2ui5_if_rap_ext~adjust_hierarchy`:
+
+```abap
+client->nav_app_call( NEW z2ui5_cl_rap_tree(
+  cds_view_name = `ZC_ORG_UNIT`
+  "only where the annotations do not say it
+  hierarchy     = VALUE #( node_field = `ORGUNIT` parent_field = `PARENTUNIT` )
+  delete_mode   = z2ui5_cl_rap_util=>cs_tree_delete-move_up
+  expand_levels = 2 ) ).
+```
+
+- The nodes are read at once, up to `max_rows` (default 1000), sorted by the
+  order of the siblings (`siblingsOrder`, `siblings order by`), then by the
+  list report's order. Expanding and collapsing is a roundtrip that reads
+  nothing - a collapsed node's descendants stay in the rows, hidden
+  (`ZZROW_VISIBLE`; the table does not grow then). The rows are read again
+  after a filter, a search, a save on the object page and a delete.
+- A node whose parent is not among the rows read (filtered away, beyond
+  `max_rows`) is shown as a root; a cycle does not loop. The CDS hierarchy's
+  `start where` is read, not applied - the roots are the nodes without a
+  parent.
+- **Create child** opens the object page of a new record with the parent
+  field set to the selected node. **Delete** asks, then deletes by the
+  delete mode (`cs_tree_delete`): `SUBTREE` (default) the node's
+  descendants first, then the node; `MOVE_UP` gives the children the
+  node's parent, then deletes it; `LEAF` deletes only a node without
+  children. Every write goes through `write_row` (RAP, or a table whose
+  writes the extension allowed) and stops at the first that fails. The
+  delete mode comes from the constructor, the hierarchy (`adjust_hierarchy`)
+  and, per node, `get_delete_mode`.
+- The filter bar, the search, the views, the actions and the object page are
+  the list report's; the tree uses the responsive table.
+
+## Flexible Column Layout
+
+`z2ui5_cl_rap_fcl` (added 2026-10, third round) shows the list report and
+the object page side by side in a `sap.f.FlexibleColumnLayout` (1.46): the
+list in the first column, the object page a row opens in the second, the
+object page of a child in the third.
+
+```abap
+client->nav_app_call( NEW z2ui5_cl_rap_fcl(
+  cds_view_name = `/DMO/C_TRAVEL_A_D`
+  title         = `Travels` ) ).
+
+"any list report - a worklist, a tree, a subclass - as the first column
+client->nav_app_call( NEW z2ui5_cl_rap_fcl(
+  list = NEW z2ui5_cl_rap_worklist( cds_view_name = `/DMO/I_TRAVEL_U`
+                                    segment_field = `Status` ) ) ).
+```
+
+**The design decision.** The floorplans are apps of their own and call each
+other with `nav_app_call` - that stays the default, nothing changes without
+this class. For the column layout they are not rewritten: the host keeps
+them as public attributes (`mo_begin`, `mo_mid`, `mo_end` - the core resolves
+their bindings through them, `MO_BEGIN->MR_DATA`) and calls their `main( )`
+with a client of its own, `z2ui5_cl_rap_fcl_client`, which hands every call
+to the real client except these:
+
+- `view_display` keeps the floorplan's view; the host puts the content of
+  each column's view (its `Page`, without the `Shell`) into its column of one
+  view and declares their namespaces on its root
+  (`z2ui5_cl_rap_util=>compose_view`). Nested views were the other way - the core has two
+  (`nest_view_display`, `nest2_view_display`), a third column has none.
+- `_event` puts the column in front of the event (`MID~SAVE`); the host
+  routes the event to that column's floorplan, which sees `SAVE`.
+- `nav_app_call` of an object page opens it in the next column (from the
+  third: the third again); any other app (a value help, an action dialog)
+  is called as before and returns to the column that called it.
+- `nav_app_leave` in the second or third column closes it (the page's back
+  button), and the floorplan to its left is called as if the page had
+  returned - `check_on_navigated( )`, `get_app_prev( )` the closed page - so
+  the list report reads its rows again after a save. In the first column it
+  leaves the host.
+
+The layout (`OneColumn`, `TwoColumnsMidExpanded`,
+`ThreeColumnsMidExpanded`) follows the open columns; the user resizes them
+with the layout's own arrows. The client is created for each call and never
+kept, so it does not travel through the draft. A floorplan that keeps the
+client it was called with, or names a new member of `z2ui5_if_client`, needs
+the client class extended - it implements every method of the pinned core's
+interface.
 
 ## CDS Object Page
 
@@ -488,7 +850,9 @@ Renders an object page for a single record of a CDS entity:
 - Header from the `@UI.facet` entries with `purpose: #HEADER`, else attributes from `@UI.identification` (fallback: first visible fields)
 - Status attributes with criticality from `@UI.dataPoint`
 - Sections from `@UI.facet`: collections with subsections, field groups, identification, tables of an association (`#LINEITEM_REFERENCE` - the target and the rows from the DDL source's association, or from `resolve_association`); Create in a composition's table
-- Edit/Save/Delete and the `@UI.identification` actions where the entity allows them; keys read-only on change, required fields checked, value helps, suggestions and dropdowns in edit mode, the fields of a save's messages marked; a draft business object edited in its draft
+- An avatar from `@UI.headerInfo.imageUrl` / `typeImageUrl`
+- Edit/Save/Delete (unless `@UI.updateHidden` / `.deleteHidden`) and the `@UI.identification` actions where the entity allows them - grouped into menu buttons, typed by criticality, at a section when qualified or in a field group; the actions of a child table on its selected rows; keys read-only on change, required fields checked, value helps, suggestions and dropdowns in edit mode, the fields of a save's messages marked; a draft business object edited in its draft, an own draft resumed, another user's shown as "locked by"; the feature control of `GET PERMISSIONS` (operations, actions, read-only and mandatory fields)
+- 1:n children as a MultiInput (an entry `value: '_Assoc.Element'`), child tables edited in edit mode, side effects in a draft, custom sections placed before or after a facet, "Change Information" and change documents (see below)
 - A button that copies a link to the record (see "Deep links")
 - User-format dates/times, Yes/No booleans, amounts/quantities with unit via `@Semantics`
 
@@ -503,6 +867,86 @@ client->nav_app_call( NEW z2ui5_cl_rap_object_page(
   keys          = VALUE #( ( name = `Country` value = `DE` ) ) ) ).
 ```
 
+### Object page: children, side effects, sections
+
+**1:n children as tokens.** An `@UI.identification` or `@UI.fieldGroup`
+entry whose `value` is an association path shows the children of that
+association as the tokens of a `MultiInput` - in the section of its
+qualifier (an unqualified identification entry in the general section):
+
+```cds
+annotate view ZC_TRAVEL with {
+  @UI.fieldGroup: [{ qualifier: 'General', position: 40, value: '_Tags.TagId', label: 'Tags' }]
+  _Tags;
+}
+```
+
+In edit mode a value typed and confirmed with Enter, or chosen in the value
+help of the child's element, creates a child by association (the
+composition fills the fields that point at the record); a deleted token
+deletes its child. A draft business object writes both into the draft at
+once (committed, not activated - Save activates them, Cancel discards
+them); without draft they wait for Save and are written after the record,
+each on its own. Create needs the child's create (`create by association`,
+its feature control and `@UI.createHidden`), delete the child's delete -
+both checked on the server for every event.
+
+**Child tables in edit mode.** A `#LINEITEM_REFERENCE` table becomes
+editable with the page: a cell is an input where the row may be changed
+(the child's update, its instance feature control from `GET PERMISSIONS`,
+`@UI.updateHidden` per row, and not for a static `field ( readonly )`, a
+key - except in a new row -, a field the composition fills, a virtual
+element or a file); a row has a delete button where it may be deleted;
+Create adds a row. With draft each of these goes into the draft at once;
+without draft the rows are written on Save (new ones created, changed ones
+updated - each checked like every write, against the record as it is
+stored). The rows carry the columns `cs_row_flag` (`ZZUPDKZ`, `ZZDELKZ`,
+`ZZNEWKZ`), set on the server - what the browser sends back in them decides
+nothing.
+
+**Side effects.** The BDEF's `side effects` cannot be read (no table holds
+the BDEF source), so the page decides by `get_side_effect_fields` (an
+extension: `z2ui5_if_rap_ext~get_side_effect_fields`) which fields update
+the draft at once. The default is `*` - every field - for a business object
+with draft and nothing without one: a draft runs its determinations on
+every modify, so any field may change others, and the `change` event
+(never `liveChange`) costs one roundtrip per value the user leaves. Such a
+change is written into the draft, the draft read back, its field control
+and its children read again, and the page shown with what the business
+object determined. Without draft nothing reaches the business object
+before Save, and the list does nothing. A changed cell of a child table
+goes into the draft when the list is not empty.
+
+**Custom sections and the header.** `z2ui5_if_rap_ext~get_custom_sections`
+names sections with their place, `extend_view` fills them:
+
+```abap
+METHOD z2ui5_if_rap_ext~get_custom_sections.
+  sections = VALUE #( ( id = `NOTES` title = `Notes` anchor = `Booking` placement = `BEFORE` ) ).
+ENDMETHOD.
+
+METHOD z2ui5_if_rap_ext~extend_view.
+  IF spot = z2ui5_cl_rap_floorplan=>cs_spot-custom_section AND section_id = `NOTES`.
+    container->tag( `Text`
+        )->a( n = `text`
+              v = `...` ).
+  ENDIF.
+ENDMETHOD.
+```
+
+The spot `HEADER_CONTENT` adds controls to the header behind its facets
+(or its attributes and data points).
+
+**Change information and change documents.** The administrative fields
+(`@Semantics.user.createdBy`, `.systemDateTime.createdAt`,
+`.user.lastChangedBy`, `.systemDateTime.lastChangedAt`) form a read-only
+section "Change Information" at the end - not on create, and not when one of
+them is placed in a field group or the identification already. A table of
+change documents works as before through a `#LINEITEM_REFERENCE` facet of an
+association to them; without one, `get_change_documents` names a CDS entity
+and its filter, and the page adds a read-only section "Changes" with its
+`@UI.lineItem` - no dependency on a change document framework.
+
 ## Deep links
 
 `z2ui5_cl_rap_start` opens a floorplan from its URL - or the startup
@@ -513,9 +957,23 @@ parameters of a launchpad tile - so a link outlives the abap2UI5 draft:
 ```
 
 `floorplan` is `OBJECT_PAGE` (the default when keys are given),
-`LIST_REPORT` or `WORKLIST`; every other parameter is a key. A URL can name
-any entity, so `z2ui5_cl_rap_start` opens none by itself - a subclass lists
-the entities it may open:
+`LIST_REPORT` or `WORKLIST`; every other parameter is a key of the object
+page - and, for a list report or a worklist, the value of the filter of the
+field it names (case-insensitive; a field outside the filter bar gets a
+filter of its own, a parameter that names no field is ignored), applied
+over the default view (`set_filter_presets`). `mode=edit` opens the object
+page in edit mode - a draft business object in a draft of its own - where
+Edit would be allowed; `mode` is therefore no key name. A semantic object's
+parameters that are called differently are mapped by
+`z2ui5_if_rap_ext~map_inbound_parameter` (or a redefined `map_parameters`):
+
+```
+...?app_start=zcl_my_rap_start&floorplan=LIST_REPORT&entity=/DMO/C_TRAVEL_PROCESSOR_M&AgencyID=070001
+...?app_start=zcl_my_rap_start&entity=I_COUNTRY&Country=DE&mode=edit
+```
+
+A URL can name any entity, so `z2ui5_cl_rap_start` opens none by itself - a
+subclass lists the entities it may open:
 
 ```abap
 CLASS zcl_my_rap_start DEFINITION PUBLIC INHERITING FROM z2ui5_cl_rap_start
@@ -640,6 +1098,196 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
 - The object page of a draft business object edits in a committed draft; the
   value help of an entity with selection fields is a `sap.m.Dialog`.
 
+### 2026-10, third round
+
+- The object page header shows only the unqualified `@UI.identification`
+  fields and actions; a qualified entry belongs to the
+  `#IDENTIFICATION_REFERENCE` facet (or section) of its qualifier - up to
+  now every such facet showed every identification field.
+- A `#FOR_ACTION` entry of a `@UI.fieldGroup` is no field of the group any
+  more, but an action of its section.
+- The action buttons of the list report, the worklist and the object page are
+  drawn by `render_action_buttons` (new, protected): actions sorted by
+  position (one without a position last), action groups as `MenuButton`s, a
+  criticality as the button type. A subclass that redefined `render_toolbar`
+  keeps its own buttons.
+- `run_action` runs a static action without rows, and its result carries the
+  keys of a record a factory action created; `z2ui5_cl_rap_eml=>execute_action`
+  has the new optional `is_static` and `isolated`.
+- Appended components: `ty_s_field_info` (`identifications`),
+  `ty_s_header_info` (`type_image_url`), `ty_s_action` (`qualifier`,
+  `criticality`, `group_id`, `invocation_grouping`), `ty_s_entity_info`
+  (`action_groups`, `create_hidden`, `update_hidden`, `delete_hidden`), the
+  object page's `ty_s_child` (`actions`) and `cs_event` (`child_action`); new
+  types `ty_s_action_group` and the floorplan's `ty_s_action_entry`. New
+  optional parameters: `run_action-invocation_grouping`,
+  `get_identification_fields-qualifier`.
+- New protected members (see the lists above) - the rename rule applies to a
+  subclass.
+- Reading (see "Reading"): a custom entity is read through its query provider
+  (new class `z2ui5_cl_rap_query`, the only one implementing the
+  `IF_RAP_QUERY_*` interfaces), a virtual element is calculated and no longer
+  selected, filtered or sorted by ABAP SQL. `select_rows` and `count_rows` keep
+  their signatures; a failed read sets the new `mv_read_error`, and the list
+  report, the worklist, the object page and the value help show it. The
+  search also covers `STRING` fields and hidden `@Search.defaultSearchElement`
+  fields. Appended components: `ty_s_field_info` (`is_virtual`,
+  `virtual_calc_class`, `sort_transform_class`, `filter_transform_class`,
+  `search_fuzziness`), `ty_s_entity_info` (`query_class`); new types and
+  methods of `z2ui5_cl_rap_util` (`get_read_info`, `build_query_filter`,
+  `parse_order_by`, `remove_where_fields`, `aggregate_rows`, ...) and the
+  floorplan's `query_available`.
+- RAP behaviour and draft (see "Writing"): feature control through
+  `GET PERMISSIONS`, reading a draft back, keeping a draft when leaving, the
+  editing status in the list report, late numbering through `CONVERT KEY`,
+  the optimistic check before an update. New classes `z2ui5_cl_rap_eml_perm`,
+  `_read` and `_key` (one dynamic EML statement each, called dynamically).
+  Leaving the object page while editing a draft no longer discards it - the
+  user is asked. A key field is now edited through the field control
+  (`get_field_for_edit`) instead of the `editable` parameter of
+  `render_field_input`. The object page's `render_action_buttons` has the new
+  optional `disabled`, the list report's `enabled_values`; the list report's
+  rows of a business object can carry the columns `cs_row_column` (`ZZDRAFT`,
+  `ZZDRAFT_TEXT`, `ZZACTION_n`). Appended: `cs_text` (11 texts, text pool
+  043-053), the object page's `cs_event-leave_decision` and
+  `ty_s_child-disabled_actions`, the list report's
+  `cs_event-selection_change`; new types of `z2ui5_cl_rap_util`
+  (`ty_s_permissions`, `ty_s_perm_set`, `ty_s_field_control`,
+  `ty_s_draft_status`, `cs_editing_status`) and its functions
+  (`get_field_control`, `get_instance_permissions`, `get_draft_status`, ...).
+  The derived type of a create by association is tried as `\ASSOC=` (the
+  documented form) before `\ASSOCIATION=`.
+- Messages, files, inbound navigation: `show_messages` shows by severity
+  (a toast, a message box or a message view) instead of one message box,
+  and has the new optional `details` and `fields`; the floorplan's
+  `ty_s_message` is now `z2ui5_cl_rap_util=>ty_s_message` (the same
+  components, `target` appended). `render_field_input` has the new optional
+  `record` and draws a file field as a link and an Upload button. The list
+  report clears the files of its rows (`clear_large_objects`), and the
+  object page reads a record it got without keys again when the entity has
+  a file field. New public members: the floorplan's `mt_message_items`,
+  `mv_file_value`, `mv_file_name`, `cv_event_upload`, `cv_event_download`,
+  `cv_event_upload_open`, `cv_event_upload_cancel`, the list report's
+  `set_filter_presets`, `z2ui5_cl_rap_start=>cs_param-mode` and
+  `cs_mode`, `z2ui5_cl_rap_eml=>read_action_defaults`;
+  `z2ui5_if_rap_ext~map_inbound_parameter` (`DEFAULT IGNORE`). Appended:
+  `ty_s_field_info` (`is_large_object`, `lob_mime_field`,
+  `lob_file_name_field`, `lob_mime_types`, `lob_disposition`,
+  `is_mime_type`), `cs_text` (9 texts, text pool 054-062). The
+  floorplan's own dialogs are now read by the view gate too.
+- Filter bar, table, views, display: the filter bar is no longer one
+  input per filter in the subheader - the subheader holds the search, the
+  editing status, "adapt filters" and Go, and the filters (a label over the
+  control of their type) are the first content of the page. A filter value
+  that excludes (`!...`) is ANDed with the others instead of ORed, and `=`
+  alone is the empty condition. The list report's constructor has the new
+  optional `initial_load`, its rows can carry the columns
+  `cs_row_column-text_prefix` (`ZZTEXT_n`); the rows are selectable also
+  for an intent navigation with `semanticObjectBinding`. A criticality
+  cell shows its icon (`#WITHOUT_ICON` leaves it out), 5 is Information
+  everywhere (`criticality_state`, `criticality_expression`, which has the
+  new optional `kind`). `navigate_to_intent` sends a parameter named
+  several times as an array. The object page applies a field group
+  entry's `label`. Appended: `ty_s_field_info` (`line_item_width`,
+  `line_item_crit_repr`, `line_item_value_qualifier`, `line_item_hidden`,
+  `line_item_icon_url`, `line_items`, `is_image_url`, `text_association`,
+  `is_semantic_text`, `is_language`, `is_consumption_hidden`,
+  `semantic_object`, `sem_object_bindings`, `entry_criticality`,
+  `entry_crit_repr`, `entry_importance`, `entry_hidden`),
+  `ty_s_field_group` (`criticality`, `crit_representation`, `importance`,
+  `hidden`), `ty_s_value_help` (`text_element`, `fixed_values`),
+  `ty_s_action` (`sem_object_bindings`), `ty_s_presentation_variant`
+  (`group_by`), `ty_s_selection_variant` (`select_options`),
+  `ty_s_entity_info` (`row_criticality`, `group_by`,
+  `sel_pres_variants`), the list report's `ty_s_filter` (`control`,
+  `tokens`, `entries`, `input`, `state`, `is_added`), `ty_s_column`
+  (`width`) and `cs_event` (tokens, conditions, adapt filters, column
+  order), the overview's `ty_s_card_data` (`line_item_qualifier`),
+  `z2ui5_cl_rap_variant`'s `ty_s_data` (`filter_fields`, `column_order`,
+  `column_widths`, `group_field`) and `ty_s_variant` (`is_public`,
+  `auto_apply`, `owner`), `cs_text` (24 texts, text pool 063-086). New:
+  the table columns `IS_PUBLIC` and `AUTO_APPLY` of `z2ui5_t_rap_var`,
+  `z2ui5_cl_rap_variant=>has_public_views`, the util's
+  `conditions_to_filter`, `filter_to_conditions`, `split_filter_value`,
+  `get_filter_control`, `get_filter_list`, `selection_variant_filters`,
+  `selection_variant_where`, `get_line_item_columns`,
+  `criticality_binding`, `get_navigation_params`, `normalize_css_width`
+  and types `ty_s_line_item`, `ty_s_sel_pres_variant`, `ty_s_condition`,
+  `cs_condition_op`, `cs_filter_control`; the list report's
+  `cs_initial_load`, `ty_s_filter_entry`, `ty_s_condition_row` and its
+  public `mv_variant_public`, `mv_variant_auto`, `mt_condition`,
+  `mt_condition_op`, `mt_adapt`, `mv_group_field`, `mt_group_item`,
+  `mv_no_data`. New protected members (see the lists above) - the rename
+  rule applies to a subclass.
+- Object page (children, side effects, sections, see "Object page:
+  children, side effects, sections"): an `@UI.lineItem`,
+  `@UI.identification` or `@UI.fieldGroup` entry whose `value` is an
+  association path is no longer taken for an entry of the element that
+  carries it, but collected in the new `ty_s_entity_info-path_fields`. The
+  child tables always carry the selection column and the columns
+  `cs_row_flag`, are read from the draft while the page edits one and are
+  editable in edit mode (Create adds a row there instead of opening a child
+  object page, and a row does not navigate); the child rows are read again
+  after Edit, Cancel and Save, not on the return from a called app in edit
+  mode. `render_sections` places each section with the new
+  `render_section` and `render_custom_section`. `mr_child_rows` holds a
+  component `PATH_n` per MultiInput. New optional parameters:
+  `write_row-in_draft`, `write_draft-check`, `render_extension-section_id`,
+  `render_section_fields-it_paths`, `z2ui5_cl_rap_eml=>create-in_draft`
+  and `=>delete-in_draft`, `z2ui5_if_rap_ext~extend_view-section_id`. New:
+  `z2ui5_if_rap_ext~get_custom_sections`, `~get_side_effect_fields`,
+  `~get_change_documents` (`DEFAULT IGNORE`), `z2ui5_cl_rap_eml=>read_by_association`,
+  the spots `cs_spot-custom_section` and `-header_content`, the util's
+  `parse_association_path`, `parse_path_fields`, `is_side_effect_field`,
+  `get_changed_fields`, `get_admin_fields`, `order_sections` and types
+  `ty_s_path_field`, `ty_s_custom_section`, `ty_s_section_slot`; the object
+  page's `cs_row_flag`, `ty_s_token`, `ty_s_path_value`,
+  `cv_key_separator`, `ty_s_path_child`, `ty_s_pending`, `cs_section_id`
+  and `cs_event` (`path_token_add`, `path_token_delete`, `path_value_help`,
+  `child_row_add`, `child_row_delete`, `child_cell_change`,
+  `side_effect`). Appended: `ty_s_child` (`can_update`, `can_delete`,
+  `read_only`), `cs_text` (2 texts, text pool 087-088). New protected
+  members (see the lists above) - the rename rule applies to a subclass.
+- **Tree, analytical list, grid table, column layout, fuzzy search**: new
+  classes `z2ui5_cl_rap_tree`, `z2ui5_cl_rap_fcl` and
+  `z2ui5_cl_rap_fcl_client`. The list report's constructor has the new
+  optional `table_type` and `analytical`, `cs_table_type` is new and
+  `cs_row_column` has the appended `row_kind`, `row_label` and
+  `row_visible`. `render_toolbar` now calls the new `render_toolbar_content`
+  with the toolbar it opened - a subclass that redefined `render_toolbar`
+  keeps its own toolbar, one that wants to add to the shipped one redefines
+  `render_toolbar_content` (the grid table calls only that one). The table's
+  `growing` is off when the rows have `ZZROW_VISIBLE`. New protected:
+  `render_grid_table`, `render_grid_column`, `apply_analytics`,
+  `read_aggregates`, `add_row_columns`, and `get_selected_rows` redefined
+  (group and total rows are never selected). `build_search_condition` of the
+  floorplan has the new optional `entity_name`. New:
+  `z2ui5_if_rap_ext~build_search_condition` and `~adjust_hierarchy` (`DEFAULT IGNORE`),
+  `cs_floorplan-tree` and `-fcl`; the util's `get_hierarchy`,
+  `get_hierarchy_fields`, `parse_ddl_hierarchy`, `read_hierarchy`,
+  `build_tree`, `get_tree_descendants`, `get_tree_children`,
+  `get_tree_indent`, `normalize_aggregation`, `get_aggregations`,
+  `build_aggregate_select`, `get_fcl_layout`, `get_view_namespaces`,
+  `get_view_body`, `compose_view`, `to_column_event`,
+  `split_column_event`, `get_search_fuzziness`, `build_fuzzy_search`,
+  `get_search_fields`, the types `ty_s_hierarchy`, `ty_s_tree_node`,
+  `ty_s_aggregation` and the constants `cs_tree_delete`, `cs_row_kind`;
+  `aggregate_rows` knows `COUNT_DISTINCT`. Appended:
+  `ty_s_field_info-aggregation_default`, `cs_text` (10 texts, text pool
+  089-098).
+- **ABAP Cloud** as an additional path (see [ABAP Cloud](#abap-cloud)): the
+  new class `z2ui5_cl_rap_anno_xco` reads annotations, associations, labels,
+  key flags and domain fixed values through XCO; every on-premise object is
+  named dynamically; the database-table writes and the DDL source read are
+  off in ABAP Cloud. New in `z2ui5_cl_rap_util`: `get_environment`,
+  `set_annotation_reader`, `get_annotation_reader`, `flatten_annotation`,
+  `get_layer_priority`, `merge_annotation_layers`, the types
+  `ty_s_ddic_field`, `ty_s_anno_event`, `ty_s_anno_layer` and the constants
+  `cs_environment`, `cs_anno_reader`, `cs_anno_event`, `cs_anno_layer`;
+  `get_ddic_fields` is public and returns `ty_t_ddic_field` instead of
+  `DDFIELDS`; appended `ty_s_raw_annotations-reader` and `-ddic_fields`.
+  `npm run lint:cloud` (`abaplint-cloud.jsonc`) is part of `npm run check`.
+
 ## Development
 
 Three gates run offline, no SAP system needed (CI runs the same on every push
@@ -648,11 +1296,13 @@ and PR):
 ```bash
 npm ci                          # the pinned toolchain, linter and render runtime
 npm run lint                    # abaplint: syntax/style, 0 issues expected
+npm run lint:cloud              # abaplint: ABAP Cloud language version and
+                                # released API set, 0 issues expected
 npm run unit                    # ABAP Unit tests that need no system, transpiled -
                                 # the util and the list report and object page
 npx abap2ui5lint                # every generated view: UI5 metadata + headless render
 npx abap2ui5lint --no-render    # fast loop, no browser
-npm run check                   # all three
+npm run check                   # all of them
 ```
 
 abaplint checks against the abap2UI5 release pinned in `abaplint.jsonc`

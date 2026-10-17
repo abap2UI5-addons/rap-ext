@@ -1,6 +1,15 @@
 {
   "global": {
-    "files": "/src/**/*.*"
+    "files": "/src/**/*.*",
+    // the dynamic EML statements abaplint cannot parse (GET PERMISSIONS
+    // OPERATIONS, READ ENTITIES OPERATIONS, CONVERT KEY) - one tiny class
+    // each, a maintainer decision of 2026-10 (ROADMAP.md, AGENTS.md).
+    // z2ui5_cl_rap_eml calls them dynamically; their .clas.xml stay checked
+    "noIssues": [
+      "/src/z2ui5_cl_rap_eml_perm.clas.abap",
+      "/src/z2ui5_cl_rap_eml_read.clas.abap",
+      "/src/z2ui5_cl_rap_eml_key.clas.abap"
+    ]
   },
   "dependencies": [
     {
