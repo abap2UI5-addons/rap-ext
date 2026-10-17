@@ -175,11 +175,11 @@ ENDCLASS.
 Overridable steps per floorplan:
 - **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `on_action`, `execute_action`, `render_action_buttons`, `open_created`, `on_navigated`, `load_data`, `get_where_clause`, `get_line_item_fields`, `get_selection_fields`, `get_row_key_fields`, `get_line_item_actions`, `get_line_item_intents`, `get_visible_columns`, `get_missing_filters`, `on_nav_path`, `on_intent`, `on_export`, `render_export_button`, `init_variants`, `get_action_rows`, `apply_filter_presets`, `render_variant_controls`, `render_variant_popup`, `render_column_popup`, `on_variant_event`, `capture_variant`, `apply_variant`, `apply_row_states`, `fill_draft_status`, `update_action_state`, `get_action_enabled`, `has_row_column`, `create_filter`, `update_filter_tokens`, `take_filter_inputs`, `apply_presentation_variants`, `on_filter_event`, `render_condition_popup`, `render_adapt_popup`, `get_adaptable_fields`, `clear_rows`, `is_initial_load`, `apply_text_columns`, `get_text_column`, `has_selection`, `get_condition_operators`, `get_ordered_columns`, `get_variant_key`, `on_event`
 - **Worklist**: everything of the list report (it is a subclass of it), plus `load_segments`
-- **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_content`, `render_section_form`, `render_section_fields`, `render_section_table`, `get_sections`, `save_data`, `delete_data`, `reload_data`, `load_child_rows`, `get_association_target`, `get_child_filter`, `get_child_context`, `on_child_create`, `get_bdef`, `get_root_keys`, `get_own_keys`, `start_draft`, `save_draft`, `find_created_record`, `get_link`, `on_action`, `execute_action`, `get_record_actions`, `get_identification_fields`, `render_section_actions`, `render_action_buttons`, `on_child_action`, `execute_child_action`, `open_created`, `on_child_row`, `format_value`, `load_permissions`, `get_field_for_edit`, `read_own_draft`, `read_draft_status`, `resume_draft`, `render_draft_info`, `get_disabled_actions`, `apply_start_mode`, `on_event`
+- **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_content`, `render_section_form`, `render_section_fields`, `render_section_table`, `get_sections`, `save_data`, `delete_data`, `reload_data`, `load_child_rows`, `get_association_target`, `get_child_filter`, `get_child_context`, `on_child_create`, `get_bdef`, `get_root_keys`, `get_own_keys`, `start_draft`, `save_draft`, `find_created_record`, `get_link`, `on_action`, `execute_action`, `get_record_actions`, `get_identification_fields`, `render_section_actions`, `render_action_buttons`, `on_child_action`, `execute_child_action`, `open_created`, `on_child_row`, `format_value`, `load_permissions`, `get_field_for_edit`, `read_own_draft`, `read_draft_status`, `resume_draft`, `render_draft_info`, `get_disabled_actions`, `apply_start_mode`, `get_custom_sections`, `render_section`, `render_custom_section`, `get_side_effect_fields`, `on_side_effect`, `get_admin_fields`, `render_admin_fields`, `get_change_documents`, `get_path_children`, `render_path_input`, `add_path_token`, `delete_path_token`, `get_path_as_child`, `get_token_key`, `get_token_keys`, `read_child_rows`, `add_row_flags`, `render_child_cell`, `on_child_row_add`, `on_child_row_delete`, `get_child_original`, `write_children`, `on_event`
 - **Overview Page**: `render_page`, `render_table_card`, `render_kpi_card`, `render_chart_card`, `render_card_link`, `load_all_cards`, `load_kpi_value`, `load_chart_rows`, `collect_card_rows`, `display`, `on_card`, `on_card_row`, `on_event`
 - **Value Help**: `render_dialog`, `render_filter_dialog`, `load_data`, `get_where_clause`, `on_confirm`, `on_event`
 - **Action Dialog**: `render_action_dialog`, `get_control_for_field`, `render_value_help`, `handle_value_help_confirm`, `apply_default_values`, `get_mandatory_parameters`, `apply_mandatory_parameters`, `get_missing_fields`, `on_event`
-- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `get_read_info`, `query_rows`, `calculate_virtual_elements`, `adjust_virtual_order_by`, `aggregate_rows`, `get_load_error`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `is_static_action`, `get_action_entries`, `get_action_button_type`, `is_hidden_by_annotation`, `navigate_to_intent`, `read_association_target`, `get_permissions`, `get_row_permissions`, `get_keys_of_row`, `read_drafts`, `get_etag_field`, `check_etag`, `show_messages`, `render_message_view`, `render_file_field`, `render_upload_popup`, `apply_upload`, `download_file`, `get_max_file_size`, `get_default_function_name`, `apply_action_defaults`, `read_association_texts`, `get_association_text_key`, `get_text`, ...
+- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `get_read_info`, `query_rows`, `calculate_virtual_elements`, `adjust_virtual_order_by`, `aggregate_rows`, `get_load_error`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `is_static_action`, `get_action_entries`, `get_action_button_type`, `is_hidden_by_annotation`, `navigate_to_intent`, `read_association_target`, `get_permissions`, `get_row_permissions`, `get_keys_of_row`, `read_drafts`, `read_draft_children`, `get_etag_field`, `check_etag`, `show_messages`, `render_message_view`, `render_file_field`, `render_upload_popup`, `apply_upload`, `download_file`, `get_max_file_size`, `get_default_function_name`, `apply_action_defaults`, `read_association_texts`, `get_association_text_key`, `get_text`, ...
 - **Deep links** (`z2ui5_cl_rap_start`): `get_allowed_entities`, `get_extension`, `get_parameters`, `map_parameters`, `open`, `render_message`
 
 ## Extension points without a subclass
@@ -247,7 +247,10 @@ client->nav_app_call( lo_report ).
 | `adjust_capabilities` | what may be written: switch on the writes of a database table, withhold an operation of a business object |
 | `get_start_app` | the `z2ui5_cl_rap_start` subclass whose links the object page copies (see "Deep links") |
 | `map_inbound_parameter` | a parameter of a link or a launchpad tile before `z2ui5_cl_rap_start` uses it - rename it to the field it fills, change its value, clear its name to ignore it |
-| `extend_view` | add controls at fixed places (`z2ui5_cl_rap_floorplan=>cs_spot`): the table toolbar, the object page's header actions and sections, the dialog's content, the overview's cards - their events arrive in `on_event` first |
+| `extend_view` | add controls at fixed places (`z2ui5_cl_rap_floorplan=>cs_spot`): the table toolbar, the object page's header actions, header content (`HEADER_CONTENT`, behind the header facets) and sections, the content of a custom section (`CUSTOM_SECTION`, its id in `section_id`), the dialog's content, the overview's cards - their events arrive in `on_event` first |
+| `get_custom_sections` | sections of the object page with their place: `id`, `title`, `anchor` (the id of a `@UI.facet`) and `placement` `BEFORE` or `AFTER` (default); no anchor, or one the page does not show, is the end - the content comes from `extend_view` |
+| `get_side_effect_fields` | the fields whose change updates the draft at once (`*` every field) - default `*` with draft, none without (see "Object page: children, side effects, sections") |
+| `get_change_documents` | the CDS entity of the record's change documents and its filter (its field = the record's field; empty: the keys) - a read-only section "Changes" |
 
 The built-in texts are German for a German logon (`sy-langu` `D`) and
 otherwise the text pool of `z2ui5_cl_rap_floorplan` (English, translatable in
@@ -270,6 +273,7 @@ and qualifiers are read per entry:
 | `@UI.lineItem` | columns (position, label, importance - a semantic key without one is HIGH -, criticality with its icon unless `criticalityRepresentation: #WITHOUT_ICON`, `cssDefault.width`, `iconUrl`, `hidden: true` or `#(Field)` per row); `#AS_FIELDGROUP` with `valueQualifier` a cell with the fields of that field group one under the other; a qualified `@UI.lineItem` is the table of a presentation variant whose `visualizations` names it; the entity's own `@UI.lineItem` `criticality` highlights the rows; `type: #FOR_ACTION` entries are actions (`inline: true` per row) - by `position`, `criticality` the button's type (positive Accept, negative Reject, critical Emphasized; a field's value on the object page), `actionGroupId` puts one into the menu button of a `#FOR_ACTION_GROUP` entry (`id`, `label`), `invocationGrouping: #ISOLATED` runs it row by row; `#WITH_URL` a link to the URL in another field, `#WITH_NAVIGATION_PATH` the object page of the record the association (`targetElement`) leads to, `#WITH_INTENT_BASED_NAVIGATION` and `#FOR_INTENT_BASED_NAVIGATION` a navigation in the Fiori launchpad (`semanticObject`, `semanticObjectAction`, `semanticObjectBinding` - the parameters the row's, the selected rows' or the record's fields fill; a toolbar navigation with bindings makes the rows selectable) |
 | `@UI.selectionField` | filter bar - each filter with the control of its type (see "Filter syntax") |
 | `@UI.identification` | object page header attributes (the unqualified entries; `criticality` an ObjectStatus with its icon, `importance` LOW left out on phones and tablets, MEDIUM on phones, `hidden` true or a field of the record); a `qualifier` puts the field (with its `label`) into the `#IDENTIFICATION_REFERENCE` facet of that `targetQualifier` only; `#FOR_ACTION` entries are header actions, qualified ones the actions of that section (groups, criticality and position as in `@UI.lineItem`) |
+| `value: '_Assoc.Element'` (in `@UI.identification`, `@UI.fieldGroup`) | a 1:n child as a MultiInput: a token per child of the association with its element's value - in edit mode a token creates a child by association, a deleted token deletes it; the value help is the element's (see "Object page: children, side effects, sections"). On any element, the association itself included; such an entry is no entry of the element that carries it. A `@UI.lineItem` entry of that kind is read (`path_fields`) but no column yet |
 | `@UI.fieldGroup` | object page forms - a field can sit in several groups, with the entry's `label`, `criticality`, `criticalityRepresentation`, `importance` and `hidden` (as in `@UI.identification`); a `#FOR_ACTION` entry is an action of the group's section |
 | `@UI.createHidden`, `.updateHidden`, `.deleteHidden` | no Create (list report, child tables), Edit or Delete (object page): `true`, or a field of the record (`#(IsLocked)`) whose value decides on the object page |
 | `@UI.facet` | object page sections: `#COLLECTION`, `#FIELDGROUP_REFERENCE`, `#IDENTIFICATION_REFERENCE`, `#LINEITEM_REFERENCE` - on the entity or on an element; with `purpose: #HEADER` (`#DATAPOINT_REFERENCE`, `#FIELDGROUP_REFERENCE`) the object page header |
@@ -295,7 +299,7 @@ and qualifiers are read per entry:
 | `@ObjectModel.query.implementedBy` | a custom entity - read through its query provider (see "Reading") |
 | `@ObjectModel.virtualElementCalculatedBy` | a virtual element - calculated after each read; not a filter field, not searched, sortable only with `@ObjectModel.sort.transformedBy` (see "Reading") |
 | `@Semantics.amount.currencyCode`, `.quantity.unitOfMeasure`, `.booleanIndicator` | numbers with units, Yes/No |
-| `@Semantics.user.createdBy`, `.systemDateTime.createdAt` | a record created with late numbering is found again by them |
+| `@Semantics.user.createdBy`, `.systemDateTime.createdAt` | a record created with late numbering is found again by them; with `.user.lastChangedBy` and `.systemDateTime.lastChangedAt` the object page's section "Change Information" (also when `@UI.hidden`; not when one of them is in a field group or the identification) |
 | `@Semantics.systemDateTime.localInstanceLastChangedAt`, `.lastChangedAt` | the field of the optimistic check before an update without a draft (the first one, else the second) |
 | `@Semantics.user.lastChangedBy` | of a draft: whose draft it is - another user's locks the record |
 | `@Semantics.largeObject` (`mimeType`, `fileName`, `acceptableMimeTypes`, `contentDispositionPreference`), `@Semantics.mimeType` | a file field (a `RAWSTRING`): a link that downloads it, in edit mode and in the action dialog an Upload button; the MIME type and file name go into their fields; the size (`get_max_file_size`, 5 MB) and the type are checked on the server (see "Files") |
@@ -664,6 +668,7 @@ Renders an object page for a single record of a CDS entity:
 - Sections from `@UI.facet`: collections with subsections, field groups, identification, tables of an association (`#LINEITEM_REFERENCE` - the target and the rows from the DDL source's association, or from `resolve_association`); Create in a composition's table
 - An avatar from `@UI.headerInfo.imageUrl` / `typeImageUrl`
 - Edit/Save/Delete (unless `@UI.updateHidden` / `.deleteHidden`) and the `@UI.identification` actions where the entity allows them - grouped into menu buttons, typed by criticality, at a section when qualified or in a field group; the actions of a child table on its selected rows; keys read-only on change, required fields checked, value helps, suggestions and dropdowns in edit mode, the fields of a save's messages marked; a draft business object edited in its draft, an own draft resumed, another user's shown as "locked by"; the feature control of `GET PERMISSIONS` (operations, actions, read-only and mandatory fields)
+- 1:n children as a MultiInput (an entry `value: '_Assoc.Element'`), child tables edited in edit mode, side effects in a draft, custom sections placed before or after a facet, "Change Information" and change documents (see below)
 - A button that copies a link to the record (see "Deep links")
 - User-format dates/times, Yes/No booleans, amounts/quantities with unit via `@Semantics`
 
@@ -677,6 +682,86 @@ client->nav_app_call( NEW z2ui5_cl_rap_object_page(
   cds_view_name = `I_COUNTRY`
   keys          = VALUE #( ( name = `Country` value = `DE` ) ) ) ).
 ```
+
+### Object page: children, side effects, sections
+
+**1:n children as tokens.** An `@UI.identification` or `@UI.fieldGroup`
+entry whose `value` is an association path shows the children of that
+association as the tokens of a `MultiInput` - in the section of its
+qualifier (an unqualified identification entry in the general section):
+
+```cds
+annotate view ZC_TRAVEL with {
+  @UI.fieldGroup: [{ qualifier: 'General', position: 40, value: '_Tags.TagId', label: 'Tags' }]
+  _Tags;
+}
+```
+
+In edit mode a value typed and confirmed with Enter, or chosen in the value
+help of the child's element, creates a child by association (the
+composition fills the fields that point at the record); a deleted token
+deletes its child. A draft business object writes both into the draft at
+once (committed, not activated - Save activates them, Cancel discards
+them); without draft they wait for Save and are written after the record,
+each on its own. Create needs the child's create (`create by association`,
+its feature control and `@UI.createHidden`), delete the child's delete -
+both checked on the server for every event.
+
+**Child tables in edit mode.** A `#LINEITEM_REFERENCE` table becomes
+editable with the page: a cell is an input where the row may be changed
+(the child's update, its instance feature control from `GET PERMISSIONS`,
+`@UI.updateHidden` per row, and not for a static `field ( readonly )`, a
+key - except in a new row -, a field the composition fills, a virtual
+element or a file); a row has a delete button where it may be deleted;
+Create adds a row. With draft each of these goes into the draft at once;
+without draft the rows are written on Save (new ones created, changed ones
+updated - each checked like every write, against the record as it is
+stored). The rows carry the columns `cs_row_flag` (`ZZUPDKZ`, `ZZDELKZ`,
+`ZZNEWKZ`), set on the server - what the browser sends back in them decides
+nothing.
+
+**Side effects.** The BDEF's `side effects` cannot be read (no table holds
+the BDEF source), so the page decides by `get_side_effect_fields` (an
+extension: `z2ui5_if_rap_ext~get_side_effect_fields`) which fields update
+the draft at once. The default is `*` - every field - for a business object
+with draft and nothing without one: a draft runs its determinations on
+every modify, so any field may change others, and the `change` event
+(never `liveChange`) costs one roundtrip per value the user leaves. Such a
+change is written into the draft, the draft read back, its field control
+and its children read again, and the page shown with what the business
+object determined. Without draft nothing reaches the business object
+before Save, and the list does nothing. A changed cell of a child table
+goes into the draft when the list is not empty.
+
+**Custom sections and the header.** `z2ui5_if_rap_ext~get_custom_sections`
+names sections with their place, `extend_view` fills them:
+
+```abap
+METHOD z2ui5_if_rap_ext~get_custom_sections.
+  sections = VALUE #( ( id = `NOTES` title = `Notes` anchor = `Booking` placement = `BEFORE` ) ).
+ENDMETHOD.
+
+METHOD z2ui5_if_rap_ext~extend_view.
+  IF spot = z2ui5_cl_rap_floorplan=>cs_spot-custom_section AND section_id = `NOTES`.
+    container->tag( `Text`
+        )->a( n = `text`
+              v = `...` ).
+  ENDIF.
+ENDMETHOD.
+```
+
+The spot `HEADER_CONTENT` adds controls to the header behind its facets
+(or its attributes and data points).
+
+**Change information and change documents.** The administrative fields
+(`@Semantics.user.createdBy`, `.systemDateTime.createdAt`,
+`.user.lastChangedBy`, `.systemDateTime.lastChangedAt`) form a read-only
+section "Change Information" at the end - not on create, and not when one of
+them is placed in a field group or the identification already. A table of
+change documents works as before through a `#LINEITEM_REFERENCE` facet of an
+association to them; without one, `get_change_documents` names a CDS entity
+and its filter, and the page adds a read-only section "Changes" with its
+`@UI.lineItem` - no dependency on a change document framework.
 
 ## Deep links
 
@@ -950,6 +1035,35 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   `mt_condition_op`, `mt_adapt`, `mv_group_field`, `mt_group_item`,
   `mv_no_data`. New protected members (see the lists above) - the rename
   rule applies to a subclass.
+- Object page (children, side effects, sections, see "Object page:
+  children, side effects, sections"): an `@UI.lineItem`,
+  `@UI.identification` or `@UI.fieldGroup` entry whose `value` is an
+  association path is no longer taken for an entry of the element that
+  carries it, but collected in the new `ty_s_entity_info-path_fields`. The
+  child tables always carry the selection column and the columns
+  `cs_row_flag`, are read from the draft while the page edits one and are
+  editable in edit mode (Create adds a row there instead of opening a child
+  object page, and a row does not navigate); the child rows are read again
+  after Edit, Cancel and Save, not on the return from a called app in edit
+  mode. `render_sections` places each section with the new
+  `render_section` and `render_custom_section`. `mr_child_rows` holds a
+  component `PATH_n` per MultiInput. New optional parameters:
+  `write_row-in_draft`, `write_draft-check`, `render_extension-section_id`,
+  `render_section_fields-it_paths`, `z2ui5_cl_rap_eml=>create-in_draft`
+  and `=>delete-in_draft`, `z2ui5_if_rap_ext~extend_view-section_id`. New:
+  `z2ui5_if_rap_ext~get_custom_sections`, `~get_side_effect_fields`,
+  `~get_change_documents` (`DEFAULT IGNORE`), `z2ui5_cl_rap_eml=>read_by_association`,
+  the spots `cs_spot-custom_section` and `-header_content`, the util's
+  `parse_association_path`, `parse_path_fields`, `is_side_effect_field`,
+  `get_changed_fields`, `get_admin_fields`, `order_sections` and types
+  `ty_s_path_field`, `ty_s_custom_section`, `ty_s_section_slot`; the object
+  page's `cs_row_flag`, `ty_s_token`, `ty_s_path_value`,
+  `cv_key_separator`, `ty_s_path_child`, `ty_s_pending`, `cs_section_id`
+  and `cs_event` (`path_token_add`, `path_token_delete`, `path_value_help`,
+  `child_row_add`, `child_row_delete`, `child_cell_change`,
+  `side_effect`). Appended: `ty_s_child` (`can_update`, `can_delete`,
+  `read_only`), `cs_text` (2 texts, text pool 087-088). New protected
+  members (see the lists above) - the rename rule applies to a subclass.
 
 ## Development
 

@@ -67,6 +67,18 @@ clicked through in an SAP system yet** - that is the first open item, and
     other way to read it is known here (the BDEF source has no readable
     table, open item 3).
 
+13. **What the object page's children cannot do yet** (2026-10, third
+    round): an `@UI.lineItem` entry with an association path is read but is
+    no column of the list report (it would read the children of every
+    row); a cell of a child table has no value help and no per-instance
+    field control of its own field (the row's update permission decides); a
+    child table and the MultiInput read the draft's children through
+    `READ ENTITIES BY` association, whose derived type names are unverified
+    (docs/system-test.md, 4a); without draft the children are written after
+    the record, each in its own commit, not in one LUW with it; the BDEF's
+    `side effects` are not read (no table holds a BDEF source) - the fields
+    are configured (`get_side_effect_fields`).
+
 ### How the dynamic EML statements were unblocked
 
 `GET PERMISSIONS ... OPERATIONS`, `READ ENTITIES OPERATIONS` and
@@ -84,6 +96,27 @@ like the others - is still the better one; the classes go when it lands.
 ## Done
 
 ### 2026-10, third round
+
+- **Object page, children**: an entry whose `value` is an association
+  path (`'_Tags.TagId'`) is a `MultiInput` of the 1:n child's values -
+  tokens in display and edit mode, a token typed or chosen in the child's
+  value help creates a child by association, a deleted token deletes it
+  (EML, in the draft at once, without draft on Save; feature control of
+  the association and the child). **Child tables in edit mode**: inputs
+  where the row may be changed (instance feature control, static field
+  control, `@UI.updateHidden`), rows added and deleted, written into the
+  draft or on Save, every write checked on the server.
+- **Side effects**: in a draft a changed field (on `change`, not
+  `liveChange`) is written into the draft, the draft, its field control
+  and its children read back - which fields is
+  `get_side_effect_fields` / `z2ui5_if_rap_ext~get_side_effect_fields`
+  (default every field with draft, none without; the BDEF's
+  `side effects` cannot be read).
+- **Sections**: custom sections of an extension placed before or after a
+  facet (`get_custom_sections`, `extend_view` with `section_id`), the
+  header content spot, the section "Change Information" from the
+  administrative `@Semantics` fields, a change documents section from the
+  entity an extension names (`get_change_documents`).
 
 - **Filter bar**: a control per type - a list for a boolean (Yes, No,
   all), fixed values and a dropdown value help, a date picker or a date

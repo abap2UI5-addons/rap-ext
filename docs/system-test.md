@@ -20,7 +20,7 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
       the columns `IS_PUBLIC` and `AUTO_APPLY` were appended in 2026-10,
       third round - an existing table is adjusted, check SE14)
 - [ ] the text pool of `z2ui5_cl_rap_floorplan` arrived (SE24 > Goto > Text
-      Elements, 86 entries); an English logon shows its texts
+      Elements, 88 entries); an English logon shows its texts
 - [ ] **unverified syntax**: `z2ui5_cl_rap_eml_perm` (`GET PERMISSIONS
       OPERATIONS ... FAILED ... REPORTED`, operand `ABP_BEHV_PERMISSIONS_TAB`),
       `z2ui5_cl_rap_eml_read` (`READ ENTITIES OPERATIONS ... FAILED ...
@@ -187,6 +187,60 @@ instance feature control on `acceptTravel` / `rejectTravel` and Edit).
 - [ ] another user's draft: Edit is refused with the business object's message
 - [ ] a change and a create of a booking edit and activate the root
 - [ ] create of a travel: the draft is created and activated in one request
+
+## 4a · Object page: 1:n children, child tables, side effects, sections
+
+Needs a draft business object with a 1:n composition annotated by an
+association path (e.g. a travel's bookings: `@UI.fieldGroup: [{ qualifier:
+'General', value: '_Booking.BookingID' }]` on `_Booking` in a metadata
+extension), a non-draft one (`/DMO/C_TRAVEL_PROCESSOR_M`) and an extension
+for the custom sections and the change documents.
+
+- [ ] **unverified names**: the derived types of a read by association
+      (`\BDEF=..\ENTITY=<parent>\ASSOC=<assoc>\TYPE=READ_I` / `READ_R`,
+      else `\ASSOCIATION=`) and `IF_ABAP_BEHV=>OP-R-READ_BA` - in edit mode
+      of a draft the child tables and the tokens show the draft's children
+      (`z2ui5_cl_rap_eml=>read_by_association`); when they do not, the page
+      falls back to the active children and a child created in the draft is
+      missing until Save - correct the type names by what the system answers
+- [ ] the entry with the association path shows a MultiInput with a token
+      per child (display: not editable), the element's own field group
+      entries are not affected
+- [ ] edit mode of a draft: a value typed + Enter creates the child in the
+      draft (`MODIFY ... CREATE BY \assoc` with `%is_draft`, no Edit/Activate
+      of the root); its value help adds the value chosen; deleting a token
+      deletes the child in the draft; Save activates both, Cancel discards
+      them
+- [ ] the same without draft: tokens wait for Save, then each child is
+      created and deleted (its own commit after the record); Cancel forgets
+      them
+- [ ] a child the feature control does not allow (`association _X { create
+      ( features : instance ) }` disabled, a child that may not be deleted)
+      offers no new token / no delete, and an event sent anyway is refused
+- [ ] child tables in edit mode: inputs in the cells the row may change
+      (instance feature control of the child, `@UI.updateHidden`, static
+      `field ( readonly )`), keys only in a new row, a delete button per row
+      (disabled where the instance may not be deleted), Create adds a row;
+      draft: written into the draft at once (add, delete, a changed cell),
+      without draft: written on Save - a refused child keeps edit mode with
+      its message, the record itself is saved
+- [ ] side effects: in a draft a changed field (on change, not per keystroke)
+      is written into the draft, a determination's result shows in the other
+      fields and the child tables; the field control after it is the
+      draft's; an extension's `get_side_effect_fields` restricts it
+      (`STATUS` only - other fields wait for Save) or turns it off (empty)
+- [ ] a custom section of `get_custom_sections` appears before / after the
+      facet it names, at the end without an anchor; its content is what
+      `extend_view` adds at `CUSTOM_SECTION` with its `section_id`; the
+      `HEADER_CONTENT` spot adds controls behind the header facets
+- [ ] "Change Information": the `@Semantics.user.createdBy`,
+      `.systemDateTime.createdAt`, `.user.lastChangedBy`, `.lastChangedAt`
+      fields (also `@UI.hidden` ones), time stamps in the user's format and
+      time zone; not shown on create, nor when one of them is in a field
+      group
+- [ ] a change documents entity named by `get_change_documents`: a
+      read-only table of its rows of the record (the record's keys, or the
+      filter given), no navigation, no edit
 
 ## 5 · Keys and numbering
 
