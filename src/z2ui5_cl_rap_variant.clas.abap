@@ -2,6 +2,13 @@
 "! the search, the sort order and the hidden columns, by name, one of them
 "! the default. Kept in table z2ui5_t_rap_var per user and entity.
 "!
+"! Since 2026-10 (third round) a view also keeps the filter fields, the
+"! order and width of the columns and the group field, it can be public
+"! (every user sees it, only its owner changes or deletes it) and it can
+"! apply automatically (the list is read as soon as it is chosen) - two
+"! columns of the table, IS_PUBLIC and AUTO_APPLY. A system whose table
+"! has them not yet keeps the private views as before.
+"!
 "! The table is named dynamically: a system where it did not arrive still
 "! activates every class, and is_available( ) answers abap_false there -
 "! the floorplans then offer no views.
@@ -19,6 +26,12 @@ CLASS z2ui5_cl_rap_variant DEFINITION
         sort_field     TYPE string,
         sort_desc      TYPE abap_bool,
         hidden_columns TYPE string_table,
+        "added 2026-10, third round: the fields of the filter bar (adapt
+        "filters), the columns' order and widths, the group field
+        filter_fields  TYPE string_table,
+        column_order   TYPE string_table,
+        column_widths  TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value,
+        group_field    TYPE string,
       END OF ty_s_data.
 
     TYPES:
@@ -26,6 +39,11 @@ CLASS z2ui5_cl_rap_variant DEFINITION
         name       TYPE string,
         is_default TYPE abap_bool,
         data       TYPE ty_s_data,
+        "added 2026-10, third round: every user sees it, it is read as
+        "soon as it is chosen, and whose it is (empty: the user's own)
+        is_public  TYPE abap_bool,
+        auto_apply TYPE abap_bool,
+        owner      TYPE string,
       END OF ty_s_variant.
 
     TYPES ty_t_variant TYPE STANDARD TABLE OF ty_s_variant WITH EMPTY KEY.
@@ -37,7 +55,14 @@ CLASS z2ui5_cl_rap_variant DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
-    "! the views of the user for entity_name, by name
+    "! the table has the columns of public and automatically applied views
+    "! (added 2026-10, third round)
+    CLASS-METHODS has_public_views
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! the views of the user for entity_name, by name - and since 2026-10
+    "! (third round) the public views of the other users, their owner set
     CLASS-METHODS read_all
       IMPORTING
         entity_name   TYPE clike
@@ -66,6 +91,9 @@ CLASS z2ui5_cl_rap_variant DEFINITION
     "! the user's own rows of entity_name - the condition every statement
     "! uses (host variables of the method that runs it)
     CONSTANTS cv_owner_where TYPE string VALUE `UNAME = @LV_UNAME AND ENTITY = @LV_ENTITY`.
+    "! the user's own rows and the public ones of the others
+    CONSTANTS cv_visible_where TYPE string
+      VALUE `ENTITY = @LV_ENTITY AND ( UNAME = @LV_UNAME OR IS_PUBLIC = 'X' )`.
 
 ENDCLASS.
 
@@ -89,6 +117,19 @@ CLASS z2ui5_cl_rap_variant IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD has_public_views.
+
+    TRY.
+        DATA(lo_table) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( cv_table ) ).
+        result = xsdbool( line_exists( lo_table->components[ name = `IS_PUBLIC` ] )
+                      AND line_exists( lo_table->components[ name = `AUTO_APPLY` ] ) ).
+      CATCH cx_root.
+        result = abap_false.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
   METHOD read_all.
 
     DATA lr_rows TYPE REF TO data.
@@ -104,8 +145,10 @@ CLASS z2ui5_cl_rap_variant IMPLEMENTATION.
     TRY.
         CREATE DATA lr_rows TYPE STANDARD TABLE OF (cv_table).
         ASSIGN lr_rows->* TO <lt_rows>.
+        DATA(lv_where) = COND string( WHEN has_public_views( ) = abap_true THEN cv_visible_where
+                                      ELSE cv_owner_where ).
         SELECT * FROM (cv_table)
-          WHERE (cv_owner_where)
+          WHERE (lv_where)
           ORDER BY PRIMARY KEY
           INTO TABLE @<lt_rows>.
       CATCH cx_root.
@@ -118,6 +161,25 @@ CLASS z2ui5_cl_rap_variant IMPLEMENTATION.
       ls_variant-name = <lv_value>.
       ASSIGN COMPONENT `IS_DEFAULT` OF STRUCTURE <ls_row> TO <lv_value>.
       ls_variant-is_default = <lv_value>.
+      ASSIGN COMPONENT `UNAME` OF STRUCTURE <ls_row> TO <lv_value>.
+      IF <lv_value> <> lv_uname.
+        ls_variant-owner = <lv_value>.
+        "another user's default is not this user's
+        CLEAR ls_variant-is_default.
+      ENDIF.
+      UNASSIGN <lv_value>.
+      ASSIGN COMPONENT `IS_PUBLIC` OF STRUCTURE <ls_row> TO <lv_value>.
+      IF <lv_value> IS ASSIGNED.
+        ls_variant-is_public = <lv_value>.
+      ENDIF.
+      UNASSIGN <lv_value>.
+      ASSIGN COMPONENT `AUTO_APPLY` OF STRUCTURE <ls_row> TO <lv_value>.
+      IF <lv_value> IS ASSIGNED.
+        ls_variant-auto_apply = <lv_value>.
+      ELSE.
+        "a table without the column: every view applies, as before
+        ls_variant-auto_apply = abap_true.
+      ENDIF.
       ASSIGN COMPONENT `DATA` OF STRUCTURE <ls_row> TO <lv_value>.
       DATA(lv_xml) = CONV string( <lv_value> ).
       TRY.
@@ -160,6 +222,16 @@ CLASS z2ui5_cl_rap_variant IMPLEMENTATION.
         <lv_value> = variant-is_default.
         ASSIGN COMPONENT `DATA` OF STRUCTURE <ls_row> TO <lv_value>.
         <lv_value> = lv_xml.
+        UNASSIGN <lv_value>.
+        ASSIGN COMPONENT `IS_PUBLIC` OF STRUCTURE <ls_row> TO <lv_value>.
+        IF <lv_value> IS ASSIGNED.
+          <lv_value> = variant-is_public.
+        ENDIF.
+        UNASSIGN <lv_value>.
+        ASSIGN COMPONENT `AUTO_APPLY` OF STRUCTURE <ls_row> TO <lv_value>.
+        IF <lv_value> IS ASSIGNED.
+          <lv_value> = variant-auto_apply.
+        ENDIF.
 
         "one default per user and entity
         IF variant-is_default = abap_true.

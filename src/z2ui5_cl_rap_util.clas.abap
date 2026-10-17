@@ -1415,6 +1415,15 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE ty_t_name_value.
 
+    "! a column width as UI5 takes it (sap.ui.core.CSSSize): a number with
+    "! px, rem, em or %, auto - a plain number is rem; anything else is
+    "! empty, which UI5 would refuse and lose the whole view over
+    CLASS-METHODS normalize_css_width
+      IMPORTING
+        val           TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
   PRIVATE SECTION.
 
     "! the MIME types of the file extensions get_file_extensions and
@@ -5768,6 +5777,37 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDIF.
       APPEND VALUE #( name = lv_name value = condense( |{ <lv_value> }| ) ) TO result.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD normalize_css_width.
+
+    DATA lv_number TYPE string.
+    DATA(lv_width) = to_lower( val ).
+    CONDENSE lv_width NO-GAPS.
+    IF lv_width IS INITIAL.
+      RETURN.
+    ENDIF.
+    IF lv_width = `auto`.
+      result = lv_width.
+      RETURN.
+    ENDIF.
+    DATA(lv_unit) = ``.
+    DATA(lv_len) = strlen( lv_width ).
+    IF lv_len > 3 AND substring( val = lv_width off = lv_len - 3 ) = `rem`.
+      lv_unit = `rem`.
+    ELSEIF lv_len > 2 AND ( substring( val = lv_width off = lv_len - 2 ) = `px`
+                         OR substring( val = lv_width off = lv_len - 2 ) = `em` ).
+      lv_unit = substring( val = lv_width off = lv_len - 2 ).
+    ELSEIF lv_len > 1 AND substring( val = lv_width off = lv_len - 1 ) = `%`.
+      lv_unit = `%`.
+    ENDIF.
+    lv_number = substring( val = lv_width len = lv_len - strlen( lv_unit ) ).
+    IF lv_number IS INITIAL OR lv_number CN `0123456789.` OR lv_number CS `..` OR lv_number(1) = `.`.
+      RETURN.
+    ENDIF.
+    result = |{ lv_number }{ COND string( WHEN lv_unit IS INITIAL THEN `rem` ELSE lv_unit ) }|.
 
   ENDMETHOD.
 

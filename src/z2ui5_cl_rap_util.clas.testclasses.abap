@@ -2181,6 +2181,7 @@ CLASS ltcl_filter_bar DEFINITION FINAL
     METHODS entity_variants          FOR TESTING RAISING cx_static_check.
     METHODS navigation_params        FOR TESTING RAISING cx_static_check.
     METHODS intent_bindings          FOR TESTING RAISING cx_static_check.
+    METHODS css_widths               FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -2621,6 +2622,20 @@ CLASS ltcl_filter_bar IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       exp = VALUE z2ui5_cl_rap_util=>ty_t_additional_binding( ( local_element = `STATUS` element = `STATUSCODE` ) )
       act = field( `STATUS` )-sem_object_bindings ).
+  ENDMETHOD.
+
+
+  METHOD css_widths.
+    cl_abap_unit_assert=>assert_equals( exp = `10rem` act = z2ui5_cl_rap_util=>normalize_css_width( ` 10 ` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `8.5em` act = z2ui5_cl_rap_util=>normalize_css_width( `8.5EM` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `120px` act = z2ui5_cl_rap_util=>normalize_css_width( `120 px` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `25%`   act = z2ui5_cl_rap_util=>normalize_css_width( `25%` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `auto`  act = z2ui5_cl_rap_util=>normalize_css_width( `Auto` ) ).
+    "what UI5 would refuse is nothing
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>normalize_css_width( `wide` ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>normalize_css_width( `1..2rem` ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>normalize_css_width( `rem` ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>normalize_css_width( `{x}` ) ).
   ENDMETHOD.
 
 ENDCLASS.

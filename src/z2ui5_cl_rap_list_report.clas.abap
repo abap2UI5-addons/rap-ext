@@ -19,6 +19,16 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
 
     INTERFACES z2ui5_if_app.
 
+    " an entry of a list filter, a token of a MultiInput (added 2026-10,
+    " third round)
+    TYPES:
+      BEGIN OF ty_s_filter_entry,
+        key  TYPE string,
+        text TYPE string,
+      END OF ty_s_filter_entry.
+
+    TYPES ty_t_filter_entry TYPE STANDARD TABLE OF ty_s_filter_entry WITH EMPTY KEY.
+
     TYPES:
       BEGIN OF ty_s_filter,
         name    TYPE string,
@@ -32,6 +42,17 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         single    TYPE abap_bool,
         "@Consumption.filter.hidden: not shown, its default still applies
         hidden    TYPE abap_bool,
+        "added 2026-10, third round (filter bar): the control
+        "(z2ui5_cl_rap_util=>cs_filter_control), the tokens of a MultiInput
+        "(a part of value each), the entries of a list, the text typed into
+        "a MultiInput, Error when a mandatory filter has no value, and the
+        "filter was added by "adapt filters"
+        control   TYPE string,
+        tokens    TYPE ty_t_filter_entry,
+        entries   TYPE ty_t_filter_entry,
+        input     TYPE string,
+        state     TYPE string,
+        is_added  TYPE abap_bool,
       END OF ty_s_filter.
 
     TYPES ty_t_filter TYPE STANDARD TABLE OF ty_s_filter WITH DEFAULT KEY.
@@ -63,7 +84,31 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         "added 2026-10, third round: the selection of the rows changed -
         "the toolbar actions follow the selected rows' feature control
         selection_change  TYPE string VALUE `SELECTION_CHANGE`,
+        "added 2026-10, third round (filter bar, table): a token typed into
+        "a MultiInput (argument the filter) or deleted (the token's key),
+        "the define conditions dialog (open: the filter; add, delete: the
+        "row; ok), adapt filters, a column moved up or down (the column)
+        filter_token_add    TYPE string VALUE `FILTER_TOKEN_ADD`,
+        filter_token_delete TYPE string VALUE `FILTER_TOKEN_DELETE`,
+        conditions          TYPE string VALUE `FILTER_CONDITIONS`,
+        condition_add       TYPE string VALUE `CONDITION_ADD`,
+        condition_delete    TYPE string VALUE `CONDITION_DELETE`,
+        conditions_ok       TYPE string VALUE `CONDITIONS_OK`,
+        adapt_filters       TYPE string VALUE `ADAPT_FILTERS`,
+        adapt_filters_ok    TYPE string VALUE `ADAPT_FILTERS_OK`,
+        column_up           TYPE string VALUE `COLUMN_UP`,
+        column_down         TYPE string VALUE `COLUMN_DOWN`,
       END OF cs_event.
+
+    " when the list is read at the start (constructor initial_load; added
+    " 2026-10, third round): AUTO - unless the default view does not apply
+    " automatically; ENABLED - always; DISABLED - only on Go
+    CONSTANTS:
+      BEGIN OF cs_initial_load,
+        auto     TYPE string VALUE `AUTO`,
+        enabled  TYPE string VALUE `ENABLED`,
+        disabled TYPE string VALUE `DISABLED`,
+      END OF cs_initial_load.
 
     "! the key of the standard view - the annotations' filters, sort order
     "! and columns
@@ -83,6 +128,8 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         name    TYPE string,
         label   TYPE string,
         visible TYPE abap_bool,
+        "added 2026-10, third round: the column's width (a CSS size)
+        width   TYPE string,
       END OF ty_s_column.
 
     TYPES ty_t_column TYPE STANDARD TABLE OF ty_s_column WITH EMPTY KEY.
@@ -99,7 +146,22 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         draft         TYPE string VALUE `ZZDRAFT`,
         draft_text    TYPE string VALUE `ZZDRAFT_TEXT`,
         action_prefix TYPE string VALUE `ZZACTION_`,
+        "added 2026-10, third round: the text of a field with
+        "@ObjectModel.text.association - the prefix and the field's position
+        text_prefix   TYPE string VALUE `ZZTEXT_`,
       END OF cs_row_column.
+
+    " a row of the define conditions dialog (added 2026-10, third round)
+    TYPES:
+      BEGIN OF ty_s_condition_row,
+        id       TYPE string,
+        operator TYPE string,
+        low      TYPE string,
+        high     TYPE string,
+        exclude  TYPE abap_bool,
+      END OF ty_s_condition_row.
+
+    TYPES ty_t_condition_row TYPE STANDARD TABLE OF ty_s_condition_row WITH EMPTY KEY.
 
     " a toolbar action and whether the selected rows allow it
     TYPES:
@@ -114,7 +176,9 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       IMPORTING
         cds_view_name TYPE clike
         title         TYPE string OPTIONAL
-        max_rows      TYPE i DEFAULT 500.
+        max_rows      TYPE i DEFAULT 500
+        "added 2026-10, third round: cs_initial_load
+        initial_load  TYPE string DEFAULT `AUTO`.
 
     "! values for the filters before the list is read - the inbound
     "! parameters of a navigation (z2ui5_cl_rap_start), by the name of the
@@ -164,6 +228,20 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     DATA mv_editing_status TYPE string.
     DATA mt_editing_status TYPE ty_t_variant_item.
 
+    "! added 2026-10, third round: the save dialog's public and apply
+    "! automatically; the define conditions dialog - its rows and its
+    "! operators; the fields "adapt filters" offers; the group
+    "! field of the rows and the fields it offers; the table's text when it
+    "! has no rows
+    DATA mv_variant_public TYPE abap_bool.
+    DATA mv_variant_auto   TYPE abap_bool.
+    DATA mt_condition      TYPE ty_t_condition_row.
+    DATA mt_condition_op   TYPE ty_t_variant_item.
+    DATA mt_adapt          TYPE ty_t_column.
+    DATA mv_group_field    TYPE string.
+    DATA mt_group_item     TYPE ty_t_variant_item.
+    DATA mv_no_data        TYPE string.
+
   PROTECTED SECTION.
     "! the inbound parameters set_filter_presets got - applied once, when
     "! the list starts (added 2026-10, third round)
@@ -200,6 +278,23 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     "! what GET PERMISSIONS answers for the loaded rows (added 2026-10,
     "! third round)
     DATA ms_perm TYPE ty_s_permissions.
+    "! added 2026-10, third round (filter bar, table, views): when the list
+    "! is read at the start (cs_initial_load), the filter of the define
+    "! conditions dialog, the columns' order and widths of the user, the
+    "! qualifier of the @UI.lineItem shown (a presentation variant's), what
+    "! a selection variant restricts beyond the filter bar, and whether the
+    "! rows were read (Go) at all
+    DATA mv_initial_load TYPE string.
+    DATA mv_condition_field TYPE string.
+    "! the title of the define conditions dialog
+    DATA mv_condition_title TYPE string.
+    DATA mt_column_order TYPE string_table.
+    DATA mt_column_width TYPE ty_t_name_value.
+    DATA mv_line_item_qualifier TYPE string.
+    DATA mv_variant_where TYPE string.
+    DATA mv_loaded TYPE abap_bool.
+    "! the view the list started with applies automatically
+    DATA mv_start_auto TYPE abap_bool VALUE abap_true.
     "! the entity is the root of a draft business object
     DATA mv_is_draft_bo TYPE abap_bool.
     "! the toolbar actions, enabled by the feature control of the selected
@@ -471,6 +566,98 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! a filter of the filter bar for is_field: its label, default, value
+    "! help and control (z2ui5_cl_rap_util=>get_filter_control) with the
+    "! entries of a list and the tokens of a MultiInput (added 2026-10,
+    "! third round, like the methods below)
+    METHODS create_filter
+      IMPORTING
+        is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
+      RETURNING
+        VALUE(result) TYPE ty_s_filter.
+
+    "! the tokens of the MultiInput filters - one per part of their value
+    METHODS update_filter_tokens.
+
+    "! what is typed into a MultiInput and not yet a token becomes a part
+    "! of its value - before a read
+    METHODS take_filter_inputs.
+
+    "! the start of the list: the @UI.selectionPresentationVariant (else
+    "! the unqualified presentation and selection variant) - the sort
+    "! order, the group field, the qualified @UI.lineItem of the
+    "! presentation variant and the selection variant's filter values
+    METHODS apply_presentation_variants.
+
+    "! the events of the filter bar - tokens, define conditions, adapt
+    "! filters: abap_true when the event was one of them
+    METHODS on_filter_event
+      IMPORTING
+        client        TYPE REF TO z2ui5_if_client
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! the define conditions dialog of the filter mv_condition_field
+    METHODS render_condition_popup
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    "! the adapt filters dialog - every field the filter bar can take
+    METHODS render_adapt_popup
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    "! the fields adapt filters offers: visible, no virtual element, no file
+    METHODS get_adaptable_fields
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_field_info.
+
+    "! no rows until Go - the start without an initial load, a view that
+    "! does not apply automatically
+    METHODS clear_rows.
+
+    "! the list is read at the start: cs_initial_load and whether the
+    "! default view applies automatically
+    METHODS is_initial_load
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! the texts of the fields with @ObjectModel.text.association - a
+    "! column cs_row_column-text_prefix and the field's position each
+    METHODS apply_text_columns.
+
+    "! the column of the association text of is_col - empty without one
+    METHODS get_text_column
+      IMPORTING
+        is_col        TYPE z2ui5_cl_rap_util=>ty_s_field_info
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the rows can be selected: actions run on them, or an intent
+    "! navigation takes their values (semanticObjectBinding)
+    METHODS has_selection
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! the operators of the define conditions dialog
+    METHODS get_condition_operators
+      RETURNING
+        VALUE(result) TYPE ty_t_variant_item.
+
+    "! the line item columns in the user's order (the columns dialog, a
+    "! view), the hidden ones included
+    METHODS get_ordered_columns
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_field_info.
+
+    "! the key of a view in the views select: its name, owner~name for
+    "! another user's public view
+    METHODS get_variant_key
+      IMPORTING
+        is_variant    TYPE z2ui5_cl_rap_variant=>ty_s_variant
+      RETURNING
+        VALUE(result) TYPE string.
+
   PRIVATE SECTION.
 
 ENDCLASS.
@@ -486,6 +673,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     mv_title = title.
     mv_max_rows = max_rows.
     mv_page_size = max_rows.
+    mv_initial_load = COND #( WHEN initial_load IS INITIAL THEN cs_initial_load-auto
+                              ELSE to_upper( initial_load ) ).
   ENDMETHOD.
 
 
@@ -508,12 +697,13 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         CONTINUE.
       ENDIF.
       READ TABLE ms_entity-fields INTO DATA(ls_field) WITH KEY name = ls_preset-name.
-      APPEND VALUE ty_s_filter( name    = ls_field-name
-                                label   = ls_field-label
-                                value   = lv_preset_value
-                                show_vh = xsdbool( ls_field-value_help-entity_name IS NOT INITIAL ) ) TO mt_filter.
+      DATA(ls_new_filter) = create_filter( ls_field ).
+      ls_new_filter-value = lv_preset_value.
+      ls_new_filter-is_added = abap_true.
+      APPEND ls_new_filter TO mt_filter.
     ENDLOOP.
     CLEAR mt_filter_preset.
+    update_filter_tokens( ).
 
   ENDMETHOD.
 
@@ -531,16 +721,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      "init filter bar from @UI.selectionField - a mandatory one is marked
+      "init filter bar from @UI.selectionField - a mandatory one is marked,
+      "each with the control of its type (since 2026-10, third round)
       LOOP AT get_selection_fields( ) INTO DATA(ls_sel).
-        APPEND VALUE ty_s_filter(
-          name      = ls_sel-name
-          label     = COND #( WHEN ls_sel-filter_mandatory = abap_true THEN |{ ls_sel-label } *| ELSE ls_sel-label )
-          value     = ls_sel-filter_default
-          show_vh   = xsdbool( ls_sel-value_help-entity_name IS NOT INITIAL )
-          mandatory = ls_sel-filter_mandatory
-          single    = ls_sel-filter_single
-          hidden    = ls_sel-filter_hidden ) TO mt_filter.
+        APPEND create_filter( ls_sel ) TO mt_filter.
       ENDLOOP.
 
       mt_row_key = get_row_key_fields( ).
@@ -560,10 +744,14 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         ms_caps-can_create = abap_false.
       ENDIF.
 
+      "the selection presentation variant - sort order, group field, the
+      "qualified line item, filter values (since 2026-10, third round)
+      apply_presentation_variants( ).
+
       "sortable: the columns that are text, numbers or dates - a virtual
       "element only with a sort transformation
       LOOP AT get_line_item_fields( ) INTO DATA(ls_col).
-        IF z2ui5_cl_rap_util=>is_sortable( ls_col ) = abap_false.
+        IF z2ui5_cl_rap_util=>is_sortable( ls_col ) = abap_false OR ls_col-line_item_type = `AS_FIELDGROUP`.
           CONTINUE.
         ENDIF.
         APPEND VALUE #( name  = ls_col-name
@@ -575,13 +763,28 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         mv_sort_field = ms_entity-sort_order[ 1 ]-field.
         mv_sort_desc = ms_entity-sort_order[ 1 ]-descending.
       ENDIF.
+      "the group field: @UI.presentationVariant.groupBy, a sortable column
+      mt_group_item = VALUE #( ( ) ).
+      LOOP AT mt_sort_field INTO DATA(ls_group_item).
+        APPEND VALUE #( key = ls_group_item-name text = ls_group_item-label ) TO mt_group_item.
+      ENDLOOP.
+      IF ms_entity-group_by IS NOT INITIAL AND line_exists( mt_sort_field[ name = ms_entity-group_by[ 1 ] ] ).
+        mv_group_field = ms_entity-group_by[ 1 ].
+      ENDIF.
 
       "the standard view: the annotations' filters, sort order, columns
+      update_filter_tokens( ).
       ms_standard = capture_variant( ).
       init_variants( ).
-      "the parameters of an inbound navigation win over the default view
+      "the parameters of an inbound navigation win over the default view -
+      "and read the list whatever the initial load says
+      DATA(lv_presets) = xsdbool( mt_filter_preset IS NOT INITIAL ).
       apply_filter_presets( ).
-      load_data( ).
+      IF lv_presets = abap_true OR is_initial_load( ) = abap_true.
+        load_data( ).
+      ELSE.
+        clear_rows( ).
+      ENDIF.
       render_page( client ).
       RETURN.
     ENDIF.
@@ -594,8 +797,14 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       OR client->check_on_event( cs_event-go )
       OR client->check_on_event( cs_event-search )
       OR client->check_on_event( cs_event-sort ).
-      "the rows of a mandatory filter only - none without its value
+      "the rows of a mandatory filter only - none without its value; the
+      "filter shows it (valueState, since 2026-10, third round)
+      take_filter_inputs( ).
       DATA(lt_missing) = get_missing_filters( ).
+      LOOP AT mt_filter ASSIGNING FIELD-SYMBOL(<ls_state>).
+        <ls_state>-state = COND #( WHEN <ls_state>-mandatory = abap_true AND condense( <ls_state>-value ) = ``
+                                   THEN `Error` ).
+      ENDLOOP.
       IF lt_missing IS NOT INITIAL.
         client->message_box_display(
           text = |{ get_text( cs_text-required ) }: { concat_lines_of( table = lt_missing sep = `, ` ) }|
@@ -671,6 +880,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    IF on_filter_event( client ) = abap_true.
+      RETURN.
+    ENDIF.
+
     IF client->check_on_event( cs_event-action ).
       on_action( client ).
       RETURN.
@@ -705,7 +918,19 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         LOOP AT lo_vh->result_values( ) INTO DATA(lv_value).
           APPEND |={ lv_value }| TO lt_exact.
         ENDLOOP.
-        <ls_filter>-value = concat_lines_of( table = lt_exact sep = `;` ).
+        "a MultiInput keeps what it had and gets the new values as tokens
+        IF <ls_filter>-control = z2ui5_cl_rap_util=>cs_filter_control-multi.
+          DATA(lt_parts) = z2ui5_cl_rap_util=>split_filter_value( <ls_filter>-value ).
+          LOOP AT lt_exact INTO DATA(lv_exact).
+            IF NOT line_exists( lt_parts[ table_line = lv_exact ] ).
+              APPEND lv_exact TO lt_parts.
+            ENDIF.
+          ENDLOOP.
+          <ls_filter>-value = concat_lines_of( table = lt_parts sep = `;` ).
+        ELSE.
+          <ls_filter>-value = concat_lines_of( table = lt_exact sep = `;` ).
+        ENDIF.
+        update_filter_tokens( ).
       ENDIF.
       CLEAR mv_vh_target.
       load_data( ).
@@ -754,11 +979,15 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD load_data.
 
+    "the rows are read - the table's text is that of no match from now on
+    mv_loaded = abap_true.
+    mv_no_data = get_text( cs_text-not_found ).
+
     "a mandatory filter without a value: no rows until it has one
     IF get_missing_filters( ) IS NOT INITIAL.
       mr_data = create_entity_table(
         entity_name    = mv_cds_view
-        with_selection = xsdbool( get_line_item_actions( abap_false ) IS NOT INITIAL ) ).
+        with_selection = has_selection( ) ).
       mv_count = `0`.
       mv_more = abap_false.
       RETURN.
@@ -769,7 +998,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       entity_name    = mv_cds_view
       where          = lv_where
       max_rows       = mv_max_rows
-      with_selection = xsdbool( get_line_item_actions( abap_false ) IS NOT INITIAL )
+      with_selection = has_selection( )
       order_by       = get_order_by( ) ).
     IF mr_data IS BOUND.
       DATA(lv_count) = count_rows( entity_name = mv_cds_view
@@ -783,6 +1012,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       z2ui5_cl_rap_util=>clear_large_objects( data      = mr_data
                                               it_fields = ms_entity-fields ).
       apply_row_states( ).
+      apply_text_columns( ).
     ELSE.
       mv_count = `0`.
       mv_more = abap_false.
@@ -821,6 +1051,12 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       APPEND lv_cond TO lt_and.
     ENDIF.
 
+    "what the start's selection variant restricts beyond the filter bar
+    "(an OR, parentheses - since 2026-10, third round)
+    IF mv_variant_where IS NOT INITIAL.
+      APPEND |( { mv_variant_where } )| TO lt_and.
+    ENDIF.
+
     result = concat_lines_of( table = lt_and sep = ` AND ` ).
 
   ENDMETHOD.
@@ -831,9 +1067,17 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     DATA lt_order TYPE string_table.
     DATA lt_used TYPE string_table.
 
+    "the group field first - the rows of a group follow each other (since
+    "2026-10, third round)
+    IF mv_group_field IS NOT INITIAL AND line_exists( mt_sort_field[ name = mv_group_field ] ).
+      APPEND mv_group_field TO lt_order.
+      APPEND mv_group_field TO lt_used.
+    ENDIF.
+
     "only a field the sort select offers - a STRING (LOB) column in an
     "ORDER BY is invalid SQL and would empty the whole list
-    IF mv_sort_field IS NOT INITIAL AND line_exists( mt_sort_field[ name = mv_sort_field ] ).
+    IF mv_sort_field IS NOT INITIAL AND line_exists( mt_sort_field[ name = mv_sort_field ] )
+      AND NOT line_exists( lt_used[ table_line = mv_sort_field ] ).
       APPEND |{ mv_sort_field }{ COND #( WHEN mv_sort_desc = abap_true THEN ` DESCENDING` ELSE `` ) }| TO lt_order.
       APPEND mv_sort_field TO lt_used.
     ENDIF.
@@ -906,6 +1150,17 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
 
   METHOD get_line_item_fields.
+
+    "the qualified @UI.lineItem of the presentation variant the list
+    "started with (since 2026-10, third round)
+    IF mv_line_item_qualifier IS NOT INITIAL.
+      result = z2ui5_cl_rap_util=>get_line_item_columns( it_fields = ms_entity-fields
+                                                         qualifier = mv_line_item_qualifier ).
+      IF result IS NOT INITIAL.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
     LOOP AT ms_entity-fields INTO DATA(ls_field)
       WHERE line_item_pos > 0 AND is_hidden = abap_false.
       APPEND ls_field TO result.
@@ -1011,7 +1266,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
 
   METHOD get_visible_columns.
-    result = get_line_item_fields( ).
+    result = get_ordered_columns( ).
     LOOP AT mt_hidden_column INTO DATA(lv_hidden).
       DELETE result WHERE name = lv_hidden.
     ENDLOOP.
@@ -1025,6 +1280,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   METHOD init_variants.
 
     CLEAR: mt_variant_item, mt_variants, mv_variant.
+    mv_start_auto = abap_true.
     IF z2ui5_cl_rap_variant=>is_available( ) = abap_false.
       RETURN.
     ENDIF.
@@ -1033,9 +1289,13 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     mv_variant = cv_variant_standard.
     APPEND VALUE #( key = cv_variant_standard text = get_text( cs_text-standard ) ) TO mt_variant_item.
     LOOP AT mt_variants INTO DATA(ls_variant).
-      APPEND VALUE #( key = ls_variant-name text = ls_variant-name ) TO mt_variant_item.
-      IF ls_variant-is_default = abap_true.
+      "another user's public view: its name and whose it is
+      APPEND VALUE #( key  = get_variant_key( ls_variant )
+                      text = COND #( WHEN ls_variant-owner IS INITIAL THEN ls_variant-name
+                                     ELSE |{ ls_variant-name } ({ ls_variant-owner })| ) ) TO mt_variant_item.
+      IF ls_variant-is_default = abap_true AND ls_variant-owner IS INITIAL.
         mv_variant = ls_variant-name.
+        mv_start_auto = ls_variant-auto_apply.
         apply_variant( ls_variant-data ).
       ENDIF.
     ENDLOOP.
@@ -1046,27 +1306,69 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   METHOD capture_variant.
     LOOP AT mt_filter INTO DATA(ls_filter).
       APPEND VALUE #( name = ls_filter-name value = ls_filter-value ) TO result-filters.
+      "the fields of the filter bar - adapt filters (since 2026-10, third
+      "round, like the columns' order and widths and the group field)
+      APPEND ls_filter-name TO result-filter_fields.
     ENDLOOP.
     result-search = mv_search.
     result-sort_field = mv_sort_field.
     result-sort_desc = mv_sort_desc.
     result-hidden_columns = mt_hidden_column.
+    result-column_order = mt_column_order.
+    result-column_widths = mt_column_width.
+    result-group_field = mv_group_field.
   ENDMETHOD.
 
 
   METHOD apply_variant.
+
+    DATA lt_filter TYPE ty_t_filter.
+    DATA(lt_adaptable) = get_adaptable_fields( ).
+
+    "the fields of the view's filter bar - a mandatory filter always, a
+    "field the entity no longer has never (since 2026-10, third round)
+    IF is_data-filter_fields IS NOT INITIAL.
+      LOOP AT is_data-filter_fields INTO DATA(lv_filter_field).
+        READ TABLE mt_filter INTO DATA(ls_kept) WITH KEY name = lv_filter_field.
+        IF sy-subrc = 0.
+          APPEND ls_kept TO lt_filter.
+          CONTINUE.
+        ENDIF.
+        READ TABLE ms_entity-fields INTO DATA(ls_field) WITH KEY name = lv_filter_field.
+        IF sy-subrc = 0 AND line_exists( lt_adaptable[ name = lv_filter_field ] ).
+          DATA(ls_added) = create_filter( ls_field ).
+          ls_added-is_added = xsdbool( ls_field-is_selection_field = abap_false ).
+          APPEND ls_added TO lt_filter.
+        ENDIF.
+      ENDLOOP.
+      LOOP AT mt_filter INTO DATA(ls_mandatory) WHERE mandatory = abap_true.
+        IF NOT line_exists( lt_filter[ name = ls_mandatory-name ] ).
+          APPEND ls_mandatory TO lt_filter.
+        ENDIF.
+      ENDLOOP.
+      mt_filter = lt_filter.
+    ENDIF.
+
     "only the filters the list has - a view of an older version of the
     "entity may name others
     LOOP AT mt_filter ASSIGNING FIELD-SYMBOL(<ls_filter>).
       READ TABLE is_data-filters INTO DATA(ls_value) WITH KEY name = <ls_filter>-name.
       <ls_filter>-value = COND #( WHEN sy-subrc = 0 THEN ls_value-value ).
+      CLEAR: <ls_filter>-state, <ls_filter>-input.
     ENDLOOP.
+    update_filter_tokens( ).
     mv_search = is_data-search.
     IF is_data-sort_field IS INITIAL OR line_exists( mt_sort_field[ name = is_data-sort_field ] ).
       mv_sort_field = is_data-sort_field.
       mv_sort_desc = is_data-sort_desc.
     ENDIF.
     mt_hidden_column = is_data-hidden_columns.
+    mt_column_order = is_data-column_order.
+    mt_column_width = is_data-column_widths.
+    IF is_data-group_field IS INITIAL OR line_exists( mt_sort_field[ name = is_data-group_field ] ).
+      mv_group_field = is_data-group_field.
+    ENDIF.
+
   ENDMETHOD.
 
 
@@ -1102,7 +1404,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         )->a( n = `press`
               v = client->_event( cs_event-variant_save_open ) ).
 
-    DATA(lv_deletable) = xsdbool( mv_variant IS NOT INITIAL AND mv_variant <> cv_variant_standard ).
+    "only the user's own view - another user's public one is not theirs
+    DATA(lv_deletable) = xsdbool( mv_variant IS NOT INITIAL AND mv_variant <> cv_variant_standard
+                                  AND line_exists( mt_variants[ name = mv_variant owner = `` ] ) ).
     io_toolbar->tag( `Button`
         )->a( n = `icon`
               v = `sap-icon://delete`
@@ -1139,7 +1443,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
             )->a( n = `contentWidth`
                   v = `25rem` ).
 
-    lo_dialog->ele( `content`
+    DATA(lo_variant_box) = lo_dialog->ele( `content`
         )->ele( `VBox`
             )->a( n = `class`
                   v = `sapUiSmallMargin`
@@ -1158,6 +1462,21 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                       t = get_text( cs_text-as_default )
                 )->a( n = `selected`
                       v = client->_bind( mv_variant_default ) ).
+
+    "public and apply automatically - where the table has their columns
+    "(since 2026-10, third round)
+    IF z2ui5_cl_rap_variant=>has_public_views( ) = abap_true.
+      lo_variant_box->tag( `CheckBox`
+          )->a( n = `text`
+                t = get_text( cs_text-public )
+          )->a( n = `selected`
+                v = client->_bind( mv_variant_public )
+      )->tag( `CheckBox`
+          )->a( n = `text`
+                t = get_text( cs_text-auto_apply )
+          )->a( n = `selected`
+                v = client->_bind( mv_variant_auto ) ).
+    ENDIF.
 
     lo_dialog->ele( `beginButton`
         )->tag( `Button`
@@ -1192,19 +1511,92 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
             )->a( n = `title`
                   t = get_text( cs_text-columns )
             )->a( n = `contentWidth`
-                  v = `25rem` ).
+                  v = `32rem` ).
 
-    lo_dialog->ele( `content`
-        )->ele( `List`
-            )->a( n = `mode`
-                  v = `MultiSelect`
+    "the group field (since 2026-10, third round)
+    DATA(lo_column_content) = lo_dialog->ele( `content` ).
+    lo_column_content->ele( `HBox`
+        )->a( n = `alignItems`
+              v = `Center`
+        )->a( n = `class`
+              v = `sapUiSmallMarginBeginEnd`
+        )->tag( `Label`
+            )->a( n = `text`
+                  t = get_text( cs_text-group_by )
+            )->a( n = `class`
+                  v = `sapUiSmallMarginEnd`
+        )->ele( `Select`
+            )->a( n = `selectedKey`
+                  v = client->_bind( mv_group_field )
             )->a( n = `items`
-                  v = client->_bind( mt_column )
-            )->tag( `StandardListItem`
-                )->a( n = `title`
-                      v = `{LABEL}`
+                  v = client->_bind( mt_group_item )
+            )->a( n = `forceSelection`
+                  v = `false`
+            )->tag( n  = `Item`
+                    ns = `core`
+                )->a( n = `key`
+                      v = `{KEY}`
+                )->a( n = `text`
+                      v = `{TEXT}` ).
+
+    "visible, label, width, order - a row per column
+    DATA(lo_column_table) = lo_column_content->ele( `Table`
+        )->a( n = `items`
+              v = client->_bind( mt_column ) ).
+    lo_column_table->ele( `columns`
+        )->ele( `Column`
+            )->a( n = `width`
+                  v = `3rem`
+        )->end(
+        )->ele( `Column`
+            )->tag( `Text`
+                )->a( n = `text`
+                      t = get_text( cs_text-columns )
+        )->end(
+        )->ele( `Column`
+            )->a( n = `width`
+                  v = `8rem`
+            )->tag( `Text`
+                )->a( n = `text`
+                      t = get_text( cs_text-width )
+        )->end(
+        )->ele( `Column`
+            )->a( n = `width`
+                  v = `6rem` ).
+    lo_column_table->ele( `items`
+        )->ele( `ColumnListItem`
+            )->tag( `CheckBox`
                 )->a( n = `selected`
-                      v = `{VISIBLE}` ).
+                      v = `{VISIBLE}`
+            )->tag( `Text`
+                )->a( n = `text`
+                      v = `{LABEL}`
+            )->tag( `Input`
+                )->a( n = `value`
+                      v = `{WIDTH}`
+                )->a( n = `placeholder`
+                      v = `10rem`
+            )->ele( `HBox`
+                )->tag( `Button`
+                    )->a( n = `icon`
+                          v = `sap-icon://navigation-up-arrow`
+                    )->a( n = `type`
+                          v = `Transparent`
+                    )->a( n = `tooltip`
+                          t = get_text( cs_text-move_up )
+                    )->a( n = `press`
+                          v = client->_event( val = cs_event-column_up
+                                              arg = `${NAME}` )
+                )->tag( `Button`
+                    )->a( n = `icon`
+                          v = `sap-icon://navigation-down-arrow`
+                    )->a( n = `type`
+                          v = `Transparent`
+                    )->a( n = `tooltip`
+                          t = get_text( cs_text-move_down )
+                    )->a( n = `press`
+                          v = client->_event( val = cs_event-column_down
+                                              arg = `${NAME}` ) ).
 
     lo_dialog->ele( `beginButton`
         )->tag( `Button`
@@ -1228,26 +1620,48 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD on_variant_event.
 
+    DATA lv_index TYPE i.
+    DATA ls_column TYPE ty_s_column.
+    DATA ls_variant TYPE z2ui5_cl_rap_variant=>ty_s_variant.
+
     result = abap_true.
     CASE client->get_event( ).
 
       WHEN cs_event-variant_select.
+        "a view that does not apply automatically sets its filters and
+        "waits for Go (since 2026-10, third round)
+        DATA(lv_apply) = xsdbool( mv_initial_load <> cs_initial_load-disabled ).
         IF mv_variant = cv_variant_standard.
           apply_variant( ms_standard ).
         ELSE.
-          READ TABLE mt_variants INTO DATA(ls_variant) WITH KEY name = mv_variant.
-          IF sy-subrc = 0.
-            apply_variant( ls_variant-data ).
-          ENDIF.
+          LOOP AT mt_variants INTO ls_variant.
+            IF get_variant_key( ls_variant ) = mv_variant.
+              apply_variant( ls_variant-data ).
+              lv_apply = ls_variant-auto_apply.
+              EXIT.
+            ENDIF.
+          ENDLOOP.
         ENDIF.
-        load_data( ).
+        IF lv_apply = abap_true.
+          load_data( ).
+        ELSE.
+          clear_rows( ).
+        ENDIF.
         "the columns may differ - built into the view
         render_page( client ).
 
       WHEN cs_event-variant_save_open.
-        mv_variant_name = COND #( WHEN mv_variant <> cv_variant_standard THEN mv_variant ).
-        READ TABLE mt_variants INTO ls_variant WITH KEY name = mv_variant.
-        mv_variant_default = xsdbool( sy-subrc = 0 AND ls_variant-is_default = abap_true ).
+        CLEAR: mv_variant_name, mv_variant_default, mv_variant_public.
+        mv_variant_auto = abap_true.
+        "the user's own view is saved again, another user's under a name of
+        "the user's own
+        READ TABLE mt_variants INTO ls_variant WITH KEY name = mv_variant owner = ``.
+        IF sy-subrc = 0 AND mv_variant <> cv_variant_standard.
+          mv_variant_name = ls_variant-name.
+          mv_variant_default = ls_variant-is_default.
+          mv_variant_public = ls_variant-is_public.
+          mv_variant_auto = ls_variant-auto_apply.
+        ENDIF.
         render_variant_popup( client ).
 
       WHEN cs_event-variant_save.
@@ -1260,23 +1674,25 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         IF z2ui5_cl_rap_variant=>save( entity_name = mv_cds_view
                                        variant     = VALUE #( name       = lv_name
                                                               is_default = mv_variant_default
+                                                              is_public  = mv_variant_public
+                                                              auto_apply = mv_variant_auto
                                                               data       = capture_variant( ) ) ) = abap_false.
           client->message_box_display( text = get_text( cs_text-load_error )
                                        type = `error` ).
           RETURN.
         ENDIF.
         client->popup_destroy( ).
+        "the views again - init_variants would apply the default
+        DATA(ls_saved) = capture_variant( ).
         init_variants( ).
+        apply_variant( ls_saved ).
         mv_variant = lv_name.
-        READ TABLE mt_variants INTO ls_variant WITH KEY name = lv_name.
-        IF sy-subrc = 0.
-          apply_variant( ls_variant-data ).
-        ENDIF.
         render_page( client ).
         client->message_toast_display( get_text( cs_text-view_saved ) ).
 
       WHEN cs_event-variant_delete.
-        IF mv_variant <> cv_variant_standard AND mv_variant IS NOT INITIAL.
+        IF mv_variant <> cv_variant_standard AND mv_variant IS NOT INITIAL
+          AND line_exists( mt_variants[ name = mv_variant owner = `` ] ).
           z2ui5_cl_rap_variant=>delete( entity_name = mv_cds_view
                                         name        = mv_variant ).
         ENDIF.
@@ -1288,22 +1704,52 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         render_page( client ).
 
       WHEN cs_event-columns.
+        "every column in the user's order, with its width (since 2026-10,
+        "third round)
         CLEAR mt_column.
-        LOOP AT get_line_item_fields( ) INTO DATA(ls_col).
+        LOOP AT get_ordered_columns( ) INTO DATA(ls_col).
+          READ TABLE mt_column_width INTO DATA(ls_width) WITH KEY name = ls_col-name.
           APPEND VALUE #( name    = ls_col-name
                           label   = COND #( WHEN ls_col-line_item_label IS NOT INITIAL THEN ls_col-line_item_label
                                             ELSE ls_col-label )
-                          visible = xsdbool( NOT line_exists( mt_hidden_column[ table_line = ls_col-name ] ) ) )
+                          visible = xsdbool( NOT line_exists( mt_hidden_column[ table_line = ls_col-name ] ) )
+                          width   = COND #( WHEN sy-subrc = 0 THEN ls_width-value ELSE ls_col-line_item_width ) )
             TO mt_column.
         ENDLOOP.
         render_column_popup( client ).
 
+      WHEN cs_event-column_up OR cs_event-column_down.
+        READ TABLE mt_column INTO ls_column WITH KEY name = client->get_event_arg( ).
+        IF sy-subrc = 0.
+          lv_index = sy-tabix.
+          DATA(lv_target) = COND i( WHEN client->get_event( ) = cs_event-column_up THEN lv_index - 1
+                                    ELSE lv_index + 1 ).
+          IF lv_target >= 1 AND lv_target <= lines( mt_column ).
+            DELETE mt_column INDEX lv_index.
+            INSERT ls_column INTO mt_column INDEX lv_target.
+          ENDIF.
+        ENDIF.
+        render_column_popup( client ).
+
       WHEN cs_event-columns_ok.
-        CLEAR mt_hidden_column.
-        LOOP AT mt_column INTO DATA(ls_column) WHERE visible = abap_false.
-          APPEND ls_column-name TO mt_hidden_column.
+        CLEAR: mt_hidden_column, mt_column_order, mt_column_width.
+        LOOP AT mt_column INTO ls_column.
+          IF ls_column-visible = abap_false.
+            APPEND ls_column-name TO mt_hidden_column.
+          ENDIF.
+          APPEND ls_column-name TO mt_column_order.
+          "a width the user gave - one the annotation gives needs no entry
+          DATA(lv_width) = z2ui5_cl_rap_util=>normalize_css_width( ls_column-width ).
+          READ TABLE ms_entity-fields INTO DATA(ls_width_field) WITH KEY name = ls_column-name.
+          IF lv_width IS NOT INITIAL AND ( sy-subrc <> 0 OR lv_width <> ls_width_field-line_item_width ).
+            APPEND VALUE #( name = ls_column-name value = lv_width ) TO mt_column_width.
+          ENDIF.
         ENDLOOP.
         client->popup_destroy( ).
+        "the group field orders the rows in the database
+        IF mv_loaded = abap_true.
+          load_data( ).
+        ENDIF.
         render_page( client ).
 
       WHEN cs_event-popup_cancel.
@@ -1363,34 +1809,58 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     FIELD-SYMBOLS <ls_row> TYPE any.
     FIELD-SYMBOLS <lv_value> TYPE any.
+    FIELD-SYMBOLS <lt_selected> TYPE STANDARD TABLE.
     DATA lt_params TYPE ty_t_name_value.
 
     DATA(lv_arg) = client->get_event_arg( ).
 
-    "a toolbar button: its target, no parameters
+    "a toolbar button: its target - with semanticObjectBinding the values
+    "of the selected rows as parameters (since 2026-10, third round)
     READ TABLE ms_entity-actions INTO DATA(ls_intent) WITH KEY name = lv_arg.
     IF sy-subrc = 0 AND ls_intent-semantic_object IS NOT INITIAL.
+      IF ls_intent-sem_object_bindings IS NOT INITIAL.
+        DATA(lr_selected) = get_selected_rows( entity_name = mv_cds_view
+                                               data        = mr_data ).
+        IF lr_selected IS BOUND.
+          ASSIGN lr_selected->* TO <lt_selected>.
+          LOOP AT <lt_selected> ASSIGNING FIELD-SYMBOL(<ls_selected>).
+            APPEND LINES OF z2ui5_cl_rap_util=>get_navigation_params(
+              row      = <ls_selected>
+              bindings = ls_intent-sem_object_bindings ) TO lt_params.
+          ENDLOOP.
+        ENDIF.
+        IF lt_params IS INITIAL.
+          client->message_toast_display( get_text( cs_text-no_selection ) ).
+          RETURN.
+        ENDIF.
+      ENDIF.
       navigate_to_intent( client          = client
                           semantic_object = ls_intent-semantic_object
-                          action          = ls_intent-semantic_action ).
+                          action          = ls_intent-semantic_action
+                          params          = lt_params ).
       RETURN.
     ENDIF.
 
-    "a column's link: the value and the row's keys as parameters
+    "a column's link: the value (mapped by the semantic object's bindings)
+    "and the row's keys as parameters
     READ TABLE ms_entity-fields INTO DATA(ls_col) WITH KEY name = lv_arg.
-    IF sy-subrc <> 0 OR ls_col-line_item_sem_object IS INITIAL.
+    IF sy-subrc <> 0 OR ( ls_col-line_item_sem_object IS INITIAL AND ls_col-semantic_object IS INITIAL ).
       RETURN.
     ENDIF.
+    DATA(lv_object) = COND string( WHEN ls_col-line_item_sem_object IS NOT INITIAL THEN ls_col-line_item_sem_object
+                                   ELSE ls_col-semantic_object ).
     DATA(lr_row) = find_row_by_event_keys( data       = mr_data
                                            key_fields = mt_row_key
                                            client     = client
                                            arg_offset = 1 ).
     IF lr_row IS BOUND.
       ASSIGN lr_row->* TO <ls_row>.
-      DATA(lt_names) = VALUE string_table( ( ls_col-name ) ).
-      APPEND LINES OF mt_row_key TO lt_names.
-      LOOP AT lt_names INTO DATA(lv_name).
-        IF line_exists( lt_params[ name = lv_name ] ).
+      lt_params = z2ui5_cl_rap_util=>get_navigation_params( row      = <ls_row>
+                                                            field    = ls_col-name
+                                                            bindings = ls_col-sem_object_bindings ).
+      LOOP AT mt_row_key INTO DATA(lv_name).
+        IF line_exists( lt_params[ name = lv_name ] )
+          OR line_exists( ls_col-sem_object_bindings[ local_element = lv_name ] ).
           CONTINUE.
         ENDIF.
         UNASSIGN <lv_value>.
@@ -1401,7 +1871,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       ENDLOOP.
     ENDIF.
     navigate_to_intent( client          = client
-                        semantic_object = ls_col-line_item_sem_object
+                        semantic_object = lv_object
                         action          = COND #( WHEN ls_col-line_item_sem_action IS NOT INITIAL
                                                   THEN ls_col-line_item_sem_action ELSE `display` )
                         params          = lt_params ).
@@ -1704,7 +2174,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD render_filter_bar.
 
-    IF mt_filter IS INITIAL AND ms_entity-is_searchable = abap_false AND mv_is_draft_bo = abap_false.
+    DATA(lv_adaptable) = xsdbool( get_adaptable_fields( ) IS NOT INITIAL ).
+    IF mt_filter IS INITIAL AND ms_entity-is_searchable = abap_false AND mv_is_draft_bo = abap_false
+      AND lv_adaptable = abap_false.
       RETURN.
     ENDIF.
 
@@ -1723,36 +2195,6 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           )->a( n = `class`
                 v = `sapUiTinyMarginEnd` ).
     ENDIF.
-
-    DATA(lo_fbox) = lo_bar->ele( `HBox`
-        )->a( n = `items`
-              v = client->_bind( mt_filter )
-        )->a( n = `alignItems`
-              v = `Center`
-        )->a( n = `wrap`
-              v = `Wrap` ).
-
-    "a hidden filter is not shown - its default still restricts the rows
-    lo_fbox->tag( `Input`
-        )->a( n = `visible`
-              v = `{= !${HIDDEN} }`
-        )->a( n = `value`
-              v = `{VALUE}`
-        )->a( n = `placeholder`
-              v = `{LABEL}`
-        )->a( n = `tooltip`
-              t = get_text( cs_text-filter_hint )
-        )->a( n = `showValueHelp`
-              v = `{SHOW_VH}`
-        )->a( n = `valueHelpRequest`
-              v = client->_event( val = cs_event-value_help
-                                  arg = `${NAME}` )
-        )->a( n = `submit`
-              v = client->_event( cs_event-go )
-        )->a( n = `width`
-              v = `12rem`
-        )->a( n = `class`
-              v = `sapUiTinyMarginEnd` ).
 
     "a draft business object: the editing status (since 2026-10, third
     "round)
@@ -1778,6 +2220,17 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     lo_bar->tag( `ToolbarSpacer` ).
 
+    "further filter fields at runtime (since 2026-10, third round)
+    IF lv_adaptable = abap_true.
+      lo_bar->tag( `Button`
+          )->a( n = `text`
+                t = get_text( cs_text-adapt_filters )
+          )->a( n = `type`
+                v = `Transparent`
+          )->a( n = `press`
+                v = client->_event( cs_event-adapt_filters ) ).
+    ENDIF.
+
     lo_bar->tag( `Button`
         )->a( n = `text`
               t = get_text( cs_text-go )
@@ -1787,6 +2240,150 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
               v = client->_event( cs_event-go )
         )->a( n = `icon`
               v = `sap-icon://search` ).
+
+    IF mt_filter IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    "the filters - a label over the control of each field's type: an input
+    "with the filter syntax, a MultiInput with tokens, a list, a date or a
+    "date range (since 2026-10, third round); the conditions button
+    "defines conditions. One template for every filter, so each control is
+    "visible by the filter's CONTROL
+    DATA(lv_filter_state) = `{= ${STATE} === 'Error' ? 'Error' : 'None' }`.
+    DATA(lo_filter_box) = io_page->ele( `HBox`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+        )->a( n = `items`
+              v = client->_bind( mt_filter )
+        )->a( n = `wrap`
+              v = `Wrap`
+        )->a( n = `class`
+              v = `sapUiSmallMarginBeginEnd sapUiSmallMarginTop` ).
+
+    DATA(lo_filter_item) = lo_filter_box->ele( `VBox`
+        )->a( n = `visible`
+              v = `{= !${HIDDEN} }`
+        )->a( n = `class`
+              v = `sapUiSmallMarginEnd sapUiTinyMarginBottom`
+        )->tag( `Label`
+            )->a( n = `text`
+                  v = `{LABEL}`
+            )->a( n = `tooltip`
+                  t = get_text( cs_text-filter_hint ) ).
+
+    DATA(lo_filter_line) = lo_filter_item->ele( `HBox`
+        )->a( n = `alignItems`
+              v = `Center` ).
+
+    "a hidden filter is not shown - its default still restricts the rows
+    lo_filter_line->tag( `Input`
+        )->a( n = `visible`
+              v = `{= ${CONTROL} === 'INPUT' }`
+        )->a( n = `value`
+              v = `{VALUE}`
+        )->a( n = `tooltip`
+              t = get_text( cs_text-filter_hint )
+        )->a( n = `showValueHelp`
+              v = `{SHOW_VH}`
+        )->a( n = `valueHelpRequest`
+              v = client->_event( val = cs_event-value_help
+                                  arg = `${NAME}` )
+        )->a( n = `submit`
+              v = client->_event( cs_event-go )
+        )->a( n = `valueState`
+              v = lv_filter_state
+        )->a( n = `width`
+              v = `12rem` ).
+
+    "a value help that takes several values: a token per value
+    lo_filter_line->ele( `MultiInput`
+        )->a( n = `visible`
+              v = `{= ${CONTROL} === 'MULTI' }`
+        )->a( n = `value`
+              v = `{INPUT}`
+        )->a( n = `tokens`
+              v = `{TOKENS}`
+        )->a( n = `showValueHelp`
+              v = `true`
+        )->a( n = `valueHelpRequest`
+              v = client->_event( val = cs_event-value_help
+                                  arg = `${NAME}` )
+        )->a( n = `submit`
+              v = client->_event( val = cs_event-filter_token_add
+                                  arg = `${NAME}` )
+        )->a( n = `valueState`
+              v = lv_filter_state
+        )->a( n = `width`
+              v = `15rem`
+        )->ele( `tokens`
+            )->tag( `Token`
+                )->a( n = `key`
+                      v = `{KEY}`
+                )->a( n = `text`
+                      v = `{TEXT}`
+                )->a( n = `delete`
+                      v = client->_event( val = cs_event-filter_token_delete
+                                          arg = `${KEY}` ) ).
+
+    "a boolean, fixed values, a dropdown value help
+    lo_filter_line->ele( `Select`
+        )->a( n = `visible`
+              v = `{= ${CONTROL} === 'LIST' }`
+        )->a( n = `selectedKey`
+              v = `{VALUE}`
+        )->a( n = `items`
+              v = `{ENTRIES}`
+        )->a( n = `forceSelection`
+              v = `false`
+        )->a( n = `valueState`
+              v = lv_filter_state
+        )->a( n = `width`
+              v = `12rem`
+        )->tag( n  = `Item`
+                ns = `core`
+            )->a( n = `key`
+                  v = `{KEY}`
+            )->a( n = `text`
+                  v = `{TEXT}` ).
+
+    "a date: one day, or a range - the model's form, from..to
+    lo_filter_line->tag( `DatePicker`
+        )->a( n = `visible`
+              v = `{= ${CONTROL} === 'DATE' }`
+        )->a( n = `value`
+              v = `{VALUE}`
+        )->a( n = `valueFormat`
+              v = `yyyy-MM-dd`
+        )->a( n = `valueState`
+              v = lv_filter_state
+        )->a( n = `width`
+              v = `12rem`
+    )->tag( `DateRangeSelection`
+        )->a( n = `visible`
+              v = `{= ${CONTROL} === 'DATE_RANGE' }`
+        )->a( n = `value`
+              v = `{VALUE}`
+        )->a( n = `displayFormat`
+              v = `yyyy-MM-dd`
+        )->a( n = `delimiter`
+              v = `..`
+        )->a( n = `valueState`
+              v = lv_filter_state
+        )->a( n = `width`
+              v = `15rem`
+    )->tag( `Button`
+        )->a( n = `visible`
+              v = `{= ${CONTROL} === 'INPUT' || ${CONTROL} === 'MULTI' }`
+        )->a( n = `icon`
+              v = `sap-icon://filter`
+        )->a( n = `type`
+              v = `Transparent`
+        )->a( n = `tooltip`
+              t = get_text( cs_text-define_conditions )
+        )->a( n = `press`
+              v = client->_event( val = cs_event-conditions
+                                  arg = `${NAME}` ) ).
 
   ENDMETHOD.
 
@@ -1798,17 +2395,28 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     DATA(lt_columns) = get_visible_columns( ).
     DATA(lt_inline) = get_line_item_actions( abap_true ).
-    DATA(lv_select) = xsdbool( get_line_item_actions( abap_false ) IS NOT INITIAL ).
-    "the rows are selectable when there are actions to run on them
+    DATA(lv_select) = has_selection( ).
+    "the rows are selectable when there are actions to run on them, or a
+    "navigation that takes their values
     DATA(lv_mode) = `None`.
     IF lv_select = abap_true.
       lv_mode = `MultiSelect`.
     ENDIF.
 
+    "grouped by the group field: a group header row per value - the rows
+    "come ordered by it from the database (since 2026-10, third round)
+    DATA(lv_items) = `{path:'` && client->_bind( val  = <lt_data>
+                                                 path = abap_true ) && `'`.
+    IF mv_group_field IS NOT INITIAL AND line_exists( mt_sort_field[ name = mv_group_field ] ).
+      lv_items = lv_items && `, sorter: {path: '` && mv_group_field && `', group: true}`.
+    ENDIF.
+    lv_items = lv_items && `}`.
+
     DATA(lo_table) = io_page->ele( `Table`
         )->a( n = `items`
-              v = `{path:'` && client->_bind( val  = <lt_data>
-                                              path = abap_true ) && `'}`
+              v = lv_items
+        )->a( n = `noDataText`
+              v = client->_bind( mv_no_data )
         )->a( n = `growing`
               v = `true`
         )->a( n = `growingThreshold`
@@ -1865,6 +2473,13 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     IF lv_select = abap_true.
       lo_row->a( n = `selected`
                  v = |\{{ cv_select_column }\}| ).
+    ENDIF.
+    "the row's criticality - the entity's own @UI.lineItem (since 2026-10,
+    "third round)
+    IF ms_entity-row_criticality IS NOT INITIAL AND line_exists( ms_entity-fields[ name = ms_entity-row_criticality ] ).
+      lo_row->a( n = `highlight`
+                 v = criticality_expression( crit_field = ms_entity-row_criticality
+                                             kind       = `HIGHLIGHT` ) ).
     ENDIF.
     DATA(lo_cells) = lo_row->ele( `cells` ).
 
@@ -2003,44 +2618,50 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       lv_col_label = is_col-label.
     ENDIF.
 
-    "@UI.lineItem importance drives responsive popin behavior
-    IF is_col-line_item_importance CS `MEDIUM`.
-      io_columns->ele( `Column`
-          )->a( n = `minScreenWidth`
-                v = `Tablet`
-          )->a( n = `demandPopin`
-                v = `true`
-          )->tag( `Text`
-              )->a( n = `text`
-                    t = lv_col_label
-              )->a( n = `tooltip`
-                    t = is_col-tooltip ).
-    ELSEIF is_col-line_item_importance CS `LOW`.
-      io_columns->ele( `Column`
-          )->a( n = `minScreenWidth`
-                v = `Desktop`
-          )->a( n = `demandPopin`
-                v = `true`
-          )->tag( `Text`
-              )->a( n = `text`
-                    t = lv_col_label
-              )->a( n = `tooltip`
-                    t = is_col-tooltip ).
-    ELSE.
-      io_columns->ele( `Column`
-          )->tag( `Text`
-              )->a( n = `text`
-                    t = lv_col_label
-              )->a( n = `tooltip`
-                    t = is_col-tooltip ).
+    "@UI.lineItem importance drives responsive popin behavior - a semantic
+    "key without one is HIGH (since 2026-10, third round)
+    DATA(lv_importance) = to_upper( is_col-line_item_importance ).
+    IF lv_importance IS INITIAL AND line_exists( ms_entity-semantic_key[ table_line = is_col-name ] ).
+      lv_importance = `HIGH`.
     ENDIF.
+    DATA(lv_min_screen) = ``.
+    IF lv_importance CS `MEDIUM`.
+      lv_min_screen = `Tablet`.
+    ELSEIF lv_importance CS `LOW`.
+      lv_min_screen = `Desktop`.
+    ENDIF.
+    "the user's width (the columns dialog, a view), else
+    "@UI.lineItem.cssDefault.width
+    READ TABLE mt_column_width INTO DATA(ls_user_width) WITH KEY name = is_col-name.
+    DATA(lv_col_width) = z2ui5_cl_rap_util=>normalize_css_width(
+      COND #( WHEN sy-subrc = 0 THEN ls_user_width-value ELSE is_col-line_item_width ) ).
+
+    DATA(lo_column) = io_columns->ele( `Column` ).
+    IF lv_min_screen IS NOT INITIAL.
+      lo_column->a( n = `minScreenWidth`
+                    t = lv_min_screen
+          )->a( n = `demandPopin`
+                v = `true` ).
+    ENDIF.
+    IF lv_col_width IS NOT INITIAL.
+      lo_column->a( n = `width`
+                    v = lv_col_width ).
+    ENDIF.
+    lo_column->tag( `Text`
+        )->a( n = `text`
+              t = lv_col_label
+        )->a( n = `tooltip`
+              t = is_col-tooltip ).
 
   ENDMETHOD.
 
 
   METHOD render_cell.
 
+    DATA lt_group TYPE z2ui5_cl_rap_util=>ty_t_field_info.
+
     DATA(lv_path) = |\{{ is_col-name }\}|.
+    DATA(ls_cell) = is_col.
 
     "the arguments of a link that needs its row: the column, the row's keys
     DATA(lt_link_arg) = VALUE string_table( ( is_col-name ) ).
@@ -2048,10 +2669,50 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       APPEND `${` && lv_key && `}` TO lt_link_arg.
     ENDLOOP.
 
+    "hidden: #(Field) - the field of the row hides the cell (since 2026-10,
+    "third round, like the branches below that say so)
+    DATA(lo_cell) = io_cells.
+    IF is_col-line_item_hidden IS NOT INITIAL AND is_col-line_item_hidden <> `TRUE`
+      AND line_exists( ms_entity-fields[ name = is_col-line_item_hidden ] ).
+      lo_cell = io_cells->ele( `VBox`
+          )->a( n = `visible`
+                v = `{= !${` && is_col-line_item_hidden && `} }` ).
+    ENDIF.
+
+    "@ObjectModel.text.association: the text read for the rows
+    DATA(lv_text_column) = get_text_column( is_col ).
+    IF ls_cell-text_element IS INITIAL AND lv_text_column IS NOT INITIAL.
+      ls_cell-text_element = lv_text_column.
+    ENDIF.
+    DATA(lv_has_text) = xsdbool( ls_cell-text_element IS NOT INITIAL
+                                 AND ( line_exists( ms_entity-fields[ name = ls_cell-text_element ] )
+                                       OR ls_cell-text_element = lv_text_column ) ).
+
+    "#AS_FIELDGROUP -> the fields of the field group, one under the other
+    IF is_col-line_item_type = `AS_FIELDGROUP` AND is_col-line_item_value_qualifier IS NOT INITIAL.
+      LOOP AT ms_entity-fields INTO DATA(ls_group_field) WHERE is_hidden = abap_false.
+        READ TABLE ls_group_field-field_groups INTO DATA(ls_group)
+          WITH KEY qualifier = is_col-line_item_value_qualifier.
+        IF sy-subrc = 0.
+          ls_group_field-field_group_pos = ls_group-position.
+          APPEND ls_group_field TO lt_group.
+        ENDIF.
+      ENDLOOP.
+      SORT lt_group BY field_group_pos.
+      DATA(lo_group) = lo_cell->ele( `VBox` ).
+      LOOP AT lt_group INTO ls_group_field.
+        lo_group->tag( `Text`
+            )->a( n = `text`
+                  v = COND string( WHEN ls_group_field-text_element IS NOT INITIAL
+                                     AND line_exists( ms_entity-fields[ name = ls_group_field-text_element ] )
+                                   THEN |\{{ ls_group_field-text_element }\} (\{{ ls_group_field-name }\})|
+                                   ELSE |\{{ ls_group_field-name }\}| ) ).
+      ENDLOOP.
+
     "#WITH_URL -> a link to the URL in another field
-    IF is_col-line_item_type = `WITH_URL` AND is_col-line_item_url IS NOT INITIAL
+    ELSEIF is_col-line_item_type = `WITH_URL` AND is_col-line_item_url IS NOT INITIAL
       AND line_exists( ms_entity-fields[ name = is_col-line_item_url ] ).
-      io_cells->tag( `Link`
+      lo_cell->tag( `Link`
           )->a( n = `text`
                 v = lv_path
           )->a( n = `href`
@@ -2062,40 +2723,57 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     "#WITH_NAVIGATION_PATH -> the object page of the associated record
     ELSEIF is_col-line_item_type = `WITH_NAVIGATION_PATH` AND is_col-line_item_target IS NOT INITIAL
       AND client IS BOUND AND mt_row_key IS NOT INITIAL.
-      io_cells->tag( `Link`
+      lo_cell->tag( `Link`
           )->a( n = `text`
                 v = lv_path
           )->a( n = `press`
                 v = client->_event( val   = cs_event-nav_path
                                     t_arg = lt_link_arg ) ).
 
-    "#WITH_INTENT_BASED_NAVIGATION -> another app of the launchpad
-    ELSEIF is_col-line_item_type = `WITH_INTENT_BASED_NAVIGATION` AND is_col-line_item_sem_object IS NOT INITIAL
+    "#WITH_INTENT_BASED_NAVIGATION, @Consumption.semanticObject -> another
+    "app of the launchpad
+    ELSEIF ( ( is_col-line_item_type = `WITH_INTENT_BASED_NAVIGATION` AND is_col-line_item_sem_object IS NOT INITIAL )
+             OR is_col-semantic_object IS NOT INITIAL )
       AND client IS BOUND AND mt_row_key IS NOT INITIAL.
-      io_cells->tag( `Link`
+      lo_cell->tag( `Link`
           )->a( n = `text`
-                v = lv_path
+                v = COND string( WHEN lv_has_text = abap_true THEN |\{{ ls_cell-text_element }\} ({ lv_path })| ELSE lv_path )
           )->a( n = `press`
                 v = client->_event( val   = cs_event-intent
                                     t_arg = lt_link_arg ) ).
 
-    "criticality -> ObjectStatus
+    "@Semantics.imageUrl -> the image
+    ELSEIF is_col-is_image_url = abap_true.
+      lo_cell->tag( `Avatar`
+          )->a( n = `src`
+                v = lv_path
+          )->a( n = `displaySize`
+                v = `XS`
+          )->a( n = `displayShape`
+                v = `Square` ).
+
+    "criticality -> ObjectStatus, with its icon unless #WITHOUT_ICON
     ELSEIF is_col-datapoint_crit_field IS NOT INITIAL
       OR is_col-line_item_crit_field IS NOT INITIAL.
       DATA(lv_crit_field) = is_col-line_item_crit_field.
       IF lv_crit_field IS INITIAL.
         lv_crit_field = is_col-datapoint_crit_field.
       ENDIF.
-      io_cells->tag( `ObjectStatus`
+      DATA(lo_status) = lo_cell->tag( `ObjectStatus`
           )->a( n = `text`
-                v = lv_path
+                v = COND string( WHEN lv_has_text = abap_true THEN |\{{ ls_cell-text_element }\} ({ lv_path })| ELSE lv_path )
           )->a( n = `state`
                 v = criticality_expression( lv_crit_field ) ).
+      IF is_col-line_item_crit_repr <> `WITHOUT_ICON`.
+        lo_status->a( n = `icon`
+                      v = criticality_expression( crit_field = lv_crit_field
+                                                  kind       = `ICON` ) ).
+      ENDIF.
 
     "amount + currency -> ObjectNumber
     ELSEIF is_col-is_amount_field = abap_true
       AND is_col-semantics_currency_code IS NOT INITIAL.
-      io_cells->tag( `ObjectNumber`
+      lo_cell->tag( `ObjectNumber`
           )->a( n = `number`
                 v = lv_path
           )->a( n = `unit`
@@ -2104,37 +2782,63 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     "quantity + unit -> ObjectNumber
     ELSEIF is_col-is_quantity_field = abap_true
       AND is_col-semantics_unit_of_measure IS NOT INITIAL.
-      io_cells->tag( `ObjectNumber`
+      lo_cell->tag( `ObjectNumber`
           )->a( n = `number`
                 v = lv_path
           )->a( n = `unit`
                 v = |\{{ is_col-semantics_unit_of_measure }\}| ).
 
+    "@ObjectModel.semanticKey -> bold, with its text beneath
+    ELSEIF line_exists( ms_entity-semantic_key[ table_line = is_col-name ] ).
+      DATA(lo_identifier) = lo_cell->tag( `ObjectIdentifier`
+          )->a( n = `title`
+                v = lv_path ).
+      IF lv_has_text = abap_true.
+        lo_identifier->a( n = `text`
+                          v = |\{{ ls_cell-text_element }\}| ).
+      ENDIF.
+
+    "iconUrl -> the icon in front of the value
+    ELSEIF is_col-line_item_icon_url IS NOT INITIAL.
+      lo_cell->ele( `HBox`
+          )->a( n = `xmlns:core`
+                v = `sap.ui.core`
+          )->a( n = `alignItems`
+                v = `Center`
+          )->tag( n  = `Icon`
+                  ns = `core`
+              )->a( n = `src`
+                    t = is_col-line_item_icon_url
+              )->a( n = `class`
+                    v = `sapUiTinyMarginEnd`
+          )->tag( `Text`
+              )->a( n = `text`
+                    v = lv_path ).
+
     "@ObjectModel.text.element, arranged by @UI.textArrangement - "Text
     "(Value)" is the Fiori default
-    ELSEIF is_col-text_element IS NOT INITIAL
-      AND line_exists( ms_entity-fields[ name = is_col-text_element ] ).
+    ELSEIF lv_has_text = abap_true.
       CASE is_col-text_arrangement.
         WHEN `TEXT_LAST`.
-          io_cells->tag( `Text`
+          lo_cell->tag( `Text`
               )->a( n = `text`
-                    v = |{ lv_path } (\{{ is_col-text_element }\})| ).
+                    v = |{ lv_path } (\{{ ls_cell-text_element }\})| ).
         WHEN `TEXT_ONLY`.
-          io_cells->tag( `Text`
+          lo_cell->tag( `Text`
               )->a( n = `text`
-                    v = |\{{ is_col-text_element }\}| ).
+                    v = |\{{ ls_cell-text_element }\}| ).
         WHEN `TEXT_SEPARATE`.
-          io_cells->tag( `Text`
+          lo_cell->tag( `Text`
               )->a( n = `text`
                     v = lv_path ).
         WHEN OTHERS.
-          io_cells->tag( `Text`
+          lo_cell->tag( `Text`
               )->a( n = `text`
-                    v = |\{{ is_col-text_element }\} ({ lv_path })| ).
+                    v = |\{{ ls_cell-text_element }\} ({ lv_path })| ).
       ENDCASE.
 
     ELSE.
-      io_cells->tag( `Text`
+      lo_cell->tag( `Text`
           )->a( n = `text`
                 v = lv_path ).
     ENDIF.
@@ -2379,6 +3083,634 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       CATCH cx_root.
         result = abap_false.
     ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD create_filter.
+
+    result = VALUE #(
+      name      = is_field-name
+      label     = COND #( WHEN is_field-filter_mandatory = abap_true THEN |{ is_field-label } *| ELSE is_field-label )
+      value     = is_field-filter_default
+      show_vh   = xsdbool( is_field-value_help-entity_name IS NOT INITIAL )
+      mandatory = is_field-filter_mandatory
+      single    = is_field-filter_single
+      hidden    = is_field-filter_hidden
+      control   = z2ui5_cl_rap_util=>get_filter_control( is_field ) ).
+
+    IF result-control <> z2ui5_cl_rap_util=>cs_filter_control-list.
+      RETURN.
+    ENDIF.
+    "a boolean or fixed values: their entries; a dropdown value help: the
+    "rows of its entity, the text by its text element
+    IF is_field-is_boolean = abap_true OR is_field-value_help-fixed_values IS NOT INITIAL.
+      LOOP AT z2ui5_cl_rap_util=>get_filter_list( is_field = is_field
+                                                  yes      = get_text( cs_text-yes )
+                                                  no       = get_text( cs_text-no ) ) INTO DATA(ls_entry).
+        APPEND VALUE #( key = ls_entry-name text = ls_entry-value ) TO result-entries.
+      ENDLOOP.
+      RETURN.
+    ENDIF.
+
+    APPEND VALUE #( ) TO result-entries.
+    DATA(lr_rows) = select_rows( entity_name = is_field-value_help-entity_name
+                                 max_rows    = 200 ).
+    IF lr_rows IS NOT BOUND.
+      "no entries - the value help input instead
+      result-control = z2ui5_cl_rap_util=>cs_filter_control-input.
+      CLEAR result-entries.
+      RETURN.
+    ENDIF.
+    DATA(ls_list_entity) = z2ui5_cl_rap_util=>read_entity( is_field-value_help-entity_name ).
+    READ TABLE ls_list_entity-fields INTO DATA(ls_element) WITH KEY name = is_field-value_help-element.
+    DATA(lv_text_field) = COND string( WHEN sy-subrc = 0 THEN ls_element-text_element ).
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lv_key> TYPE any.
+    FIELD-SYMBOLS <lv_text> TYPE any.
+    ASSIGN lr_rows->* TO <lt_rows>.
+    LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      UNASSIGN: <lv_key>, <lv_text>.
+      ASSIGN COMPONENT is_field-value_help-element OF STRUCTURE <ls_row> TO <lv_key>.
+      IF <lv_key> IS NOT ASSIGNED.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_entry_key) = condense( |{ <lv_key> }| ).
+      IF lv_text_field IS NOT INITIAL.
+        ASSIGN COMPONENT lv_text_field OF STRUCTURE <ls_row> TO <lv_text>.
+      ENDIF.
+      APPEND VALUE #( key  = |={ lv_entry_key }|
+                      text = COND #( WHEN <lv_text> IS ASSIGNED AND <lv_text> IS NOT INITIAL
+                                     THEN |{ <lv_text> } ({ lv_entry_key })|
+                                     ELSE lv_entry_key ) ) TO result-entries.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD update_filter_tokens.
+
+    DATA lv_index TYPE i.
+
+    LOOP AT mt_filter ASSIGNING FIELD-SYMBOL(<ls_filter>)
+      WHERE control = z2ui5_cl_rap_util=>cs_filter_control-multi.
+      CLEAR <ls_filter>-tokens.
+      lv_index = 0.
+      LOOP AT z2ui5_cl_rap_util=>split_filter_value( <ls_filter>-value ) INTO DATA(lv_part).
+        lv_index = lv_index + 1.
+        "an exact value shows without its =
+        DATA(lv_token_text) = COND string( WHEN strlen( lv_part ) > 1 AND lv_part(1) = `=`
+                                           THEN substring( val = lv_part off = 1 )
+                                           ELSE lv_part ).
+        APPEND VALUE #( key  = |{ <ls_filter>-name }~{ lv_index }|
+                        text = lv_token_text ) TO <ls_filter>-tokens.
+      ENDLOOP.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD take_filter_inputs.
+
+    LOOP AT mt_filter ASSIGNING FIELD-SYMBOL(<ls_filter>)
+      WHERE control = z2ui5_cl_rap_util=>cs_filter_control-multi AND input IS NOT INITIAL.
+      DATA(lv_input) = condense( <ls_filter>-input ).
+      IF lv_input IS NOT INITIAL.
+        <ls_filter>-value = COND #( WHEN <ls_filter>-value IS INITIAL THEN lv_input
+                                    ELSE |{ <ls_filter>-value };{ lv_input }| ).
+      ENDIF.
+      CLEAR <ls_filter>-input.
+    ENDLOOP.
+    update_filter_tokens( ).
+
+  ENDMETHOD.
+
+
+  METHOD apply_presentation_variants.
+
+    DATA lt_presets TYPE ty_t_name_value.
+    DATA lv_where TYPE string.
+    DATA lv_presentation TYPE string.
+    DATA lv_selection TYPE string.
+
+    "the selection presentation variant: the unqualified one, else the
+    "first - without one the unqualified presentation and selection
+    "variant
+    READ TABLE ms_entity-sel_pres_variants INTO DATA(ls_spv) WITH KEY qualifier = ``.
+    IF sy-subrc <> 0.
+      READ TABLE ms_entity-sel_pres_variants INTO ls_spv INDEX 1.
+    ENDIF.
+    IF sy-subrc = 0.
+      lv_presentation = ls_spv-presentation_qualifier.
+      lv_selection = ls_spv-selection_qualifier.
+    ENDIF.
+
+    "the presentation variant: sort order, groupBy, its @UI.lineItem
+    READ TABLE ms_entity-presentation_variants INTO DATA(ls_pv) WITH KEY qualifier = lv_presentation.
+    IF sy-subrc = 0.
+      IF lv_presentation IS NOT INITIAL AND ls_pv-sort_order IS NOT INITIAL.
+        ms_entity-sort_order = ls_pv-sort_order.
+      ENDIF.
+      IF lv_presentation IS NOT INITIAL AND ls_pv-group_by IS NOT INITIAL.
+        ms_entity-group_by = ls_pv-group_by.
+      ENDIF.
+      IF ls_pv-visualization_type = `LINEITEM` AND ls_pv-visualization_qualifier IS NOT INITIAL
+        AND z2ui5_cl_rap_util=>get_line_item_columns( it_fields = ms_entity-fields
+                                                      qualifier = ls_pv-visualization_qualifier ) IS NOT INITIAL.
+        mv_line_item_qualifier = ls_pv-visualization_qualifier.
+      ENDIF.
+    ENDIF.
+
+    "the selection variant: its values in the filter bar, the rest as it
+    "is - a worklist's selection variants are its tabs
+    IF mv_floorplan = cs_floorplan-worklist.
+      RETURN.
+    ENDIF.
+    READ TABLE ms_entity-selection_variants INTO DATA(ls_sv) WITH KEY qualifier = lv_selection.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    z2ui5_cl_rap_util=>selection_variant_filters( EXPORTING is_variant = ls_sv
+                                                            it_fields  = ms_entity-fields
+                                                  IMPORTING filters    = lt_presets
+                                                            where      = lv_where ).
+    mv_variant_where = lv_where.
+    LOOP AT lt_presets INTO DATA(ls_preset).
+      READ TABLE mt_filter ASSIGNING FIELD-SYMBOL(<ls_filter>) WITH KEY name = ls_preset-name.
+      IF sy-subrc = 0.
+        <ls_filter>-value = ls_preset-value.
+        CONTINUE.
+      ENDIF.
+      READ TABLE ms_entity-fields INTO DATA(ls_field) WITH KEY name = ls_preset-name.
+      IF sy-subrc <> 0 OR ls_field-is_virtual = abap_true.
+        CONTINUE.
+      ENDIF.
+      DATA(ls_new_filter) = create_filter( ls_field ).
+      ls_new_filter-value = ls_preset-value.
+      ls_new_filter-is_added = abap_true.
+      APPEND ls_new_filter TO mt_filter.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD on_filter_event.
+
+    DATA lv_index TYPE i.
+    DATA lt_parts TYPE string_table.
+    DATA lv_name TYPE string.
+    DATA lv_number TYPE string.
+
+    result = abap_true.
+    CASE client->get_event( ).
+
+      WHEN cs_event-filter_token_add.
+        take_filter_inputs( ).
+
+      WHEN cs_event-filter_token_delete.
+        "the token's key: the filter~the part's number
+        DATA(lv_token) = client->get_event_arg( ).
+        DATA(lv_at) = find( val = lv_token sub = `~` occ = -1 ).
+        IF lv_at > 0.
+          lv_name = substring( val = lv_token len = lv_at ).
+          lv_number = substring( val = lv_token off = lv_at + 1 ).
+          READ TABLE mt_filter ASSIGNING FIELD-SYMBOL(<ls_filter>) WITH KEY name = lv_name.
+          IF sy-subrc = 0 AND lv_number CO `0123456789` AND lv_number IS NOT INITIAL.
+            lt_parts = z2ui5_cl_rap_util=>split_filter_value( <ls_filter>-value ).
+            lv_index = lv_number.
+            IF lv_index >= 1 AND lv_index <= lines( lt_parts ).
+              DELETE lt_parts INDEX lv_index.
+            ENDIF.
+            <ls_filter>-value = concat_lines_of( table = lt_parts sep = `;` ).
+          ENDIF.
+        ENDIF.
+        update_filter_tokens( ).
+
+      WHEN cs_event-conditions.
+        mv_condition_field = client->get_event_arg( ).
+        READ TABLE mt_filter INTO DATA(ls_filter) WITH KEY name = mv_condition_field.
+        READ TABLE ms_entity-fields INTO DATA(ls_field) WITH KEY name = mv_condition_field.
+        IF sy-subrc <> 0 OR ls_filter-name IS INITIAL.
+          RETURN.
+        ENDIF.
+        mv_condition_title = |{ get_text( cs_text-define_conditions ) }: { ls_field-label }|.
+        mt_condition_op = get_condition_operators( ).
+        CLEAR mt_condition.
+        LOOP AT z2ui5_cl_rap_util=>filter_to_conditions( value    = ls_filter-value
+                                                         is_field = ls_field ) INTO DATA(ls_condition).
+          APPEND VALUE #( id       = |{ lines( mt_condition ) + 1 }|
+                          operator = ls_condition-operator
+                          low      = ls_condition-low
+                          high     = ls_condition-high
+                          exclude  = ls_condition-exclude ) TO mt_condition.
+        ENDLOOP.
+        IF mt_condition IS INITIAL.
+          APPEND VALUE #( id = `1` operator = z2ui5_cl_rap_util=>cs_condition_op-eq ) TO mt_condition.
+        ENDIF.
+        render_condition_popup( client ).
+
+      WHEN cs_event-condition_add.
+        "a number no row has
+        lv_index = 0.
+        LOOP AT mt_condition INTO DATA(ls_row).
+          IF ls_row-id CO `0123456789` AND CONV i( ls_row-id ) > lv_index.
+            lv_index = ls_row-id.
+          ENDIF.
+        ENDLOOP.
+        APPEND VALUE #( id = |{ lv_index + 1 }| operator = z2ui5_cl_rap_util=>cs_condition_op-eq ) TO mt_condition.
+        render_condition_popup( client ).
+
+      WHEN cs_event-condition_delete.
+        DELETE mt_condition WHERE id = client->get_event_arg( ).
+        render_condition_popup( client ).
+
+      WHEN cs_event-conditions_ok.
+        READ TABLE mt_filter ASSIGNING <ls_filter> WITH KEY name = mv_condition_field.
+        IF sy-subrc = 0.
+          <ls_filter>-value = z2ui5_cl_rap_util=>conditions_to_filter(
+            VALUE #( FOR ls_c IN mt_condition ( operator = ls_c-operator
+                                                 low      = ls_c-low
+                                                 high     = ls_c-high
+                                                 exclude  = ls_c-exclude ) ) ).
+          CLEAR <ls_filter>-state.
+        ENDIF.
+        update_filter_tokens( ).
+        CLEAR: mv_condition_field, mt_condition.
+        client->popup_destroy( ).
+
+      WHEN cs_event-adapt_filters.
+        CLEAR mt_adapt.
+        LOOP AT get_adaptable_fields( ) INTO DATA(ls_adapt).
+          APPEND VALUE #( name    = ls_adapt-name
+                          label   = ls_adapt-label
+                          visible = xsdbool( line_exists( mt_filter[ name = ls_adapt-name ] ) ) ) TO mt_adapt.
+        ENDLOOP.
+        render_adapt_popup( client ).
+
+      WHEN cs_event-adapt_filters_ok.
+        "a field chosen gets a filter, one deselected loses it - a
+        "mandatory filter stays
+        LOOP AT mt_adapt INTO DATA(ls_choice).
+          DATA(lv_present) = xsdbool( line_exists( mt_filter[ name = ls_choice-name ] ) ).
+          IF ls_choice-visible = abap_true AND lv_present = abap_false.
+            READ TABLE ms_entity-fields INTO ls_field WITH KEY name = ls_choice-name.
+            IF sy-subrc = 0.
+              DATA(ls_added) = create_filter( ls_field ).
+              ls_added-is_added = abap_true.
+              APPEND ls_added TO mt_filter.
+            ENDIF.
+          ELSEIF ls_choice-visible = abap_false AND lv_present = abap_true.
+            DELETE mt_filter WHERE name = ls_choice-name AND mandatory = abap_false.
+          ENDIF.
+        ENDLOOP.
+        update_filter_tokens( ).
+        client->popup_destroy( ).
+        render_page( client ).
+
+      WHEN OTHERS.
+        result = abap_false.
+    ENDCASE.
+
+  ENDMETHOD.
+
+
+  METHOD render_condition_popup.
+
+    DATA(lo_popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+    DATA(lo_dialog) = lo_popup->ele( n  = `FragmentDefinition`
+                                      ns = `core`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+        )->ele( `Dialog`
+            )->a( n = `title`
+                  t = mv_condition_title
+            )->a( n = `contentWidth`
+                  v = `40rem` ).
+
+    "a row per condition: exclude, the operator, its values, delete
+    DATA(lo_condition_table) = lo_dialog->ele( `content`
+        )->ele( `Table`
+            )->a( n = `items`
+                  v = client->_bind( mt_condition ) ).
+    lo_condition_table->ele( `headerToolbar`
+        )->ele( `OverflowToolbar`
+            )->tag( `ToolbarSpacer`
+            )->tag( `Button`
+                )->a( n = `text`
+                      t = get_text( cs_text-add_condition )
+                )->a( n = `icon`
+                      v = `sap-icon://add`
+                )->a( n = `press`
+                      v = client->_event( cs_event-condition_add ) ).
+    lo_condition_table->ele( `columns`
+        )->ele( `Column`
+            )->a( n = `width`
+                  v = `7rem`
+            )->tag( `Text`
+                )->a( n = `text`
+                      t = get_text( cs_text-exclude )
+        )->end(
+        )->ele( `Column`
+            )->a( n = `width`
+                  v = `12rem`
+        )->end(
+        )->ele( `Column`
+        )->end(
+        )->ele( `Column`
+        )->end(
+        )->ele( `Column`
+            )->a( n = `width`
+                  v = `3rem` ).
+    lo_condition_table->ele( `items`
+        )->ele( `ColumnListItem`
+            )->tag( `CheckBox`
+                )->a( n = `selected`
+                      v = `{EXCLUDE}`
+            )->ele( `Select`
+                )->a( n = `selectedKey`
+                      v = `{OPERATOR}`
+                )->a( n = `items`
+                      v = client->_bind( mt_condition_op )
+                )->a( n = `width`
+                      v = `100%`
+                )->tag( n  = `Item`
+                        ns = `core`
+                    )->a( n = `key`
+                          v = `{KEY}`
+                    )->a( n = `text`
+                          v = `{TEXT}`
+            )->end(
+            )->tag( `Input`
+                )->a( n = `value`
+                      v = `{LOW}`
+                )->a( n = `visible`
+                      v = `{= ${OPERATOR} !== 'EMPTY' }`
+            )->tag( `Input`
+                )->a( n = `value`
+                      v = `{HIGH}`
+                )->a( n = `visible`
+                      v = `{= ${OPERATOR} === 'BT' }`
+            )->tag( `Button`
+                )->a( n = `icon`
+                      v = `sap-icon://decline`
+                )->a( n = `type`
+                      v = `Transparent`
+                )->a( n = `tooltip`
+                      t = get_text( cs_text-remove )
+                )->a( n = `press`
+                      v = client->_event( val = cs_event-condition_delete
+                                          arg = `${ID}` ) ).
+
+    lo_dialog->ele( `beginButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-ok )
+            )->a( n = `type`
+                  v = `Emphasized`
+            )->a( n = `press`
+                  v = client->_event( cs_event-conditions_ok ) ).
+    lo_dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-cancel )
+            )->a( n = `press`
+                  v = client->_event( cs_event-popup_cancel ) ).
+
+    client->popup_display( lo_popup->stringify( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD render_adapt_popup.
+
+    DATA(lo_popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+    DATA(lo_dialog) = lo_popup->ele( n  = `FragmentDefinition`
+                                      ns = `core`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+        )->ele( `Dialog`
+            )->a( n = `title`
+                  t = get_text( cs_text-adapt_filters )
+            )->a( n = `contentWidth`
+                  v = `25rem` ).
+
+    lo_dialog->ele( `content`
+        )->ele( `List`
+            )->a( n = `mode`
+                  v = `MultiSelect`
+            )->a( n = `items`
+                  v = client->_bind( mt_adapt )
+            )->tag( `StandardListItem`
+                )->a( n = `title`
+                      v = `{LABEL}`
+                )->a( n = `selected`
+                      v = `{VISIBLE}` ).
+
+    lo_dialog->ele( `beginButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-ok )
+            )->a( n = `type`
+                  v = `Emphasized`
+            )->a( n = `press`
+                  v = client->_event( cs_event-adapt_filters_ok ) ).
+    lo_dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-cancel )
+            )->a( n = `press`
+                  v = client->_event( cs_event-popup_cancel ) ).
+
+    client->popup_display( lo_popup->stringify( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD get_adaptable_fields.
+
+    "every field that can be filtered: visible, a column, no file
+    LOOP AT ms_entity-fields INTO DATA(ls_field)
+      WHERE is_hidden = abap_false AND is_virtual = abap_false AND is_large_object = abap_false.
+      IF ls_field-type_kind = `RAW` OR ls_field-is_consumption_hidden = abap_true.
+        CONTINUE.
+      ENDIF.
+      APPEND ls_field TO result.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD clear_rows.
+
+    mr_data = create_entity_table( entity_name    = mv_cds_view
+                                   with_selection = has_selection( ) ).
+    CLEAR mv_count.
+    mv_more = abap_false.
+    mv_loaded = abap_false.
+    mv_no_data = get_text( cs_text-press_go ).
+
+  ENDMETHOD.
+
+
+  METHOD is_initial_load.
+
+    result = SWITCH #( mv_initial_load
+      WHEN cs_initial_load-disabled THEN abap_false
+      WHEN cs_initial_load-enabled  THEN abap_true
+      ELSE mv_start_auto ).
+
+  ENDMETHOD.
+
+
+  METHOD get_text_column.
+
+    IF is_col-text_association IS INITIAL OR is_col-text_element IS NOT INITIAL.
+      RETURN.
+    ENDIF.
+    READ TABLE ms_entity-fields TRANSPORTING NO FIELDS WITH KEY name = is_col-name.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    DATA(lv_column) = |{ cs_row_column-text_prefix }{ sy-tabix }|.
+    IF has_row_column( lv_column ) = abap_true.
+      result = lv_column.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD apply_text_columns.
+
+    DATA lt_comp TYPE cl_abap_structdescr=>component_table.
+    DATA lr_extended TYPE REF TO data.
+    DATA lt_fields TYPE z2ui5_cl_rap_util=>ty_t_field_info.
+    DATA lt_columns TYPE string_table.
+    FIELD-SYMBOLS <lt_old> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_new> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lv_text> TYPE any.
+
+    IF mr_data IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    "the fields of the table with a text association and no text element
+    DATA(lt_visible) = get_visible_columns( ).
+    LOOP AT ms_entity-fields INTO DATA(ls_field).
+      DATA(lv_position) = sy-tabix.
+      IF ls_field-text_association IS INITIAL OR ls_field-text_element IS NOT INITIAL
+        OR NOT line_exists( lt_visible[ name = ls_field-name ] ).
+        CONTINUE.
+      ENDIF.
+      APPEND ls_field TO lt_fields.
+      APPEND |{ cs_row_column-text_prefix }{ lv_position }| TO lt_columns.
+    ENDLOOP.
+    IF lt_fields IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    TRY.
+        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( mr_data ) ).
+        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
+        lt_comp = lo_line->get_components( ).
+        DATA(lo_string) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `STRING` ) ).
+        LOOP AT lt_columns INTO DATA(lv_column).
+          IF NOT line_exists( lt_comp[ name = lv_column ] ).
+            APPEND VALUE #( name = lv_column type = lo_string ) TO lt_comp.
+          ENDIF.
+        ENDLOOP.
+        IF lines( lt_comp ) > lines( lo_line->get_components( ) ).
+          DATA(lo_new_table) = cl_abap_tabledescr=>create( cl_abap_structdescr=>create( lt_comp ) ).
+          CREATE DATA lr_extended TYPE HANDLE lo_new_table.
+          ASSIGN mr_data->* TO <lt_old>.
+          ASSIGN lr_extended->* TO <lt_new>.
+          MOVE-CORRESPONDING <lt_old> TO <lt_new>.
+          mr_data = lr_extended.
+        ENDIF.
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+
+    ASSIGN mr_data->* TO <lt_new>.
+    LOOP AT lt_fields INTO ls_field.
+      lv_column = lt_columns[ sy-tabix ].
+      DATA(lt_texts) = read_association_texts( is_entity = ms_entity
+                                               is_field  = ls_field
+                                               data      = mr_data ).
+      LOOP AT <lt_new> ASSIGNING FIELD-SYMBOL(<ls_row>).
+        UNASSIGN <lv_text>.
+        ASSIGN COMPONENT lv_column OF STRUCTURE <ls_row> TO <lv_text>.
+        IF <lv_text> IS NOT ASSIGNED.
+          CONTINUE.
+        ENDIF.
+        READ TABLE lt_texts INTO DATA(ls_text)
+          WITH KEY name = get_association_text_key( is_entity = ms_entity
+                                                    is_field  = ls_field
+                                                    row       = <ls_row> ).
+        <lv_text> = COND string( WHEN sy-subrc = 0 THEN ls_text-value ).
+      ENDLOOP.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD has_selection.
+
+    result = xsdbool( get_line_item_actions( abap_false ) IS NOT INITIAL ).
+    IF result = abap_true.
+      RETURN.
+    ENDIF.
+    LOOP AT get_line_item_intents( ) INTO DATA(ls_intent) WHERE sem_object_bindings IS NOT INITIAL.
+      result = abap_true.
+      RETURN.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_condition_operators.
+
+    result = VALUE #(
+      ( key = z2ui5_cl_rap_util=>cs_condition_op-eq          text = get_text( cs_text-op_eq ) )
+      ( key = z2ui5_cl_rap_util=>cs_condition_op-ne          text = get_text( cs_text-op_ne ) )
+      ( key = z2ui5_cl_rap_util=>cs_condition_op-bt          text = get_text( cs_text-op_bt ) )
+      ( key = z2ui5_cl_rap_util=>cs_condition_op-gt          text = get_text( cs_text-op_gt ) )
+      ( key = z2ui5_cl_rap_util=>cs_condition_op-ge          text = get_text( cs_text-op_ge ) )
+      ( key = z2ui5_cl_rap_util=>cs_condition_op-lt          text = get_text( cs_text-op_lt ) )
+      ( key = z2ui5_cl_rap_util=>cs_condition_op-le          text = get_text( cs_text-op_le ) )
+      ( key = z2ui5_cl_rap_util=>cs_condition_op-contains    text = get_text( cs_text-op_contains ) )
+      ( key = z2ui5_cl_rap_util=>cs_condition_op-starts_with text = get_text( cs_text-op_starts ) )
+      ( key = z2ui5_cl_rap_util=>cs_condition_op-ends_with   text = get_text( cs_text-op_ends ) )
+      ( key = z2ui5_cl_rap_util=>cs_condition_op-empty       text = get_text( cs_text-op_empty ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD get_ordered_columns.
+
+    DATA(lt_all) = get_line_item_fields( ).
+    LOOP AT mt_column_order INTO DATA(lv_name).
+      READ TABLE lt_all INTO DATA(ls_column) WITH KEY name = lv_name.
+      IF sy-subrc = 0.
+        APPEND ls_column TO result.
+      ENDIF.
+    ENDLOOP.
+    "a column the order does not name - a new one - behind
+    LOOP AT lt_all INTO ls_column.
+      IF NOT line_exists( result[ name = ls_column-name ] ).
+        APPEND ls_column TO result.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_variant_key.
+
+    result = COND #( WHEN is_variant-owner IS INITIAL THEN is_variant-name
+                     ELSE |{ is_variant-owner }~{ is_variant-name }| ).
 
   ENDMETHOD.
 

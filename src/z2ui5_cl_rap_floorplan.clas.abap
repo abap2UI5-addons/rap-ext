@@ -93,6 +93,31 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         download       TYPE string VALUE `DOWNLOAD`,
         no_file        TYPE string VALUE `NO_FILE`,
         file_uploaded  TYPE string VALUE `FILE_UPLOADED`,
+        "added 2026-10, third round (filter bar, table, views)
+        adapt_filters  TYPE string VALUE `ADAPT_FILTERS`,
+        define_conditions TYPE string VALUE `DEFINE_CONDITIONS`,
+        include        TYPE string VALUE `INCLUDE`,
+        exclude        TYPE string VALUE `EXCLUDE`,
+        add_condition  TYPE string VALUE `ADD_CONDITION`,
+        op_eq          TYPE string VALUE `OP_EQ`,
+        op_ne          TYPE string VALUE `OP_NE`,
+        op_bt          TYPE string VALUE `OP_BT`,
+        op_gt          TYPE string VALUE `OP_GT`,
+        op_ge          TYPE string VALUE `OP_GE`,
+        op_lt          TYPE string VALUE `OP_LT`,
+        op_le          TYPE string VALUE `OP_LE`,
+        op_contains    TYPE string VALUE `OP_CONTAINS`,
+        op_starts      TYPE string VALUE `OP_STARTS`,
+        op_ends        TYPE string VALUE `OP_ENDS`,
+        op_empty       TYPE string VALUE `OP_EMPTY`,
+        move_up        TYPE string VALUE `MOVE_UP`,
+        move_down      TYPE string VALUE `MOVE_DOWN`,
+        width          TYPE string VALUE `WIDTH`,
+        group_by       TYPE string VALUE `GROUP_BY`,
+        public         TYPE string VALUE `PUBLIC`,
+        auto_apply     TYPE string VALUE `AUTO_APPLY`,
+        press_go       TYPE string VALUE `PRESS_GO`,
+        remove         TYPE string VALUE `REMOVE`,
       END OF cs_text.
 
     " Where z2ui5_if_rap_ext~extend_view may add controls
@@ -279,6 +304,9 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     "! the text element of each value help entity with suggestions - the
     "! additional text of a suggestion (prepare_value_lists)
     DATA mt_suggest_text TYPE ty_t_name_value.
+    "! the text element of each dropdown value help entity - the text of
+    "! its entries (prepare_value_lists; added 2026-10, third round)
+    DATA mt_dropdown_text TYPE ty_t_name_value.
 
     "! the name select_rows( ) gives the host structure - a dynamic WHERE
     "! compares with its components as @&lt;LS_HOST&gt;-name
@@ -399,15 +427,18 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
-    "! the expression binding that maps a criticality field (0-3) to a
-    "! ValueState - for an ObjectStatus in a table cell
+    "! the expression binding that maps a criticality field (0-3, 5) to a
+    "! ValueState - for an ObjectStatus in a table cell; kind (added
+    "! 2026-10, third round) ICON gives its icon, HIGHLIGHT a row's
+    "! highlight (z2ui5_cl_rap_util=>criticality_binding)
     METHODS criticality_expression
       IMPORTING
         crit_field    TYPE string
+        kind          TYPE string DEFAULT `STATE`
       RETURNING
         VALUE(result) TYPE string.
 
-    "! criticality 1/2/3 as the ValueState Error/Warning/Success
+    "! criticality 1/2/3/5 as the ValueState Error/Warning/Success/Information
     METHODS criticality_state
       IMPORTING
         value         TYPE i
@@ -505,8 +536,32 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result)  TYPE REF TO data.
 
+    "! the texts of is_field (@ObjectModel.text.association) for the rows of
+    "! data (a table of is_entity): the @Semantics.text field of the
+    "! association's target, in the logon language when it has a
+    "! @Semantics.language field - name the values of the association's
+    "! fields in the row joined by |, value the text (added 2026-10, third
+    "! round)
+    METHODS read_association_texts
+      IMPORTING
+        is_entity     TYPE z2ui5_cl_rap_util=>ty_s_entity_info
+        is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
+        data          TYPE REF TO data
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
+
+    "! the key read_association_texts gives the row's text under
+    METHODS get_association_text_key
+      IMPORTING
+        is_entity     TYPE z2ui5_cl_rap_util=>ty_s_entity_info
+        is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
+        row           TYPE data
+      RETURNING
+        VALUE(result) TYPE string.
+
     "! navigate in the Fiori launchpad to semantic_object-action with params
-    "! (cross-app navigation) - outside the launchpad the user is told so
+    "! (cross-app navigation) - outside the launchpad the user is told so;
+    "! a name given several times is an array of its values
     METHODS navigate_to_intent
       IMPORTING
         client          TYPE REF TO z2ui5_if_client
@@ -1167,6 +1222,30 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-download     THEN `Herunterladen`
         WHEN cs_text-no_file      THEN `Keine Datei`
         WHEN cs_text-file_uploaded THEN `Datei übernommen - sichern, um sie zu speichern`
+        WHEN cs_text-adapt_filters THEN `Filter anpassen`
+        WHEN cs_text-define_conditions THEN `Bedingungen definieren`
+        WHEN cs_text-include       THEN `Einschließen`
+        WHEN cs_text-exclude       THEN `Ausschließen`
+        WHEN cs_text-add_condition THEN `Hinzufügen`
+        WHEN cs_text-op_eq         THEN `gleich`
+        WHEN cs_text-op_ne         THEN `ungleich`
+        WHEN cs_text-op_bt         THEN `zwischen`
+        WHEN cs_text-op_gt         THEN `größer als`
+        WHEN cs_text-op_ge         THEN `größer oder gleich`
+        WHEN cs_text-op_lt         THEN `kleiner als`
+        WHEN cs_text-op_le         THEN `kleiner oder gleich`
+        WHEN cs_text-op_contains   THEN `enthält`
+        WHEN cs_text-op_starts     THEN `beginnt mit`
+        WHEN cs_text-op_ends       THEN `endet mit`
+        WHEN cs_text-op_empty      THEN `leer`
+        WHEN cs_text-move_up       THEN `Nach oben`
+        WHEN cs_text-move_down     THEN `Nach unten`
+        WHEN cs_text-width         THEN `Breite`
+        WHEN cs_text-group_by      THEN `Gruppieren nach`
+        WHEN cs_text-public        THEN `Öffentlich`
+        WHEN cs_text-auto_apply    THEN `Automatisch anwenden`
+        WHEN cs_text-press_go      THEN `Filter setzen und Start drücken`
+        WHEN cs_text-remove        THEN `Entfernen`
         ELSE key ).
     ELSE.
       "the text pool of this class, original language English - translate
@@ -1234,6 +1313,30 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-download      THEN 'Download'(060)
         WHEN cs_text-no_file       THEN 'No file'(061)
         WHEN cs_text-file_uploaded THEN 'File taken over - save to keep it'(062)
+        WHEN cs_text-adapt_filters  THEN 'Adapt filters'(063)
+        WHEN cs_text-define_conditions THEN 'Define conditions'(064)
+        WHEN cs_text-include        THEN 'Include'(065)
+        WHEN cs_text-exclude        THEN 'Exclude'(066)
+        WHEN cs_text-add_condition  THEN 'Add'(067)
+        WHEN cs_text-op_eq          THEN 'equal to'(068)
+        WHEN cs_text-op_ne          THEN 'not equal to'(069)
+        WHEN cs_text-op_bt          THEN 'between'(070)
+        WHEN cs_text-op_gt          THEN 'greater than'(071)
+        WHEN cs_text-op_ge          THEN 'greater than or equal to'(072)
+        WHEN cs_text-op_lt          THEN 'less than'(073)
+        WHEN cs_text-op_le          THEN 'less than or equal to'(074)
+        WHEN cs_text-op_contains    THEN 'contains'(075)
+        WHEN cs_text-op_starts      THEN 'starts with'(076)
+        WHEN cs_text-op_ends        THEN 'ends with'(077)
+        WHEN cs_text-op_empty       THEN 'empty'(078)
+        WHEN cs_text-move_up        THEN 'Move up'(079)
+        WHEN cs_text-move_down      THEN 'Move down'(080)
+        WHEN cs_text-width          THEN 'Width'(081)
+        WHEN cs_text-group_by       THEN 'Group by'(082)
+        WHEN cs_text-public         THEN 'Public'(083)
+        WHEN cs_text-auto_apply     THEN 'Apply automatically'(084)
+        WHEN cs_text-press_go       THEN 'Set the filters and press Go'(085)
+        WHEN cs_text-remove         THEN 'Remove'(086)
         ELSE key ).
     ENDIF.
 
@@ -1653,10 +1756,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
 
   METHOD criticality_expression.
-    result = `{= ${` && crit_field &&
-             `} === 3 ? 'Success' : (${` && crit_field &&
-             `} === 1 ? 'Error' : (${` && crit_field &&
-             `} === 2 ? 'Warning' : 'None')) }`.
+    "5 is Information since 2026-10, third round
+    result = z2ui5_cl_rap_util=>criticality_binding( criticality = crit_field
+                                                     kind        = kind ).
   ENDMETHOD.
 
 
@@ -1665,6 +1767,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       WHEN 1 THEN `Error`
       WHEN 2 THEN `Warning`
       WHEN 3 THEN `Success`
+      WHEN 5 THEN `Information`
       ELSE `None` ).
   ENDMETHOD.
 
@@ -1677,13 +1780,33 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     FIELD-SYMBOLS <lt_target> TYPE any.
     FIELD-SYMBOLS <lt_source> TYPE any.
 
-    CLEAR mr_value_lists.
+    DATA lr_rows TYPE REF TO data.
+    FIELD-SYMBOLS <lt_fixed> TYPE ty_t_name_value.
+
+    CLEAR: mr_value_lists, mt_dropdown_text.
 
     LOOP AT it_fields INTO DATA(ls_field)
       WHERE value_help-is_dropdown = abap_true AND is_hidden = abap_false.
-      DATA(lr_rows) = select_rows( entity_name = ls_field-value_help-entity_name ).
-      IF lr_rows IS NOT BOUND OR line_exists( lt_comp[ name = ls_field-name ] ).
+      IF line_exists( lt_comp[ name = ls_field-name ] ).
         CONTINUE.
+      ENDIF.
+      "the fixed values of the field's domain (added 2026-10, third round)
+      IF ls_field-value_help-fixed_values IS NOT INITIAL.
+        CREATE DATA lr_rows TYPE ty_t_name_value.
+        ASSIGN lr_rows->* TO <lt_fixed>.
+        <lt_fixed> = ls_field-value_help-fixed_values.
+      ELSE.
+        lr_rows = select_rows( entity_name = ls_field-value_help-entity_name ).
+        IF lr_rows IS NOT BOUND.
+          CONTINUE.
+        ENDIF.
+        "the entries' text: the text element of the value help's element
+        DATA(ls_list_entity) = z2ui5_cl_rap_util=>read_entity( ls_field-value_help-entity_name ).
+        READ TABLE ls_list_entity-fields INTO DATA(ls_list_element) WITH KEY name = ls_field-value_help-element.
+        IF sy-subrc = 0 AND ls_list_element-text_element IS NOT INITIAL
+          AND line_exists( ls_list_entity-fields[ name = ls_list_element-text_element ] ).
+          APPEND VALUE #( name = ls_field-name value = ls_list_element-text_element ) TO mt_dropdown_text.
+        ENDIF.
       ENDIF.
       APPEND VALUE #( name = ls_field-name
                       type = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_data_ref( lr_rows ) ) )
@@ -1796,7 +1919,16 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     FIELD-SYMBOLS <ls_lists> TYPE any.
     FIELD-SYMBOLS <lt_list> TYPE any.
 
+    FIELD-SYMBOLS <lv_input_text> TYPE any.
+
     DATA(lv_editable) = xsdbool( editable = abap_true AND is_field-is_readonly = abap_false ).
+
+    "the text of the value beside an input (@ObjectModel.text.element of
+    "record) - added 2026-10, third round
+    UNASSIGN <lv_input_text>.
+    IF record IS SUPPLIED AND is_field-text_element IS NOT INITIAL.
+      ASSIGN COMPONENT is_field-text_element OF STRUCTURE record TO <lv_input_text>.
+    ENDIF.
 
     "a file (@Semantics.largeObject): a download link and an upload
     "control - the RAWSTRING itself is never bound (added 2026-10, third
@@ -1884,6 +2016,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       ASSIGN COMPONENT is_field-name OF STRUCTURE <ls_lists> TO <lt_list>.
       IF sy-subrc = 0.
         DATA(lv_key_path) = |\{{ is_field-value_help-element }\}|.
+        "the entry's text - the value help's text element, the fixed
+        "value's text - and its key beside it (added 2026-10, third round)
+        DATA(lv_list_text_path) = lv_key_path.
+        READ TABLE mt_dropdown_text INTO DATA(ls_dropdown_text) WITH KEY name = is_field-name.
+        IF sy-subrc = 0.
+          lv_list_text_path = |\{{ ls_dropdown_text-value }\}|.
+        ELSEIF is_field-value_help-text_element IS NOT INITIAL.
+          lv_list_text_path = |\{{ is_field-value_help-text_element }\}|.
+        ENDIF.
         "the core prefix is declared here, so no view has to carry it for
         "a ComboBox it may never render
         io_container->ele( `ComboBox`
@@ -1897,11 +2038,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                   b = lv_editable
             )->a( n = `required`
                   b = is_field-is_mandatory
-            )->tag( n  = `Item`
+            )->a( n = `showSecondaryValues`
+                  b = xsdbool( lv_list_text_path <> lv_key_path )
+            )->tag( n  = `ListItem`
                     ns = `core`
                 )->a( n = `key`
                       v = lv_key_path
                 )->a( n = `text`
+                      v = lv_list_text_path
+                )->a( n = `additionalText`
                       v = lv_key_path ).
         add_value_state( io_container     = io_container
                          value_state      = value_state
@@ -1923,6 +2068,10 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                 b = lv_editable
           )->a( n = `required`
                 b = is_field-is_mandatory ).
+      IF <lv_input_text> IS ASSIGNED.
+        lo_input->a( n = `description`
+                     v = client->_bind( <lv_input_text> ) ).
+      ENDIF.
       "suggestions while the user types - a per-keystroke wire: the last
       "keystroke is never lost and the busy indicator stays down
       IF mr_suggestions IS BOUND AND lv_editable = abap_true.
@@ -1959,7 +2108,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ENDIF.
 
     IF is_field-type_kind = `CHAR` AND is_field-length > 0.
-      io_container->tag( `Input`
+      DATA(lo_char_input) = io_container->tag( `Input`
           )->a( n = `value`
                 v = client->_bind( value )
           )->a( n = `maxLength`
@@ -1968,6 +2117,10 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                 b = lv_editable
           )->a( n = `required`
                 b = is_field-is_mandatory ).
+      IF <lv_input_text> IS ASSIGNED.
+        lo_char_input->a( n = `description`
+                          v = client->_bind( <lv_input_text> ) ).
+      ENDIF.
       add_value_state( io_container     = io_container
                        value_state      = value_state
                        value_state_text = value_state_text ).
@@ -2164,16 +2317,151 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ENDIF.
 
     "two JSON objects - the frontend receives them as objects, not strings
+    "a name given several times - the values of several selected rows - is
+    "an array (added 2026-10, third round)
     DATA lt_params TYPE string_table.
+    DATA lt_done TYPE string_table.
+    DATA lt_values TYPE string_table.
     LOOP AT params INTO DATA(ls_param).
-      APPEND |"{ z2ui5_cl_rap_util=>json_escape( ls_param-name ) }":"{ z2ui5_cl_rap_util=>json_escape( ls_param-value ) }"|
-        TO lt_params.
+      IF line_exists( lt_done[ table_line = ls_param-name ] ).
+        CONTINUE.
+      ENDIF.
+      APPEND ls_param-name TO lt_done.
+      CLEAR lt_values.
+      LOOP AT params INTO DATA(ls_same) WHERE name = ls_param-name.
+        IF NOT line_exists( lt_values[ table_line = |"{ z2ui5_cl_rap_util=>json_escape( ls_same-value ) }"| ] ).
+          APPEND |"{ z2ui5_cl_rap_util=>json_escape( ls_same-value ) }"| TO lt_values.
+        ENDIF.
+      ENDLOOP.
+      DATA(lv_value) = COND string( WHEN lines( lt_values ) = 1 THEN lt_values[ 1 ]
+                                    ELSE |[{ concat_lines_of( table = lt_values sep = `,` ) }]| ).
+      APPEND |"{ z2ui5_cl_rap_util=>json_escape( ls_param-name ) }":{ lv_value }| TO lt_params.
     ENDLOOP.
     DATA(lv_target) = |\{"semanticObject":"{ z2ui5_cl_rap_util=>json_escape( semantic_object ) }",| &&
                       |"action":"{ z2ui5_cl_rap_util=>json_escape( action ) }"\}|.
     DATA(lv_params) = |\{{ concat_lines_of( table = lt_params sep = `,` ) }\}|.
     client->follow_up_action( val   = client->cs_event-cross_app_nav_to_ext
                               t_arg = VALUE #( ( lv_target ) ( lv_params ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD get_association_text_key.
+
+    DATA lt_values TYPE string_table.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+
+    READ TABLE is_entity-associations INTO DATA(ls_assoc) WITH KEY name = is_field-text_association.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    LOOP AT ls_assoc-conditions INTO DATA(ls_condition).
+      UNASSIGN <lv_value>.
+      ASSIGN COMPONENT ls_condition-local OF STRUCTURE row TO <lv_value>.
+      IF <lv_value> IS NOT ASSIGNED.
+        CLEAR result.
+        RETURN.
+      ENDIF.
+      APPEND condense( |{ <lv_value> }| ) TO lt_values.
+    ENDLOOP.
+    result = concat_lines_of( table = lt_values sep = `|` ).
+
+  ENDMETHOD.
+
+
+  METHOD read_association_texts.
+
+    DATA lt_keys TYPE string_table.
+    DATA lt_groups TYPE string_table.
+    DATA lt_and TYPE string_table.
+    DATA lt_target_values TYPE string_table.
+    DATA lv_chunk TYPE i.
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_texts> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+    FIELD-SYMBOLS <lv_text> TYPE any.
+
+    IF data IS NOT BOUND OR is_field-text_association IS INITIAL.
+      RETURN.
+    ENDIF.
+    READ TABLE is_entity-associations INTO DATA(ls_assoc) WITH KEY name = is_field-text_association.
+    IF sy-subrc <> 0 OR ls_assoc-conditions IS INITIAL OR ls_assoc-target IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA(ls_target) = z2ui5_cl_rap_util=>read_entity( ls_assoc-target ).
+    READ TABLE ls_target-fields INTO DATA(ls_text_field) WITH KEY is_semantic_text = abap_true.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    READ TABLE ls_target-fields INTO DATA(ls_language) WITH KEY is_language = abap_true.
+    DATA(lv_language) = COND string( WHEN sy-subrc = 0
+                                     THEN z2ui5_cl_rap_util=>build_filter_condition( is_field = ls_language
+                                                                                     value    = |={ sy-langu }| ) ).
+
+    "one condition per distinct value of the rows - at most 200
+    ASSIGN data->* TO <lt_rows>.
+    LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      DATA(lv_key) = get_association_text_key( is_entity = is_entity
+                                               is_field  = is_field
+                                               row       = <ls_row> ).
+      IF lv_key IS INITIAL OR line_exists( lt_keys[ table_line = lv_key ] ).
+        CONTINUE.
+      ENDIF.
+      CLEAR lt_and.
+      LOOP AT ls_assoc-conditions INTO DATA(ls_condition).
+        READ TABLE ls_target-fields INTO DATA(ls_target_field) WITH KEY name = ls_condition-target.
+        ASSIGN COMPONENT ls_condition-local OF STRUCTURE <ls_row> TO <lv_value>.
+        IF sy-subrc <> 0 OR ls_target_field-name <> ls_condition-target.
+          RETURN.
+        ENDIF.
+        APPEND z2ui5_cl_rap_util=>build_filter_condition( is_field = ls_target_field
+                                                          value    = |={ condense( |{ <lv_value> }| ) }| ) TO lt_and.
+      ENDLOOP.
+      APPEND lv_key TO lt_keys.
+      APPEND |( { concat_lines_of( table = lt_and sep = ` AND ` ) } )| TO lt_groups.
+      IF lines( lt_keys ) >= 200.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+    "50 values per read
+    WHILE lt_groups IS NOT INITIAL.
+      DATA(lt_chunk) = VALUE string_table( ).
+      lv_chunk = 0.
+      LOOP AT lt_groups INTO DATA(lv_group).
+        lv_chunk = lv_chunk + 1.
+        IF lv_chunk > 50.
+          EXIT.
+        ENDIF.
+        APPEND lv_group TO lt_chunk.
+      ENDLOOP.
+      DELETE lt_groups TO lines( lt_chunk ).
+      DATA(lv_where) = |( { concat_lines_of( table = lt_chunk sep = ` OR ` ) } )|.
+      IF lv_language IS NOT INITIAL.
+        lv_where = |{ lv_where } AND { lv_language }|.
+      ENDIF.
+      DATA(lr_texts) = select_rows( entity_name = ls_assoc-target
+                                    where       = lv_where
+                                    max_rows    = 1000 ).
+      IF lr_texts IS NOT BOUND.
+        RETURN.
+      ENDIF.
+      ASSIGN lr_texts->* TO <lt_texts>.
+      LOOP AT <lt_texts> ASSIGNING FIELD-SYMBOL(<ls_text>).
+        CLEAR lt_target_values.
+        LOOP AT ls_assoc-conditions INTO ls_condition.
+          ASSIGN COMPONENT ls_condition-target OF STRUCTURE <ls_text> TO <lv_value>.
+          IF sy-subrc = 0.
+            APPEND condense( |{ <lv_value> }| ) TO lt_target_values.
+          ENDIF.
+        ENDLOOP.
+        DATA(lv_text_key) = concat_lines_of( table = lt_target_values sep = `|` ).
+        ASSIGN COMPONENT ls_text_field-name OF STRUCTURE <ls_text> TO <lv_text>.
+        IF sy-subrc = 0 AND NOT line_exists( result[ name = lv_text_key ] ).
+          APPEND VALUE #( name = lv_text_key value = |{ <lv_text> }| ) TO result.
+        ENDIF.
+      ENDLOOP.
+    ENDWHILE.
 
   ENDMETHOD.
 
