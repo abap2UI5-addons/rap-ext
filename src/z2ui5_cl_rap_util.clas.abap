@@ -264,6 +264,9 @@ CLASS z2ui5_cl_rap_util DEFINITION
         entry_crit_repr           TYPE string,
         entry_importance          TYPE string,
         entry_hidden              TYPE string,
+        "added 2026-10, third round (analytical list): @Aggregation.default
+        "(SUM, MIN, MAX, AVG, COUNT_DISTINCT - normalize_aggregation)
+        aggregation_default       TYPE string,
       END OF ty_s_field_info.
 
     TYPES ty_t_field_info TYPE STANDARD TABLE OF ty_s_field_info WITH DEFAULT KEY.
@@ -1125,8 +1128,9 @@ CLASS z2ui5_cl_rap_util DEFINITION
         VALUE(result) TYPE abap_bool.
 
     "! The rows of data (a table) grouped by the component group_by (none:
-    "! one group), with method (SUM AVG MIN MAX COUNT) over the component
-    "! measure - sorted by the group's key. What a custom entity's
+    "! one group), with method (SUM AVG MIN MAX COUNT, and COUNT_DISTINCT
+    "! - the different values) over the component measure - sorted by the
+    "! group's key. What a custom entity's
     "! aggregates are computed with, as ABAP SQL cannot read it
     CLASS-METHODS aggregate_rows
       IMPORTING
@@ -1532,6 +1536,262 @@ CLASS z2ui5_cl_rap_util DEFINITION
         val           TYPE string
       RETURNING
         VALUE(result) TYPE string.
+
+    "======= TREE, ANALYTICS, COLUMN LAYOUT, FUZZY SEARCH =======
+    "(added 2026-10, third round)
+
+    " what happens to the children when a node of a tree is deleted
+    " (ty_s_hierarchy-delete_mode): SUBTREE - they are deleted with it;
+    " MOVE_UP - they get the node's parent; LEAF - only a node without
+    " children can be deleted
+    CONSTANTS:
+      BEGIN OF cs_tree_delete,
+        subtree TYPE string VALUE `SUBTREE`,
+        move_up TYPE string VALUE `MOVE_UP`,
+        leaf    TYPE string VALUE `LEAF`,
+      END OF cs_tree_delete.
+
+    " the hierarchy of an entity (get_hierarchy): the field that holds a
+    " node's key and the one that holds its parent's, the association to
+    " the parent, the CDS hierarchy (@OData.hierarchy.recursiveHierarchy)
+    " with its source and start condition, the order of the siblings and
+    " what a delete does to the children (cs_tree_delete)
+    TYPES:
+      BEGIN OF ty_s_hierarchy,
+        node_field   TYPE string,
+        parent_field TYPE string,
+        parent_assoc TYPE string,
+        name         TYPE string,
+        source       TYPE string,
+        start_where  TYPE string,
+        order_by     TYPE ty_t_sort,
+        delete_mode  TYPE string,
+      END OF ty_s_hierarchy.
+
+    " a node of a tree (build_tree): its key and its parent's, the index of
+    " its row, its level (0 for a root), whether it has children, is shown
+    " (every ancestor expanded) and is expanded
+    TYPES:
+      BEGIN OF ty_s_tree_node,
+        key          TYPE string,
+        parent       TYPE string,
+        index        TYPE i,
+        level        TYPE i,
+        has_children TYPE abap_bool,
+        visible      TYPE abap_bool,
+        expanded     TYPE abap_bool,
+      END OF ty_s_tree_node.
+
+    TYPES ty_t_tree_node TYPE STANDARD TABLE OF ty_s_tree_node WITH EMPTY KEY.
+
+    " the kind of a row of an analytical list (ZZROW_KIND): a row of the
+    " entity, the header of a group with its subtotals, the grand total
+    CONSTANTS:
+      BEGIN OF cs_row_kind,
+        detail TYPE string VALUE ``,
+        group  TYPE string VALUE `GROUP`,
+        total  TYPE string VALUE `TOTAL`,
+      END OF cs_row_kind.
+
+    " a field with @Aggregation.default and its method (SUM MIN MAX AVG
+    " COUNT_DISTINCT)
+    TYPES:
+      BEGIN OF ty_s_aggregation,
+        field  TYPE string,
+        method TYPE string,
+      END OF ty_s_aggregation.
+
+    TYPES ty_t_aggregation TYPE STANDARD TABLE OF ty_s_aggregation WITH EMPTY KEY.
+
+    "! The hierarchy of an entity, from its annotations: the parent and
+    "! child fields of the parent child hierarchy annotation (recurse
+    "! parent and child, or recurseBy an association, and its
+    "! siblingsOrder), the association of the object model's hierarchy
+    "! annotation, the name of the recursive hierarchy of the OData
+    "! annotation, else the association of the entity to itself whose
+    "! target fields are keys (a parent association). The fields of an
+    "! association come from is_entity-associations. Empty node_field: no
+    "! hierarchy is known - read_hierarchy also reads the CDS hierarchy
+    CLASS-METHODS get_hierarchy
+      IMPORTING
+        is_entity     TYPE ty_s_entity_info
+      RETURNING
+        VALUE(result) TYPE ty_s_hierarchy.
+
+    "! The node and parent field of an association to the parent (its ON
+    "! condition: the local field holds the parent, the target field is
+    "! the node) - the first comparison of two different fields
+    CLASS-METHODS get_hierarchy_fields
+      IMPORTING
+        it_associations TYPE ty_t_association
+        association     TYPE string
+      CHANGING
+        cs_hierarchy    TYPE ty_s_hierarchy.
+
+    "! A CDS hierarchy (define hierarchy X as parent child hierarchy(
+    "! source S child to parent association _A start where ... siblings
+    "! order by ... )): its name, source, association, start condition
+    "! and order. Comments are skipped; needs no system
+    CLASS-METHODS parse_ddl_hierarchy
+      IMPORTING
+        source        TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_s_hierarchy.
+
+    "! get_hierarchy, completed by the CDS hierarchy its annotation names:
+    "! the DDL source of the hierarchy, the association of its source -
+    "! needs a system
+    CLASS-METHODS read_hierarchy
+      IMPORTING
+        is_entity     TYPE ty_s_entity_info
+      RETURNING
+        VALUE(result) TYPE ty_s_hierarchy.
+
+    "! The nodes (key, parent and index of each row, in the order of the
+    "! siblings) as a tree, depth first: each root (no parent, or a
+    "! parent that is not among the nodes) followed by its descendants,
+    "! with level and has_children. A node is expanded when its key is
+    "! in expanded (or expand_all), shown when every ancestor is
+    "! expanded. A cycle does not loop: a node is placed once
+    CLASS-METHODS build_tree
+      IMPORTING
+        it_nodes      TYPE ty_t_tree_node
+        expanded      TYPE string_table OPTIONAL
+        expand_all    TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(result) TYPE ty_t_tree_node.
+
+    "! The keys of the descendants of key in a tree (build_tree), the
+    "! deepest first - the order to delete them in
+    CLASS-METHODS get_tree_descendants
+      IMPORTING
+        it_tree       TYPE ty_t_tree_node
+        key           TYPE string
+      RETURNING
+        VALUE(result) TYPE string_table.
+
+    "! The keys of the children of key in a tree
+    CLASS-METHODS get_tree_children
+      IMPORTING
+        it_tree       TYPE ty_t_tree_node
+        key           TYPE string
+      RETURNING
+        VALUE(result) TYPE string_table.
+
+    "! The CSS indent of a level of a tree (1.5rem per level)
+    CLASS-METHODS get_tree_indent
+      IMPORTING
+        level         TYPE i
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! The method of an aggregation annotation value (SUM, MIN, MAX, AVG,
+    "! COUNT_DISTINCT; #SUM and the lower case alike) - empty for NONE and
+    "! anything else
+    CLASS-METHODS normalize_aggregation
+      IMPORTING
+        val           TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! The fields with an @Aggregation.default an analytical list sums up
+    "! - in the order of it_fields
+    CLASS-METHODS get_aggregations
+      IMPORTING
+        it_fields     TYPE ty_t_field_info
+      RETURNING
+        VALUE(result) TYPE ty_t_aggregation.
+
+    "! The select list of a GROUP BY that aggregates it_aggregations, each
+    "! under its own name (SUM( X ) AS X, COUNT( DISTINCT Y ) AS Y), and
+    "! groups by group_by (first in the list) - empty without aggregations
+    CLASS-METHODS build_aggregate_select
+      IMPORTING
+        it_aggregations TYPE ty_t_aggregation
+        group_by        TYPE string OPTIONAL
+      RETURNING
+        VALUE(result)   TYPE string.
+
+    "! The layout of a flexible column layout (sap.f.LayoutType) for the
+    "! number of columns shown (1-3), full_screen the last one alone
+    CLASS-METHODS get_fcl_layout
+      IMPORTING
+        columns       TYPE i
+        full_screen   TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! The namespace declarations of the root element of an XML view
+    "! (xmlns, xmlns:prefix - name the attribute, value the namespace)
+    CLASS-METHODS get_view_namespaces
+      IMPORTING
+        xml           TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
+
+    "! The content of the root element of an XML view - without the Shell
+    "! the floorplans wrap their page in, which would letterbox a column
+    CLASS-METHODS get_view_body
+      IMPORTING
+        xml           TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! The view skeleton with each placeholder (name: its element as the
+    "! builder writes it, value: the content) replaced, and the namespace
+    "! declarations the skeleton's root lacks added to it
+    CLASS-METHODS compose_view
+      IMPORTING
+        skeleton      TYPE string
+        it_parts      TYPE ty_t_name_value
+        it_namespaces TYPE ty_t_name_value OPTIONAL
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! The event name of a column of a host app: column~event
+    CLASS-METHODS to_column_event
+      IMPORTING
+        column        TYPE string
+        event         TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! The column and the event of an event name to_column_event built -
+    "! no column for any other name
+    CLASS-METHODS split_column_event
+      IMPORTING
+        val    TYPE string
+      EXPORTING
+        column TYPE string
+        event  TYPE string.
+
+    "! The highest @Search.fuzzinessThreshold of the searched fields - the
+    "! threshold of a fuzzy search, empty when no field has one
+    CLASS-METHODS get_search_fuzziness
+      IMPORTING
+        it_fields     TYPE ty_t_field_info
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! A fuzzy search in HANA SQL (native, for ADBC or an AMDP - ABAP SQL
+    "! has no CONTAINS): CONTAINS( ( "F1", "F2" ), 'text', FUZZY( 0.8 ) )
+    "! over the searched fields - empty without a search or a field
+    CLASS-METHODS build_fuzzy_search
+      IMPORTING
+        it_fields     TYPE ty_t_field_info
+        search        TYPE string
+        threshold     TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! The fields a free-text search reads: the searchable text fields
+    "! (@Search.defaultSearchElement), else every visible text field - no
+    "! virtual element
+    CLASS-METHODS get_search_fields
+      IMPORTING
+        it_fields     TYPE ty_t_field_info
+      RETURNING
+        VALUE(result) TYPE string_table.
 
   PRIVATE SECTION.
 
@@ -2257,6 +2517,8 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           cs_field-sort_transform_class = annotation_class( lv_val ).
         WHEN `OBJECTMODEL.FILTER.TRANSFORMEDBY`.
           cs_field-filter_transform_class = annotation_class( lv_val ).
+        WHEN `AGGREGATION.DEFAULT`.
+          cs_field-aggregation_default = normalize_aggregation( lv_val ).
         WHEN `SEARCH.FUZZINESSTHRESHOLD`.
           cs_field-search_fuzziness = strip_quotes( lv_val ).
         WHEN `SEMANTICS.LARGEOBJECT.MIMETYPE`.
@@ -4855,6 +5117,41 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "COUNT_DISTINCT (added 2026-10, third round): the different values of
+    "measure per group
+    IF lv_method = `COUNT_DISTINCT`.
+      DATA lt_seen TYPE SORTED TABLE OF string WITH UNIQUE KEY table_line.
+      DATA lv_text TYPE string.
+      LOOP AT <lt_rows> ASSIGNING <ls_row>.
+        CLEAR: lv_key, lv_text.
+        IF group_by IS NOT INITIAL.
+          UNASSIGN <lv_group>.
+          ASSIGN COMPONENT group_by OF STRUCTURE <ls_row> TO <lv_group>.
+          IF <lv_group> IS ASSIGNED.
+            lv_key = |{ <lv_group> }|.
+          ENDIF.
+        ENDIF.
+        UNASSIGN <lv_measure>.
+        ASSIGN COMPONENT measure OF STRUCTURE <ls_row> TO <lv_measure>.
+        IF <lv_measure> IS ASSIGNED.
+          lv_text = |{ <lv_measure> }|.
+        ENDIF.
+        UNASSIGN <ls_agg>.
+        READ TABLE result ASSIGNING <ls_agg> WITH KEY group_key = lv_key.
+        IF <ls_agg> IS NOT ASSIGNED.
+          APPEND VALUE #( group_key = lv_key ) TO result ASSIGNING <ls_agg>.
+        ENDIF.
+        INSERT |{ strlen( lv_key ) }:{ lv_key }{ lv_text }| INTO TABLE lt_seen.
+        IF sy-subrc = 0.
+          <ls_agg>-row_count = <ls_agg>-row_count + 1.
+          lv_rows = <ls_agg>-row_count.
+          <ls_agg>-value = lv_rows.
+        ENDIF.
+      ENDLOOP.
+      SORT result BY group_key.
+      RETURN.
+    ENDIF.
+
     LOOP AT <lt_rows> ASSIGNING <ls_row>.
       CLEAR: lv_key, lv_value.
       IF group_by IS NOT INITIAL.
@@ -6083,6 +6380,598 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       APPEND VALUE #( id = ls_rest-id custom = abap_true ) TO result.
     ENDLOOP.
 
+  ENDMETHOD.
+
+
+  METHOD get_hierarchy.
+
+    DATA lv_assoc TYPE string.
+    DATA lv_sort_idx TYPE string.
+
+    result-delete_mode = cs_tree_delete-subtree.
+    LOOP AT is_entity-entity_annotations INTO DATA(ls_anno).
+      DATA(lv_key) = to_upper( ls_anno-key ).
+      DATA(lv_value) = strip_quotes( ls_anno-value ).
+      IF lv_key CP `ODATA.HIERARCHY.RECURSIVEHIERARCHY*ENTITY.NAME`.
+        result-name = to_upper( lv_value ).
+      ELSEIF lv_key CP `HIERARCHY.PARENTCHILD*RECURSE.PARENT*`.
+        result-parent_field = to_upper( lv_value ).
+      ELSEIF lv_key CP `HIERARCHY.PARENTCHILD*RECURSE.CHILD*`.
+        result-node_field = to_upper( lv_value ).
+      ELSEIF lv_key CP `HIERARCHY.PARENTCHILD*RECURSEBY`
+        OR lv_key = `OBJECTMODEL.HIERARCHY.ASSOCIATION`.
+        lv_assoc = to_upper( lv_value ).
+      ELSEIF lv_key CP `HIERARCHY.PARENTCHILD*SIBLINGSORDER*.BY`.
+        "SIBLINGSORDER$n$.BY - its DIRECTION follows under the same index
+        lv_sort_idx = substring_before( val = lv_key sub = `.BY` ).
+        APPEND VALUE ty_s_sort( field = to_upper( lv_value ) ) TO result-order_by.
+      ELSEIF lv_key CP `HIERARCHY.PARENTCHILD*SIBLINGSORDER*.DIRECTION`
+        AND result-order_by IS NOT INITIAL
+        AND substring_before( val = lv_key sub = `.DIRECTION` ) = lv_sort_idx.
+        result-order_by[ lines( result-order_by ) ]-descending = xsdbool( to_upper( lv_value ) CS `DESC` ).
+      ENDIF.
+    ENDLOOP.
+
+    IF result-node_field IS NOT INITIAL AND result-parent_field IS NOT INITIAL.
+      RETURN.
+    ENDIF.
+    CLEAR: result-node_field, result-parent_field.
+
+    IF lv_assoc IS NOT INITIAL.
+      result-parent_assoc = lv_assoc.
+      get_hierarchy_fields( EXPORTING it_associations = is_entity-associations
+                                      association     = lv_assoc
+                            CHANGING  cs_hierarchy    = result ).
+      RETURN.
+    ENDIF.
+
+    "the entity's association to itself whose target fields are keys - its
+    "parent (an association to the children compares a key with a parent)
+    DATA(lv_entity) = to_upper( is_entity-name ).
+    LOOP AT is_entity-associations INTO DATA(ls_assoc)
+      WHERE target = lv_entity AND is_composition = abap_false AND conditions IS NOT INITIAL.
+      DATA(lv_parent_assoc) = abap_true.
+      DATA(lv_differs) = abap_false.
+      LOOP AT ls_assoc-conditions INTO DATA(ls_cond).
+        IF NOT line_exists( is_entity-keys[ table_line = ls_cond-target ] ).
+          lv_parent_assoc = abap_false.
+        ENDIF.
+        IF ls_cond-local <> ls_cond-target.
+          lv_differs = abap_true.
+        ENDIF.
+      ENDLOOP.
+      IF lv_parent_assoc = abap_true AND lv_differs = abap_true.
+        result-parent_assoc = ls_assoc-name.
+        get_hierarchy_fields( EXPORTING it_associations = is_entity-associations
+                                        association     = ls_assoc-name
+                              CHANGING  cs_hierarchy    = result ).
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_hierarchy_fields.
+    READ TABLE it_associations INTO DATA(ls_assoc) WITH KEY name = to_upper( association ).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    LOOP AT ls_assoc-conditions INTO DATA(ls_cond).
+      IF ls_cond-local = ls_cond-target.
+        CONTINUE.
+      ENDIF.
+      cs_hierarchy-parent_field = ls_cond-local.
+      cs_hierarchy-node_field = ls_cond-target.
+      RETURN.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD parse_ddl_hierarchy.
+
+    DATA lt_where TYPE string_table.
+    DATA(lt_tokens) = tokenize_ddl( source ).
+    DATA(lv_count) = lines( lt_tokens ).
+    DATA(lt_upper) = lt_tokens.
+    LOOP AT lt_upper ASSIGNING FIELD-SYMBOL(<lv_token>).
+      <lv_token> = to_upper( <lv_token> ).
+    ENDLOOP.
+    "the words that end the start condition or the order
+    DATA(lt_stop) = VALUE string_table( ( `SIBLINGS` ) ( `DEPTH` ) ( `NODETYPE` ) ( `LOAD` ) ( `PERIOD` )
+                                        ( `MULTIPLE` ) ( `ORPHANS` ) ( `CYCLES` ) ( `GENERATE` ) ( `CACHE` )
+                                        ( `DIRECTORY` ) ).
+    result-delete_mode = cs_tree_delete-subtree.
+
+    DATA(lv_idx) = 1.
+    WHILE lv_idx <= lv_count.
+      DATA(lv_word) = lt_upper[ lv_idx ].
+      IF lv_word = `DEFINE` AND lv_idx + 2 <= lv_count AND lt_upper[ lv_idx + 1 ] = `HIERARCHY`.
+        result-name = lt_upper[ lv_idx + 2 ].
+        lv_idx = lv_idx + 3.
+      ELSEIF lv_word = `SOURCE` AND lv_idx + 1 <= lv_count AND result-source IS INITIAL.
+        result-source = lt_upper[ lv_idx + 1 ].
+        lv_idx = lv_idx + 2.
+      ELSEIF lv_word = `PARENT` AND lv_idx + 2 <= lv_count AND lt_upper[ lv_idx + 1 ] = `ASSOCIATION`.
+        result-parent_assoc = lt_upper[ lv_idx + 2 ].
+        lv_idx = lv_idx + 3.
+      ELSEIF lv_word = `START` AND lv_idx + 1 <= lv_count AND lt_upper[ lv_idx + 1 ] = `WHERE`.
+        "the condition as written - up to the next clause or the closing
+        "parenthesis of the hierarchy
+        lv_idx = lv_idx + 2.
+        DATA(lv_depth) = 0.
+        CLEAR lt_where.
+        WHILE lv_idx <= lv_count.
+          lv_word = lt_upper[ lv_idx ].
+          IF line_exists( lt_stop[ table_line = lv_word ] ) AND lv_depth = 0.
+            EXIT.
+          ENDIF.
+          IF lv_word = `(`.
+            lv_depth = lv_depth + 1.
+          ELSEIF lv_word = `)`.
+            IF lv_depth = 0.
+              EXIT.
+            ENDIF.
+            lv_depth = lv_depth - 1.
+          ENDIF.
+          APPEND lt_tokens[ lv_idx ] TO lt_where.
+          lv_idx = lv_idx + 1.
+        ENDWHILE.
+        result-start_where = concat_lines_of( table = lt_where sep = ` ` ).
+      ELSEIF lv_word = `SIBLINGS` AND lv_idx + 2 <= lv_count
+        AND lt_upper[ lv_idx + 1 ] = `ORDER` AND lt_upper[ lv_idx + 2 ] = `BY`.
+        lv_idx = lv_idx + 3.
+        WHILE lv_idx <= lv_count.
+          lv_word = lt_upper[ lv_idx ].
+          IF lv_word = `)` OR line_exists( lt_stop[ table_line = lv_word ] ).
+            EXIT.
+          ELSEIF lv_word = `ASCENDING`.
+            lv_idx = lv_idx + 1.
+          ELSEIF lv_word = `DESCENDING`.
+            IF result-order_by IS NOT INITIAL.
+              result-order_by[ lines( result-order_by ) ]-descending = abap_true.
+            ENDIF.
+            lv_idx = lv_idx + 1.
+          ELSEIF lv_word = `,`.
+            lv_idx = lv_idx + 1.
+          ELSE.
+            APPEND VALUE ty_s_sort( field = lv_word ) TO result-order_by.
+            lv_idx = lv_idx + 1.
+          ENDIF.
+        ENDWHILE.
+      ELSE.
+        lv_idx = lv_idx + 1.
+      ENDIF.
+    ENDWHILE.
+
+  ENDMETHOD.
+
+
+  METHOD read_hierarchy.
+
+    result = get_hierarchy( is_entity ).
+    IF result-node_field IS NOT INITIAL OR result-name IS INITIAL.
+      RETURN.
+    ENDIF.
+    "the CDS hierarchy the OData annotation names: its source's association
+    "to the parent says which field is the parent
+    DATA(ls_parsed) = parse_ddl_hierarchy( read_ddl_source( result-name ) ).
+    IF ls_parsed-parent_assoc IS INITIAL.
+      RETURN.
+    ENDIF.
+    result-source = ls_parsed-source.
+    result-parent_assoc = ls_parsed-parent_assoc.
+    result-start_where = ls_parsed-start_where.
+    IF result-order_by IS INITIAL.
+      result-order_by = ls_parsed-order_by.
+    ENDIF.
+    DATA(lt_assoc) = is_entity-associations.
+    IF NOT line_exists( lt_assoc[ name = ls_parsed-parent_assoc ] ) AND ls_parsed-source IS NOT INITIAL.
+      lt_assoc = read_associations( ls_parsed-source ).
+    ENDIF.
+    get_hierarchy_fields( EXPORTING it_associations = lt_assoc
+                                    association     = ls_parsed-parent_assoc
+                          CHANGING  cs_hierarchy    = result ).
+
+  ENDMETHOD.
+
+
+  METHOD build_tree.
+
+    TYPES:
+      BEGIN OF ty_s_child,
+        parent TYPE string,
+        pos    TYPE i,
+      END OF ty_s_child.
+    TYPES:
+      BEGIN OF ty_s_stack,
+        pos   TYPE i,
+        level TYPE i,
+        "the position of the parent in result, 0 for a root
+        out   TYPE i,
+      END OF ty_s_stack.
+    DATA lt_children TYPE STANDARD TABLE OF ty_s_child WITH EMPTY KEY.
+    DATA lt_keys TYPE SORTED TABLE OF string WITH UNIQUE KEY table_line.
+    DATA lt_placed TYPE SORTED TABLE OF string WITH UNIQUE KEY table_line.
+    DATA lt_roots TYPE STANDARD TABLE OF i WITH EMPTY KEY.
+    DATA lt_stack TYPE STANDARD TABLE OF ty_s_stack WITH EMPTY KEY.
+    DATA lt_push TYPE STANDARD TABLE OF i WITH EMPTY KEY.
+    DATA ls_top TYPE ty_s_stack.
+    DATA lv_pos TYPE i.
+    DATA lv_child TYPE i.
+    DATA lv_out TYPE i.
+
+    LOOP AT it_nodes INTO DATA(ls_node).
+      INSERT ls_node-key INTO TABLE lt_keys.
+    ENDLOOP.
+    LOOP AT it_nodes INTO ls_node.
+      lv_pos = sy-tabix.
+      IF ls_node-parent IS INITIAL OR ls_node-parent = ls_node-key
+        OR NOT line_exists( lt_keys[ table_line = ls_node-parent ] ).
+        APPEND lv_pos TO lt_roots.
+      ELSE.
+        APPEND VALUE #( parent = ls_node-parent pos = lv_pos ) TO lt_children.
+      ENDIF.
+    ENDLOOP.
+
+    "a cycle has no root: its first node is one - the loop below adds it
+    DATA(lv_next_root) = 1.
+    DO.
+      IF lv_next_root <= lines( lt_roots ).
+        lv_pos = lt_roots[ lv_next_root ].
+        lv_next_root = lv_next_root + 1.
+      ELSE.
+        CLEAR lv_pos.
+        LOOP AT it_nodes INTO ls_node.
+          IF NOT line_exists( lt_placed[ table_line = ls_node-key ] ).
+            lv_pos = sy-tabix.
+            EXIT.
+          ENDIF.
+        ENDLOOP.
+        IF lv_pos = 0.
+          EXIT.
+        ENDIF.
+      ENDIF.
+      IF line_exists( lt_placed[ table_line = it_nodes[ lv_pos ]-key ] ).
+        CONTINUE.
+      ENDIF.
+
+      lt_stack = VALUE #( ( pos = lv_pos level = 0 out = 0 ) ).
+      WHILE lt_stack IS NOT INITIAL.
+        ls_top = lt_stack[ lines( lt_stack ) ].
+        DELETE lt_stack INDEX lines( lt_stack ).
+        ls_node = it_nodes[ ls_top-pos ].
+        IF line_exists( lt_placed[ table_line = ls_node-key ] ).
+          CONTINUE.
+        ENDIF.
+        INSERT ls_node-key INTO TABLE lt_placed.
+        ls_node-index = COND #( WHEN ls_node-index IS INITIAL THEN ls_top-pos ELSE ls_node-index ).
+        ls_node-level = ls_top-level.
+        ls_node-expanded = xsdbool( expand_all = abap_true OR line_exists( expanded[ table_line = ls_node-key ] ) ).
+        IF ls_top-out = 0.
+          ls_node-visible = abap_true.
+        ELSE.
+          ls_node-visible = xsdbool( result[ ls_top-out ]-visible = abap_true
+                                     AND result[ ls_top-out ]-expanded = abap_true ).
+        ENDIF.
+        CLEAR lt_push.
+        LOOP AT lt_children INTO DATA(ls_child) WHERE parent = ls_node-key.
+          IF NOT line_exists( lt_placed[ table_line = it_nodes[ ls_child-pos ]-key ] ).
+            APPEND ls_child-pos TO lt_push.
+          ENDIF.
+        ENDLOOP.
+        ls_node-has_children = xsdbool( lt_push IS NOT INITIAL ).
+        APPEND ls_node TO result.
+        lv_out = lines( result ).
+        "the children in reverse, so that the first is taken next
+        lv_child = lines( lt_push ).
+        WHILE lv_child > 0.
+          APPEND VALUE #( pos = lt_push[ lv_child ] level = ls_top-level + 1 out = lv_out ) TO lt_stack.
+          lv_child = lv_child - 1.
+        ENDWHILE.
+      ENDWHILE.
+    ENDDO.
+
+  ENDMETHOD.
+
+
+  METHOD get_tree_descendants.
+
+    DATA lt_level TYPE STANDARD TABLE OF i WITH EMPTY KEY.
+    DATA lt_found TYPE string_table.
+    DATA lv_level TYPE i.
+
+    DATA(lv_node) = key.
+    READ TABLE it_tree INTO DATA(ls_node) WITH KEY key = lv_node.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    "depth first: the descendants follow the node until a level as high
+    DATA(lv_from) = sy-tabix + 1.
+    lv_level = ls_node-level.
+    LOOP AT it_tree INTO DATA(ls_desc) FROM lv_from.
+      IF ls_desc-level <= lv_level.
+        EXIT.
+      ENDIF.
+      APPEND ls_desc-key TO lt_found.
+      APPEND ls_desc-level TO lt_level.
+    ENDLOOP.
+    "the deepest first
+    DATA(lv_max) = 0.
+    LOOP AT lt_level INTO DATA(lv_l).
+      IF lv_l > lv_max.
+        lv_max = lv_l.
+      ENDIF.
+    ENDLOOP.
+    WHILE lv_max > lv_level.
+      LOOP AT lt_found INTO DATA(lv_key).
+        IF lt_level[ sy-tabix ] = lv_max.
+          APPEND lv_key TO result.
+        ENDIF.
+      ENDLOOP.
+      lv_max = lv_max - 1.
+    ENDWHILE.
+
+  ENDMETHOD.
+
+
+  METHOD get_tree_children.
+    DATA(lv_parent) = key.
+    LOOP AT it_tree INTO DATA(ls_node) WHERE parent = lv_parent.
+      IF ls_node-key <> lv_parent.
+        APPEND ls_node-key TO result.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD get_tree_indent.
+    DATA lv_rem TYPE decfloat34.
+    lv_rem = level * 3 / 2.
+    result = |{ lv_rem }rem|.
+  ENDMETHOD.
+
+
+  METHOD normalize_aggregation.
+    DATA(lv_val) = to_upper( condense( replace( val = strip_quotes( val ) sub = `#` with = `` occ = 0 ) ) ).
+    CASE lv_val.
+      WHEN `SUM` OR `MIN` OR `MAX` OR `AVG` OR `COUNT_DISTINCT`.
+        result = lv_val.
+    ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD get_aggregations.
+    LOOP AT it_fields INTO DATA(ls_field) WHERE aggregation_default IS NOT INITIAL.
+      APPEND VALUE #( field  = ls_field-name
+                      method = ls_field-aggregation_default ) TO result.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD build_aggregate_select.
+
+    DATA lt_parts TYPE string_table.
+
+    IF it_aggregations IS INITIAL.
+      RETURN.
+    ENDIF.
+    IF group_by IS NOT INITIAL.
+      APPEND to_upper( group_by ) TO lt_parts.
+    ENDIF.
+    LOOP AT it_aggregations INTO DATA(ls_agg).
+      DATA(lv_field) = to_upper( ls_agg-field ).
+      IF lv_field = to_upper( group_by ).
+        CONTINUE.
+      ENDIF.
+      CASE ls_agg-method.
+        WHEN `COUNT_DISTINCT`.
+          APPEND |COUNT( DISTINCT { lv_field } ) AS { lv_field }| TO lt_parts.
+        WHEN `SUM` OR `MIN` OR `MAX` OR `AVG`.
+          APPEND |{ ls_agg-method }( { lv_field } ) AS { lv_field }| TO lt_parts.
+      ENDCASE.
+    ENDLOOP.
+    result = concat_lines_of( table = lt_parts sep = `, ` ).
+
+  ENDMETHOD.
+
+
+  METHOD get_fcl_layout.
+    IF columns >= 3.
+      result = COND #( WHEN full_screen = abap_true THEN `EndColumnFullScreen` ELSE `ThreeColumnsMidExpanded` ).
+    ELSEIF columns = 2.
+      result = COND #( WHEN full_screen = abap_true THEN `MidColumnFullScreen` ELSE `TwoColumnsMidExpanded` ).
+    ELSE.
+      result = `OneColumn`.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD get_view_namespaces.
+
+    DATA lv_rest TYPE string.
+
+    DATA(lv_start) = find( val = xml sub = `<` ).
+    IF lv_start < 0.
+      RETURN.
+    ENDIF.
+    DATA(lv_end) = find( val = xml sub = `>` off = lv_start ).
+    IF lv_end < 0.
+      RETURN.
+    ENDIF.
+    "the builder escapes every > in a value, so the first one ends the tag
+    lv_rest = substring( val = xml off = lv_start len = lv_end - lv_start ).
+    DO.
+      DATA(lv_pos) = find( val = lv_rest sub = ` xmlns` ).
+      IF lv_pos < 0.
+        EXIT.
+      ENDIF.
+      lv_rest = substring( val = lv_rest off = lv_pos + 1 ).
+      DATA(lv_eq) = find( val = lv_rest sub = `="` ).
+      IF lv_eq < 0.
+        EXIT.
+      ENDIF.
+      DATA(lv_name) = substring( val = lv_rest len = lv_eq ).
+      lv_rest = substring( val = lv_rest off = lv_eq + 2 ).
+      DATA(lv_quote) = find( val = lv_rest sub = `"` ).
+      IF lv_quote < 0.
+        EXIT.
+      ENDIF.
+      APPEND VALUE #( name = lv_name value = substring( val = lv_rest len = lv_quote ) ) TO result.
+      lv_rest = substring( val = lv_rest off = lv_quote + 1 ).
+    ENDDO.
+
+  ENDMETHOD.
+
+
+  METHOD get_view_body.
+
+    DATA(lv_start) = find( val = xml sub = `<` ).
+    IF lv_start < 0.
+      RETURN.
+    ENDIF.
+    DATA(lv_end) = find( val = xml sub = `>` off = lv_start ).
+    DATA(lv_close) = find( val = xml sub = `</` occ = -1 ).
+    IF lv_end < 0 OR lv_close <= lv_end OR substring( val = xml off = lv_end - 1 len = 1 ) = `/`.
+      RETURN.
+    ENDIF.
+    result = substring( val = xml off = lv_end + 1 len = lv_close - lv_end - 1 ).
+    "the Shell the floorplans put their page in
+    DATA(lv_shell) = `<Shell>`.
+    DATA(lv_shell_end) = `</Shell>`.
+    DATA(lv_length) = strlen( result ).
+    IF lv_length > strlen( lv_shell ) + strlen( lv_shell_end )
+      AND substring( val = result len = strlen( lv_shell ) ) = lv_shell
+      AND substring( val = result off = lv_length - strlen( lv_shell_end ) ) = lv_shell_end.
+      result = substring( val = result
+                          off = strlen( lv_shell )
+                          len = lv_length - strlen( lv_shell ) - strlen( lv_shell_end ) ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD compose_view.
+
+    DATA lv_added TYPE string.
+
+    result = skeleton.
+    LOOP AT it_parts INTO DATA(ls_part) WHERE name IS NOT INITIAL.
+      DATA(lv_pos) = find( val = result sub = ls_part-name ).
+      IF lv_pos < 0.
+        CONTINUE.
+      ENDIF.
+      result = substring( val = result len = lv_pos ) && ls_part-value
+            && substring( val = result off = lv_pos + strlen( ls_part-name ) ).
+    ENDLOOP.
+
+    "the namespaces of the parts that the root does not declare yet
+    DATA(lt_have) = get_view_namespaces( result ).
+    LOOP AT it_namespaces INTO DATA(ls_ns).
+      IF line_exists( lt_have[ name = ls_ns-name ] ).
+        CONTINUE.
+      ENDIF.
+      APPEND ls_ns TO lt_have.
+      lv_added = |{ lv_added } { ls_ns-name }="{ ls_ns-value }"|.
+    ENDLOOP.
+    IF lv_added IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA(lv_start) = find( val = result sub = `<` ).
+    DATA(lv_end) = find( val = result sub = `>` off = COND i( WHEN lv_start < 0 THEN 0 ELSE lv_start ) ).
+    IF lv_end < 0.
+      RETURN.
+    ENDIF.
+    IF lv_end > 0 AND substring( val = result off = lv_end - 1 len = 1 ) = `/`.
+      lv_end = lv_end - 1.
+    ENDIF.
+    result = substring( val = result len = lv_end ) && lv_added && substring( val = result off = lv_end ).
+
+  ENDMETHOD.
+
+
+  METHOD to_column_event.
+    result = |{ column }~{ event }|.
+  ENDMETHOD.
+
+
+  METHOD split_column_event.
+    CLEAR: column, event.
+    DATA(lv_pos) = find( val = val sub = `~` ).
+    IF lv_pos <= 0.
+      event = val.
+      RETURN.
+    ENDIF.
+    column = substring( val = val len = lv_pos ).
+    event = substring( val = val off = lv_pos + 1 ).
+  ENDMETHOD.
+
+
+  METHOD get_search_fuzziness.
+
+    DATA lv_best TYPE decfloat34.
+    DATA lv_value TYPE decfloat34.
+
+    DATA(lt_names) = get_search_fields( it_fields ).
+    LOOP AT it_fields INTO DATA(ls_field) WHERE search_fuzziness IS NOT INITIAL.
+      IF NOT line_exists( lt_names[ table_line = ls_field-name ] ).
+        CONTINUE.
+      ENDIF.
+      TRY.
+          lv_value = ls_field-search_fuzziness.
+        CATCH cx_root.
+          CONTINUE.
+      ENDTRY.
+      IF lv_value > lv_best.
+        lv_best = lv_value.
+        result = condense( ls_field-search_fuzziness ).
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD build_fuzzy_search.
+
+    DATA lt_columns TYPE string_table.
+    DATA lv_threshold TYPE decfloat34.
+
+    DATA(lv_search) = condense( search ).
+    IF lv_search IS INITIAL.
+      RETURN.
+    ENDIF.
+    TRY.
+        lv_threshold = threshold.
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+    IF lv_threshold <= 0 OR lv_threshold > 1.
+      RETURN.
+    ENDIF.
+    LOOP AT get_search_fields( it_fields ) INTO DATA(lv_name).
+      APPEND |"{ lv_name }"| TO lt_columns.
+    ENDLOOP.
+    IF lt_columns IS INITIAL.
+      RETURN.
+    ENDIF.
+    lv_search = replace( val = lv_search sub = `'` with = `''` occ = 0 ).
+    result = |CONTAINS( ( { concat_lines_of( table = lt_columns sep = `, ` ) } ), '{ lv_search }', FUZZY( { lv_threshold } ) )|.
+
+  ENDMETHOD.
+
+
+  METHOD get_search_fields.
+    DATA(lv_only_searchable) = xsdbool( line_exists( it_fields[ is_searchable = abap_true is_virtual = abap_false ] ) ).
+    LOOP AT it_fields INTO DATA(ls_field)
+      WHERE ( type_kind = `CHAR` OR type_kind = `STRING` ) AND is_virtual = abap_false.
+      IF lv_only_searchable = abap_true AND ls_field-is_searchable = abap_false.
+        CONTINUE.
+      ENDIF.
+      IF lv_only_searchable = abap_false AND ls_field-is_hidden = abap_true.
+        CONTINUE.
+      ENDIF.
+      APPEND ls_field-name TO result.
+    ENDLOOP.
   ENDMETHOD.
 
 ENDCLASS.

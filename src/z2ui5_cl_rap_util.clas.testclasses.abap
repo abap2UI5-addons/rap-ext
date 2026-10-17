@@ -2786,3 +2786,348 @@ CLASS ltcl_object_page_meta IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+" the tree (hierarchy, order of the nodes), the analytical list
+" (aggregations), the flexible column layout (composing views) and the
+" fuzzy search - added 2026-10, third round
+CLASS ltcl_tree_layout DEFINITION FINAL
+  FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS hierarchy_annotation   FOR TESTING RAISING cx_static_check.
+    METHODS hierarchy_recurse_by   FOR TESTING RAISING cx_static_check.
+    METHODS hierarchy_self_assoc   FOR TESTING RAISING cx_static_check.
+    METHODS hierarchy_ddl          FOR TESTING RAISING cx_static_check.
+    METHODS tree_order             FOR TESTING RAISING cx_static_check.
+    METHODS tree_descendants       FOR TESTING RAISING cx_static_check.
+    METHODS aggregation_annotation FOR TESTING RAISING cx_static_check.
+    METHODS aggregate_select       FOR TESTING RAISING cx_static_check.
+    METHODS count_distinct         FOR TESTING RAISING cx_static_check.
+    METHODS fcl_layouts            FOR TESTING RAISING cx_static_check.
+    METHODS view_parts             FOR TESTING RAISING cx_static_check.
+    METHODS compose                FOR TESTING RAISING cx_static_check.
+    METHODS column_events          FOR TESTING RAISING cx_static_check.
+    METHODS fuzzy_search           FOR TESTING RAISING cx_static_check.
+
+    METHODS sample_tree
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_tree_node.
+
+ENDCLASS.
+
+
+CLASS ltcl_tree_layout IMPLEMENTATION.
+
+  METHOD hierarchy_annotation.
+
+    DATA(ls_entity) = VALUE z2ui5_cl_rap_util=>ty_s_entity_info(
+      name               = `ZNODE`
+      entity_annotations = VALUE #(
+        ( key = `HIERARCHY.PARENTCHILD$1$.RECURSE.PARENT$1$`      value = `'ParentNode'` )
+        ( key = `HIERARCHY.PARENTCHILD$1$.RECURSE.CHILD$1$`       value = `'Node'` )
+        ( key = `HIERARCHY.PARENTCHILD$1$.SIBLINGSORDER$1$.BY`        value = `'Name'` )
+        ( key = `HIERARCHY.PARENTCHILD$1$.SIBLINGSORDER$1$.DIRECTION` value = `#DESC` )
+        ( key = `ODATA.HIERARCHY.RECURSIVEHIERARCHY$1$.ENTITY.NAME`   value = `'ZNODE_HIER'` ) ) ).
+
+    DATA(ls_hier) = z2ui5_cl_rap_util=>get_hierarchy( ls_entity ).
+    cl_abap_unit_assert=>assert_equals( exp = `NODE`       act = ls_hier-node_field ).
+    cl_abap_unit_assert=>assert_equals( exp = `PARENTNODE` act = ls_hier-parent_field ).
+    cl_abap_unit_assert=>assert_equals( exp = `ZNODE_HIER` act = ls_hier-name ).
+    cl_abap_unit_assert=>assert_equals( exp = `SUBTREE`    act = ls_hier-delete_mode ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_sort( ( field = `NAME` descending = abap_true ) )
+      act = ls_hier-order_by ).
+
+  ENDMETHOD.
+
+
+  METHOD hierarchy_recurse_by.
+
+    DATA(ls_entity) = VALUE z2ui5_cl_rap_util=>ty_s_entity_info(
+      name               = `ZNODE`
+      keys               = VALUE #( ( `NODE` ) )
+      entity_annotations = VALUE #( ( key = `HIERARCHY.PARENTCHILD$1$.RECURSEBY` value = `'_Parent'` ) )
+      associations       = VALUE #( ( name       = `_PARENT`
+                                      target     = `ZNODE`
+                                      conditions = VALUE #( ( local = `PARENTNODE` target = `NODE` ) ) ) ) ).
+
+    DATA(ls_hier) = z2ui5_cl_rap_util=>get_hierarchy( ls_entity ).
+    cl_abap_unit_assert=>assert_equals( exp = `_PARENT`    act = ls_hier-parent_assoc ).
+    cl_abap_unit_assert=>assert_equals( exp = `NODE`       act = ls_hier-node_field ).
+    cl_abap_unit_assert=>assert_equals( exp = `PARENTNODE` act = ls_hier-parent_field ).
+
+  ENDMETHOD.
+
+
+  METHOD hierarchy_self_assoc.
+
+    "the children's association compares a key with the parent - not it
+    DATA(ls_entity) = VALUE z2ui5_cl_rap_util=>ty_s_entity_info(
+      name         = `ZNODE`
+      keys         = VALUE #( ( `NODE` ) )
+      associations = VALUE #(
+        ( name = `_CHILDREN` target = `ZNODE` conditions = VALUE #( ( local = `NODE` target = `PARENTNODE` ) ) )
+        ( name = `_TEXT`     target = `ZTEXT` conditions = VALUE #( ( local = `NODE` target = `NODE` ) ) )
+        ( name = `_UP`       target = `ZNODE` conditions = VALUE #( ( local = `UPPER` target = `NODE` ) ) ) ) ).
+
+    DATA(ls_hier) = z2ui5_cl_rap_util=>get_hierarchy( ls_entity ).
+    cl_abap_unit_assert=>assert_equals( exp = `_UP`   act = ls_hier-parent_assoc ).
+    cl_abap_unit_assert=>assert_equals( exp = `NODE`  act = ls_hier-node_field ).
+    cl_abap_unit_assert=>assert_equals( exp = `UPPER` act = ls_hier-parent_field ).
+
+    "no hierarchy at all
+    CLEAR ls_entity-associations.
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>get_hierarchy( ls_entity )-node_field ).
+
+  ENDMETHOD.
+
+
+  METHOD hierarchy_ddl.
+
+    DATA(ls_hier) = z2ui5_cl_rap_util=>parse_ddl_hierarchy(
+      |// the nodes of a tree\n| &&
+      |define hierarchy ZNode_Hier\n| &&
+      |  as parent child hierarchy(\n| &&
+      |    source ZI_Node\n| &&
+      |    child to parent association _Parent\n| &&
+      |    start where ParentNode is initial and ( Kind = 'A' )\n| &&
+      |    siblings order by Name descending, Node\n| &&
+      |    multiple parents not allowed\n| &&
+      |  )\n| &&
+      |\{ key Node, ParentNode, Name \}| ).
+
+    cl_abap_unit_assert=>assert_equals( exp = `ZNODE_HIER` act = ls_hier-name ).
+    cl_abap_unit_assert=>assert_equals( exp = `ZI_NODE`    act = ls_hier-source ).
+    cl_abap_unit_assert=>assert_equals( exp = `_PARENT`    act = ls_hier-parent_assoc ).
+    cl_abap_unit_assert=>assert_equals( exp = `ParentNode is initial and ( Kind = 'A' )`
+                                        act = ls_hier-start_where ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_sort( ( field = `NAME` descending = abap_true ) ( field = `NODE` ) )
+      act = ls_hier-order_by ).
+
+  ENDMETHOD.
+
+
+  METHOD sample_tree.
+    "E's parent is not read, F and G are a cycle
+    result = z2ui5_cl_rap_util=>build_tree(
+      it_nodes = VALUE #( ( key = `D` parent = `B` index = 4 )
+                          ( key = `A`              index = 1 )
+                          ( key = `B` parent = `A` index = 2 )
+                          ( key = `C` parent = `A` index = 3 )
+                          ( key = `E` parent = `X` index = 5 )
+                          ( key = `F` parent = `G` index = 6 )
+                          ( key = `G` parent = `F` index = 7 ) )
+      expanded = VALUE #( ( `A` ) ( `F` ) ) ).
+  ENDMETHOD.
+
+
+  METHOD tree_order.
+
+    DATA lt_keys TYPE string_table.
+    DATA lt_visible TYPE string_table.
+
+    DATA(lt_tree) = sample_tree( ).
+    LOOP AT lt_tree INTO DATA(ls_node).
+      APPEND ls_node-key TO lt_keys.
+      IF ls_node-visible = abap_true.
+        APPEND ls_node-key TO lt_visible.
+      ENDIF.
+    ENDLOOP.
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `A` ) ( `B` ) ( `D` ) ( `C` ) ( `E` ) ( `F` ) ( `G` ) )
+                                        act = lt_keys ).
+    "B is not expanded - D is hidden
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `A` ) ( `B` ) ( `C` ) ( `E` ) ( `F` ) ( `G` ) )
+                                        act = lt_visible ).
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = lt_tree[ 3 ]-level ).
+    cl_abap_unit_assert=>assert_equals( exp = 4 act = lt_tree[ 3 ]-index ).
+    cl_abap_unit_assert=>assert_true( lt_tree[ 1 ]-has_children ).
+    cl_abap_unit_assert=>assert_false( lt_tree[ 3 ]-has_children ).
+    cl_abap_unit_assert=>assert_equals( exp = 0 act = lt_tree[ 5 ]-level ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = lt_tree[ 7 ]-level ).
+
+    "everything expanded
+    DATA(lt_all) = z2ui5_cl_rap_util=>build_tree( it_nodes   = lt_tree
+                                                  expand_all = abap_true ).
+    cl_abap_unit_assert=>assert_false( xsdbool( line_exists( lt_all[ visible = abap_false ] ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `1.5rem` act = z2ui5_cl_rap_util=>get_tree_indent( 1 ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `3rem`   act = z2ui5_cl_rap_util=>get_tree_indent( 2 ) ).
+
+  ENDMETHOD.
+
+
+  METHOD tree_descendants.
+    DATA(lt_tree) = sample_tree( ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `D` ) ( `B` ) ( `C` ) )
+                                        act = z2ui5_cl_rap_util=>get_tree_descendants( it_tree = lt_tree
+                                                                                       key     = `A` ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>get_tree_descendants( it_tree = lt_tree
+                                                                                  key     = `C` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `B` ) ( `C` ) )
+                                        act = z2ui5_cl_rap_util=>get_tree_children( it_tree = lt_tree
+                                                                                    key     = `A` ) ).
+  ENDMETHOD.
+
+
+  METHOD aggregation_annotation.
+
+    DATA(ls_entity) = VALUE z2ui5_cl_rap_util=>ty_s_entity_info(
+      fields = VALUE #( ( name = `PRICE` ) ( name = `CUSTOMER` ) ( name = `NAME` ) ) ).
+    z2ui5_cl_rap_util=>apply_annotations(
+      EXPORTING it_entity   = VALUE #( )
+                it_elements = VALUE #( ( element = `PRICE`    key = `AGGREGATION.DEFAULT` value = `#SUM` )
+                                       ( element = `CUSTOMER` key = `AGGREGATION.DEFAULT` value = `#COUNT_DISTINCT` )
+                                       ( element = `NAME`     key = `AGGREGATION.DEFAULT` value = `#NONE` ) )
+      CHANGING  cs_entity   = ls_entity ).
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_aggregation( ( field = `PRICE`    method = `SUM` )
+                                                       ( field = `CUSTOMER` method = `COUNT_DISTINCT` ) )
+      act = z2ui5_cl_rap_util=>get_aggregations( ls_entity-fields ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `AVG` act = z2ui5_cl_rap_util=>normalize_aggregation( `#avg` ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>normalize_aggregation( `#NOP` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD aggregate_select.
+    DATA(lt_agg) = VALUE z2ui5_cl_rap_util=>ty_t_aggregation( ( field = `PRICE`    method = `SUM` )
+                                                              ( field = `CUSTOMER` method = `COUNT_DISTINCT` )
+                                                              ( field = `STATUS`   method = `MAX` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `STATUS, SUM( PRICE ) AS PRICE, COUNT( DISTINCT CUSTOMER ) AS CUSTOMER`
+      act = z2ui5_cl_rap_util=>build_aggregate_select( it_aggregations = lt_agg
+                                                       group_by        = `status` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `SUM( PRICE ) AS PRICE, COUNT( DISTINCT CUSTOMER ) AS CUSTOMER, MAX( STATUS ) AS STATUS`
+      act = z2ui5_cl_rap_util=>build_aggregate_select( lt_agg ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>build_aggregate_select( VALUE #( ) ) ).
+  ENDMETHOD.
+
+
+  METHOD count_distinct.
+
+    TYPES:
+      BEGIN OF ty_s_row,
+        status   TYPE string,
+        customer TYPE string,
+      END OF ty_s_row.
+    DATA lt_rows TYPE STANDARD TABLE OF ty_s_row WITH EMPTY KEY.
+
+    lt_rows = VALUE #( ( status = `A` customer = `1` )
+                       ( status = `A` customer = `1` )
+                       ( status = `A` customer = `2` )
+                       ( status = `B` customer = `1` ) ).
+    DATA(lt_agg) = z2ui5_cl_rap_util=>aggregate_rows( data     = REF #( lt_rows )
+                                                      group_by = `STATUS`
+                                                      measure  = `CUSTOMER`
+                                                      method   = `COUNT_DISTINCT` ).
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = lines( lt_agg ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `A` act = lt_agg[ 1 ]-group_key ).
+    cl_abap_unit_assert=>assert_equals( exp = 2   act = lt_agg[ 1 ]-row_count ).
+    cl_abap_unit_assert=>assert_equals( exp = 1   act = lt_agg[ 2 ]-row_count ).
+
+  ENDMETHOD.
+
+
+  METHOD fcl_layouts.
+    cl_abap_unit_assert=>assert_equals( exp = `OneColumn`               act = z2ui5_cl_rap_util=>get_fcl_layout( 1 ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `TwoColumnsMidExpanded`   act = z2ui5_cl_rap_util=>get_fcl_layout( 2 ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `ThreeColumnsMidExpanded` act = z2ui5_cl_rap_util=>get_fcl_layout( 3 ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `MidColumnFullScreen`
+                                        act = z2ui5_cl_rap_util=>get_fcl_layout( columns     = 2
+                                                                                 full_screen = abap_true ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `EndColumnFullScreen`
+                                        act = z2ui5_cl_rap_util=>get_fcl_layout( columns     = 3
+                                                                                 full_screen = abap_true ) ).
+  ENDMETHOD.
+
+
+  METHOD view_parts.
+
+    DATA(lv_xml) = `<mvc:View xmlns="sap.m" xmlns:mvc="sap.ui.core.mvc" xmlns:uxap="sap.uxap" height="100%">`
+                && `<Shell><Page title="a &gt; b"><Text text="x"/></Page></Shell></mvc:View>`.
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_name_value( ( name = `xmlns`      value = `sap.m` )
+                                                      ( name = `xmlns:mvc`  value = `sap.ui.core.mvc` )
+                                                      ( name = `xmlns:uxap` value = `sap.uxap` ) )
+      act = z2ui5_cl_rap_util=>get_view_namespaces( lv_xml ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `<Page title="a &gt; b"><Text text="x"/></Page>`
+                                        act = z2ui5_cl_rap_util=>get_view_body( lv_xml ) ).
+    "no Shell - the content as it is
+    cl_abap_unit_assert=>assert_equals(
+      exp = `<VBox/>`
+      act = z2ui5_cl_rap_util=>get_view_body( `<mvc:View xmlns="sap.m"><VBox/></mvc:View>` ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>get_view_body( `<mvc:View xmlns="sap.m"/>` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD compose.
+
+    DATA(lv_view) = z2ui5_cl_rap_util=>compose_view(
+      skeleton      = `<mvc:View xmlns="sap.m" xmlns:f="sap.f"><f:FlexibleColumnLayout>`
+                   && `<f:beginColumnPages><Text text="BEGIN"/></f:beginColumnPages>`
+                   && `<f:midColumnPages><Text text="MID"/></f:midColumnPages>`
+                   && `</f:FlexibleColumnLayout></mvc:View>`
+      it_parts      = VALUE #( ( name = `<Text text="BEGIN"/>` value = `<Page title="List"/>` )
+                               ( name = `<Text text="MID"/>`   value = `<Page><uxap:ObjectPageLayout/></Page>` ) )
+      it_namespaces = VALUE #( ( name = `xmlns`      value = `sap.m` )
+                               ( name = `xmlns:uxap` value = `sap.uxap` ) ) ).
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = `<mvc:View xmlns="sap.m" xmlns:f="sap.f" xmlns:uxap="sap.uxap"><f:FlexibleColumnLayout>`
+         && `<f:beginColumnPages><Page title="List"/></f:beginColumnPages>`
+         && `<f:midColumnPages><Page><uxap:ObjectPageLayout/></Page></f:midColumnPages>`
+         && `</f:FlexibleColumnLayout></mvc:View>`
+      act = lv_view ).
+
+  ENDMETHOD.
+
+
+  METHOD column_events.
+
+    DATA lv_column TYPE string.
+    DATA lv_event TYPE string.
+
+    DATA(lv_name) = z2ui5_cl_rap_util=>to_column_event( column = `MID`
+                                                        event  = `SAVE` ).
+    cl_abap_unit_assert=>assert_equals( exp = `MID~SAVE` act = lv_name ).
+    z2ui5_cl_rap_util=>split_column_event( EXPORTING val    = lv_name
+                                           IMPORTING column = lv_column
+                                                     event  = lv_event ).
+    cl_abap_unit_assert=>assert_equals( exp = `MID`  act = lv_column ).
+    cl_abap_unit_assert=>assert_equals( exp = `SAVE` act = lv_event ).
+    z2ui5_cl_rap_util=>split_column_event( EXPORTING val    = `POPUP_CLOSE`
+                                           IMPORTING column = lv_column
+                                                     event  = lv_event ).
+    cl_abap_unit_assert=>assert_initial( lv_column ).
+    cl_abap_unit_assert=>assert_equals( exp = `POPUP_CLOSE` act = lv_event ).
+
+  ENDMETHOD.
+
+
+  METHOD fuzzy_search.
+
+    DATA(lt_fields) = VALUE z2ui5_cl_rap_util=>ty_t_field_info(
+      ( name = `NAME`   type_kind = `CHAR` is_searchable = abap_true search_fuzziness = `0.8` )
+      ( name = `CITY`   type_kind = `CHAR` is_searchable = abap_true search_fuzziness = `0.9` )
+      ( name = `STREET` type_kind = `CHAR` search_fuzziness = `0.95` )
+      ( name = `PRICE`  type_kind = `PACKED` is_searchable = abap_true ) ).
+
+    "only the searched fields count
+    DATA(lv_threshold) = z2ui5_cl_rap_util=>get_search_fuzziness( lt_fields ).
+    cl_abap_unit_assert=>assert_equals( exp = `0.9` act = lv_threshold ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `CONTAINS( ( "NAME", "CITY" ), 'O''Neil', FUZZY( 0.9 ) )`
+      act = z2ui5_cl_rap_util=>build_fuzzy_search( it_fields  = lt_fields
+                                                   search    = ` O'Neil `
+                                                   threshold = lv_threshold ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>build_fuzzy_search( it_fields  = lt_fields
+                                                                                search    = `x`
+                                                                                threshold = `2` ) ).
+
+  ENDMETHOD.
+
+ENDCLASS.
