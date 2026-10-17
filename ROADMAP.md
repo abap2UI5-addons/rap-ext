@@ -10,19 +10,25 @@ clicked through in an SAP system yet** - that is the first open item, and
 
 1. **The system test** ([docs/system-test.md](docs/system-test.md)) - first,
    and its findings before anything below. The RAP write path, the draft
-   handling, the derived type names (`\ASSOCIATION=...\TYPE=CREATE` for a
-   create by association), the host variables in dynamic WHERE clauses, the
+   handling, the derived type names (`\ASSOC=` or `\ASSOCIATION=...\TYPE=CREATE`
+   for a create by association), the host variables in dynamic WHERE clauses, the
    DDL source read and the hand-written sidecar of `z2ui5_t_rap_var` were
    written from documentation.
-2. **Feature control** (`GET PERMISSIONS`: actions disabled and fields
-   read-only per instance) - blocked by the tooling, see below.
-3. **Reading a draft back**: resume a draft of the user's own with its data,
-   and with it keep the draft when the user leaves the page (today leaving
-   discards it, and a draft left by another app can only be discarded) -
-   blocked the same way.
-4. **Late numbering through `CONVERT KEY`** - blocked the same way. A record
-   with `@Semantics.user.createdBy` and `.systemDateTime.createdAt` is found
-   again without it (done); one without them still returns to the list.
+2. **The three dynamic EML classes** (`z2ui5_cl_rap_eml_perm`, `_read`,
+   `_key`) in a system: their syntax, the absolute names of the
+   permission types (`\TYPE=PERMISSIONS_K` / `_Q` / `_R` are guesses, see
+   `z2ui5_cl_rap_util=>get_permission_type_names`), the components of the
+   permission result (`GLOBAL`, `INSTANCES`, `%ACTION`, `%FIELD`, `%ASSOC`).
+   The features are written; whether they work is the system test's.
+3. **The etag master field of the BDEF**: the optimistic check compares the
+   local last-changed field, not the field the BDEF names as `etag master` -
+   no table to read a BDEF source from is known here, and `GET PERMISSIONS`
+   does not report it.
+4. **Drafts that were never activated** do not appear in the list report (it
+   reads the active entity with ABAP SQL); they are opened through a factory
+   action or Edit only. And whose draft a row has is decided by the draft's
+   `@Semantics.user.lastChangedBy` - the draft administrative data (in
+   process by user) is not read.
 5. **Flexible column layout** (list and object page side by side) - not
    started: the floorplans are apps of their own, called with
    `nav_app_call`; side by side the object page would have to render into a
@@ -44,26 +50,42 @@ clicked through in an SAP system yet** - that is the first open item, and
     **fuzzy search** (`@Search.fuzzinessThreshold`, HANA only) and
     **parameters of a custom entity** (`get_parameters` answers none).
 
-### Why 2-4 are blocked
+### How the dynamic EML statements were unblocked
 
-They need EML in its dynamic form - `GET PERMISSIONS ... OPERATIONS`,
-`READ ENTITIES OPERATIONS`, `CONVERT KEY` - because the entity is only known
-at runtime. abaplint (2.120.65, the newest release on 2026-10-03) parses only
-the static forms, so the statements fail the `parser_error` gate, and no
-offline tool checks their exact syntax. The ways out, each a maintainer
-decision:
-
-- a small class per statement, its `.abap` file in `global.noIssues` of
-  `abaplint.jsonc`, called dynamically (`CALL METHOD (class)=>(method)` in a
-  `TRY`) so that a system where it does not activate only loses the feature -
-  at the price of code no gate reads and an activation error on the pull of
-  such a system;
-- the grammar contributed to abaplint, then the statements in
-  `z2ui5_cl_rap_eml` like the others.
+`GET PERMISSIONS ... OPERATIONS`, `READ ENTITIES OPERATIONS` and
+`CONVERT KEY` are needed in their dynamic form, because the entity is only
+known at runtime, and abaplint parses only the static forms. A maintainer
+decision of 2026-10 (third round) took the first way out: one small class
+per statement (`z2ui5_cl_rap_eml_perm`, `_read`, `_key`), its `.abap` file
+in `global.noIssues` of `abaplint.jsonc`, called dynamically from
+`z2ui5_cl_rap_eml` (`CALL METHOD (class)=>(method)` in a `TRY`), so that a
+system where one does not activate only loses its feature - at the price of
+code no gate reads (docs/system-test.md, 1). The other way out - the
+grammar contributed to abaplint, then the statements in `z2ui5_cl_rap_eml`
+like the others - is still the better one; the classes go when it lands.
 
 ## Done
 
 ### 2026-10, third round
+
+- **Feature control** (`GET PERMISSIONS`, formerly open item 2): global,
+  static and instance permissions - Create, Edit, Delete, create by
+  association, actions (disabled buttons; per row in the list report, by
+  the selected rows for the toolbar), the field control in edit mode
+  (`field ( readonly )`, `readonly : update`, `mandatory`,
+  `mandatory : create`, instance field control), keys not typed in on
+  create when the business object numbers them; checked on the server for
+  every update, delete and action; internal operations not offered where
+  the permissions report them.
+- **Reading a draft back** (formerly open item 3): an own draft opens to be
+  edited further, Edit offers to resume a draft left by another app,
+  leaving asks to keep or discard the draft, another user's draft shows
+  "locked by"; the list report shows the editing status per row and
+  filters by it (All, Own draft, Locked by another user, Unchanged); a
+  record a factory action created as a draft opens.
+- **Late numbering through `CONVERT KEY`** (formerly open item 4).
+- **Optimistic check** before an update or delete without a draft, by the
+  local last-changed field.
 
 - **Qualified `@UI.identification`**: every entry is read with its
   qualifier and label; a `#IDENTIFICATION_REFERENCE` facet with a

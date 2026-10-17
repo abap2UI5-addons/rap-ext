@@ -902,8 +902,12 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       result-can_create = try_create_data( lv_base && `\TYPE=CREATE` ).
       "a child is created under its parent - by association, not alone
       IF context-association IS NOT INITIAL.
-        result-can_create = try_create_data( |\\BDEF={ lv_bdef }\\ENTITY={ to_upper( context-parent ) }| &&
-                                             |\\ASSOCIATION={ to_upper( context-association ) }\\TYPE=CREATE| ).
+        "\ASSOC= is the documented form, \ASSOCIATION= the one used up to
+        "2026-10 - whichever the system knows (z2ui5_cl_rap_eml)
+        DATA(lv_parent_base) = |\\BDEF={ lv_bdef }\\ENTITY={ to_upper( context-parent ) }|.
+        result-can_create = xsdbool(
+          try_create_data( |{ lv_parent_base }\\ASSOC={ to_upper( context-association ) }\\TYPE=CREATE| ) = abap_true
+          OR try_create_data( |{ lv_parent_base }\\ASSOCIATION={ to_upper( context-association ) }\\TYPE=CREATE| ) = abap_true ).
       ENDIF.
       result-can_update = try_create_data( lv_base && `\TYPE=UPDATE` ).
       result-can_delete = try_create_data( lv_base && `\TYPE=DELETE` ).

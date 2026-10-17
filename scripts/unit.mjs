@@ -13,7 +13,9 @@
  *     (src/02: the app and client interfaces, the view builder) - what the
  *     floorplans are written against. Its own test classes are left out.
  *
- * z2ui5_cl_rap_eml is not part of it: the transpiler has no EML. A class
+ * z2ui5_cl_rap_eml is not part of it: the transpiler has no EML - nor are
+ * z2ui5_cl_rap_eml_perm, _read and _key, the dynamic EML statements no gate
+ * parses (abaplint.jsonc, global.noIssues). A class
  * that is not transpiled, and an SAP object the runtime does not know (the
  * annotation service, DDIC types, a CDS view), compiles to a runtime error
  * in the code that uses it (unknownTypes: runtimeError), so a test must not

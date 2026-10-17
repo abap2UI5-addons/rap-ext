@@ -15,7 +15,8 @@ views and their UI annotations, rendered with abap2UI5.
 | `z2ui5_cl_rap_floorplan` | superclass of every floorplan: reading, filter/search, input controls, value help, writing, texts, extension calls |
 | `z2ui5_cl_rap_list_report`, `_worklist` (a subclass of it), `_object_page`, `_overview_page`, `_value_help`, `_action_dialog` | the floorplans - each an abap2UI5 app |
 | `z2ui5_cl_rap_util` | the metadata: RTTI, DDIC keys/texts, annotations (`read_entity`, `apply_annotations`), the associations of the DDL source (`read_associations`, `parse_ddl_associations`), the filter/search syntax, CSV/UTF-8/Base64/URL helpers - no UI, needs no other class of the addon, unit-tested |
-| `z2ui5_cl_rap_eml` | the RAP write path - the only class with EML |
+| `z2ui5_cl_rap_eml` | the RAP write path - the only class with EML abaplint parses |
+| `z2ui5_cl_rap_eml_perm`, `_read`, `_key` | one dynamic EML statement each (`GET PERMISSIONS OPERATIONS`, `READ ENTITIES OPERATIONS`, `CONVERT KEY`) - in `global.noIssues`, called dynamically from `z2ui5_cl_rap_eml`, unverified syntax |
 | `z2ui5_cl_rap_query` | the read path of custom entities - the only class implementing the `IF_RAP_QUERY_*` interfaces (the request and response a query provider is called with); not in `npm run unit`, reached only behind `query_available( )` |
 | `z2ui5_if_rap_ext` | the extension points (`set_extension( )`) |
 | `z2ui5_cl_rap_start` | opens a floorplan from a URL (deep links) - opens nothing unless a subclass allows the entity |
@@ -111,13 +112,27 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   direct annotations are read as before (`read_annos_direct`). Keep the
   dynamic call - a static one would pin the service's type names, which
   are not released.
-- **`z2ui5_cl_rap_eml` is the only class with EML statements** (dynamic
-  `MODIFY ENTITIES OPERATIONS`, `COMMIT ENTITIES RESPONSES`, `ROLLBACK
-  ENTITIES`). abaplint parses only the static forms of `GET PERMISSIONS`,
-  `READ ENTITIES` and `CONVERT KEY` - their dynamic forms fail
-  `parser_error`, which is why feature control, reading a draft back and
-  `CONVERT KEY` are open (ROADMAP.md, "Why 2-4 are blocked"). Do not add one
-  of them here; that is a maintainer decision. Every call into it is guarded by
+- **`z2ui5_cl_rap_eml` is the only class with EML statements abaplint
+  parses** (dynamic `MODIFY ENTITIES OPERATIONS`, `COMMIT ENTITIES
+  RESPONSES`, `ROLLBACK ENTITIES`). abaplint parses only the static forms of
+  `GET PERMISSIONS`, `READ ENTITIES` and `CONVERT KEY` - their dynamic forms
+  fail `parser_error`. By a maintainer decision (2026-10, third round) each
+  of them lives in a tiny class of its own: `z2ui5_cl_rap_eml_perm` (`GET
+  PERMISSIONS OPERATIONS`), `z2ui5_cl_rap_eml_read` (`READ ENTITIES
+  OPERATIONS`), `z2ui5_cl_rap_eml_key` (`COMMIT ENTITIES BEGIN`, `CONVERT
+  KEY`, `COMMIT ENTITIES END`). Their `.abap` files are in `global.noIssues`
+  of `abaplint.jsonc` (their `.clas.xml` stay checked), they are not in the
+  transpiled unit run, no gate reads them, and their syntax is unverified
+  (docs/system-test.md, 1). `z2ui5_cl_rap_eml` names them only as literals
+  (`cs_dynamic`) and calls them with `CALL METHOD (class)=>(method)` inside
+  `TRY ... CATCH cx_root`, so a system where one does not activate only loses
+  its feature (feature control, reading a draft back, the keys of late
+  numbering). Keep them that small: one statement and its parameters, no
+  logic - everything else belongs in `z2ui5_cl_rap_eml` where the gates see
+  it. A further dynamic EML statement abaplint cannot parse follows the same
+  pattern; any other EML stays in `z2ui5_cl_rap_eml`. What `GET PERMISSIONS`
+  answers is decoded in `z2ui5_cl_rap_util` (`decode_field_permission`,
+  `get_instance_permissions`, `get_field_control`), unit-tested. Every call into it is guarded by
   `z2ui5_cl_rap_floorplan=>eml_available( )`, which answers from RTTI, so a
   system that cannot activate it still runs every floorplan read-only. Keep
   EML out of every other class. BDEF derived types are created from their
@@ -134,7 +149,8 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   `update_draft` (the changes into the draft, committed). A child entity is
   written through the BDEF of its root (`ty_s_rap_context-bdef`), a draft
   step of a child runs on the root (`root_keys`), and a create by
-  association uses `\BDEF=<root>\ENTITY=<parent>\ASSOCIATION=<assoc>\TYPE=CREATE`.
+  association uses `\BDEF=<root>\ENTITY=<parent>\ASSOC=<assoc>\TYPE=CREATE`
+  (the documented form), else `\ASSOCIATION=` (the one used before).
 - `z2ui5_cl_rap_util` reads types via **classic RTTI** (`cl_abap_typedescr`),
   not the XCO library. Do not rewrite RTTI to XCO or swap the annotation API
   "for cloud readiness" — that changes the supported platform and is a

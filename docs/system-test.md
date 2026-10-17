@@ -18,7 +18,22 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
       `z2ui5_cl_rap_variant` and the table `z2ui5_t_rap_var` (its
       sidecar was written by hand, after the core's exported `z2ui5_t_01`)
 - [ ] the text pool of `z2ui5_cl_rap_floorplan` arrived (SE24 > Goto > Text
-      Elements, 43 entries); an English logon shows its texts
+      Elements, 53 entries); an English logon shows its texts
+- [ ] **unverified syntax**: `z2ui5_cl_rap_eml_perm` (`GET PERMISSIONS
+      OPERATIONS ... FAILED ... REPORTED`, operand `ABP_BEHV_PERMISSIONS_TAB`),
+      `z2ui5_cl_rap_eml_read` (`READ ENTITIES OPERATIONS ... FAILED ...
+      REPORTED`, operand `ABP_BEHV_RETRIEVALS_TAB`) and `z2ui5_cl_rap_eml_key`
+      (`COMMIT ENTITIES BEGIN RESPONSES FAILED ... REPORTED ...`, `CONVERT KEY
+      OF (entity_name) FROM pid TO key`, `COMMIT ENTITIES END`) were written
+      from the keyword documentation and are read by no gate - each activates
+      (note the syntax error of one that does not, and correct it); a class
+      that does not activate costs only its feature, every other object still
+      activates (check that the floorplans run with one of them inactive)
+- [ ] the absolute names of the permission types: which of
+      `\BDEF=..\ENTITY=..\TYPE=PERMISSIONS_K` / `_I` / `_KEY`, `_Q` /
+      `_REQUEST`, `_R` / `_RESULT` can be created (`CREATE DATA ... TYPE
+      (name)` in the debugger) - correct `get_permission_type_names` by what
+      the system answers; without them feature control is silently off
 - [ ] a pull right after the install shows no diffs (if it does: commit what
       abapGit serialized, see the abap-check skill)
 
@@ -71,11 +86,59 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
 - [ ] after an action on the object page (with and without a parameter) the
       child tables show the changed rows
 
+## 3a · Feature control (`GET PERMISSIONS`)
+
+Needs a business object with `features : instance` / `global`, static
+field control and an internal operation (the /DMO/ travel scenarios have
+instance feature control on `acceptTravel` / `rejectTravel` and Edit).
+
+- [ ] `z2ui5_cl_rap_eml=>get_permissions( )` answers (`answered`), the
+      result has `GLOBAL` and `INSTANCES`, and `%ACTION`, `%FIELD`, `%ASSOC`,
+      `%CREATE`, `%UPDATE`, `%DELETE` arrive with the values of
+      `IF_ABAP_BEHV=>PERM-O` / `PERM-F` (a combined field value, e.g.
+      `mandatory : create` with `readonly : update`, decodes right)
+- [ ] list report: an inline action of a row whose feature control disables
+      it is disabled; a toolbar action is disabled as soon as a selected row
+      does not allow it (the view is built again on the selection change -
+      check that the selection stays); an action sent anyway is refused
+- [ ] object page: Edit and Delete hidden where the instance disables them,
+      a disabled action shown disabled, a field read-only or mandatory by
+      `field ( readonly )`, `readonly : update` (editable on create only),
+      `mandatory : create` and instance field control; a key with managed or
+      early numbering (and a UUID key) is not inputtable on create
+- [ ] global feature control / authorization: Create hidden; an `internal
+      create` / `internal action` is not offered - note what GET PERMISSIONS
+      reports for an internal operation (if it is "enabled", A6 is open)
+- [ ] a child table: Create hidden when the parent's `%assoc` disables it
+- [ ] a change of a read-only field sent anyway is refused ("These fields
+      cannot be changed")
+- [ ] optimistic check (managed BO without draft, e.g.
+      `/DMO/C_TRAVEL_PROCESSOR_M`): two sessions open the same record, the
+      second save is refused with "changed meanwhile"; check that the field
+      compared (`@Semantics.systemDateTime.localInstanceLastChangedAt`, else
+      `.lastChangedAt`) is the BDEF's `etag master`
+
 ## 4 · RAP, draft (`/DMO/C_TRAVEL_A_D`)
 
 - [ ] Edit creates a draft (visible in the draft table), Save activates it,
       no draft is left behind
-- [ ] Cancel discards the draft, and so does Back while editing
+- [ ] Cancel discards the draft; Back while editing asks "keep or
+      discard": Keep leaves the draft (the list shows "Draft"), Discard
+      discards it
+- [ ] a record with an own draft opens in edit mode with the draft's data
+      (`READ ENTITIES OPERATIONS` with `%is_draft`), and Save activates it
+- [ ] Edit on a record whose draft another app left: "Resume draft" continues
+      it with its data, "Discard draft" edits anew
+- [ ] another user's draft: the object page shows "Locked by <user>" (the
+      draft's `@Semantics.user.lastChangedBy` - check that another user's
+      draft can be read at all, and note the user shown), no Edit or Delete
+- [ ] list report: the editing status column shows "Draft" / "Locked by
+      ..." per row, the filter All / Own draft / Locked by another user /
+      Unchanged selects the rows (applied to the rows read - the count is
+      theirs); an entity with `HASDRAFTENTITY` / `DRAFTENTITYLASTCHANGEDBY`
+      elements uses them instead
+- [ ] a factory action that creates a draft (`copyTravel` of the draft
+      scenario): the created record opens in edit mode from its draft
 - [ ] a draft left by another app (the RAP Fiori app): Edit answers with the
       business object's message and offers Discard - which discards and edits
       anew
@@ -89,9 +152,13 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
 - [ ] a business object with a RAW (UUID) key: a row opens, the record is read
       again after a save (how the core's JSON carries a RAW decides the value
       `create_host` receives - hex digits are expected)
-- [ ] late numbering: after a create the page shows the new record when the
-      entity has `@Semantics.user.createdBy` and `.systemDateTime.createdAt`,
-      and returns to the list otherwise
+- [ ] late numbering: after a create the page shows the new record by the
+      key `CONVERT KEY` returned (`z2ui5_cl_rap_eml_key`, between `COMMIT
+      ENTITIES BEGIN` and `END`, from the `%pid` of `MAPPED`); with that class
+      inactive, by `@Semantics.user.createdBy` and `.systemDateTime.createdAt`,
+      and back to the list otherwise
+- [ ] a create by association: `\ASSOC=` (documented) or `\ASSOCIATION=` -
+      note which absolute name the system knows
 
 ## 6 · Database tables
 

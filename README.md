@@ -173,13 +173,13 @@ ENDCLASS.
 ```
 
 Overridable steps per floorplan:
-- **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `on_action`, `execute_action`, `render_action_buttons`, `open_created`, `on_navigated`, `load_data`, `get_where_clause`, `get_line_item_fields`, `get_selection_fields`, `get_row_key_fields`, `get_line_item_actions`, `get_line_item_intents`, `get_visible_columns`, `get_missing_filters`, `on_nav_path`, `on_intent`, `on_export`, `render_export_button`, `init_variants`, `render_variant_controls`, `render_variant_popup`, `render_column_popup`, `on_variant_event`, `capture_variant`, `apply_variant`, `on_event`
+- **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `on_action`, `execute_action`, `render_action_buttons`, `open_created`, `on_navigated`, `load_data`, `get_where_clause`, `get_line_item_fields`, `get_selection_fields`, `get_row_key_fields`, `get_line_item_actions`, `get_line_item_intents`, `get_visible_columns`, `get_missing_filters`, `on_nav_path`, `on_intent`, `on_export`, `render_export_button`, `init_variants`, `render_variant_controls`, `render_variant_popup`, `render_column_popup`, `on_variant_event`, `capture_variant`, `apply_variant`, `apply_row_states`, `fill_draft_status`, `update_action_state`, `get_action_enabled`, `has_row_column`, `on_event`
 - **Worklist**: everything of the list report (it is a subclass of it), plus `load_segments`
-- **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_content`, `render_section_form`, `render_section_fields`, `render_section_table`, `get_sections`, `save_data`, `delete_data`, `reload_data`, `load_child_rows`, `get_association_target`, `get_child_filter`, `get_child_context`, `on_child_create`, `get_bdef`, `get_root_keys`, `get_own_keys`, `start_draft`, `save_draft`, `find_created_record`, `get_link`, `on_action`, `execute_action`, `get_record_actions`, `get_identification_fields`, `render_section_actions`, `render_action_buttons`, `on_child_action`, `execute_child_action`, `open_created`, `on_child_row`, `format_value`, `on_event`
+- **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_content`, `render_section_form`, `render_section_fields`, `render_section_table`, `get_sections`, `save_data`, `delete_data`, `reload_data`, `load_child_rows`, `get_association_target`, `get_child_filter`, `get_child_context`, `on_child_create`, `get_bdef`, `get_root_keys`, `get_own_keys`, `start_draft`, `save_draft`, `find_created_record`, `get_link`, `on_action`, `execute_action`, `get_record_actions`, `get_identification_fields`, `render_section_actions`, `render_action_buttons`, `on_child_action`, `execute_child_action`, `open_created`, `on_child_row`, `format_value`, `load_permissions`, `get_field_for_edit`, `read_own_draft`, `read_draft_status`, `resume_draft`, `render_draft_info`, `get_disabled_actions`, `on_event`
 - **Overview Page**: `render_page`, `render_table_card`, `render_kpi_card`, `render_chart_card`, `render_card_link`, `load_all_cards`, `load_kpi_value`, `load_chart_rows`, `collect_card_rows`, `display`, `on_card`, `on_card_row`, `on_event`
 - **Value Help**: `render_dialog`, `render_filter_dialog`, `load_data`, `get_where_clause`, `on_confirm`, `on_event`
 - **Action Dialog**: `render_action_dialog`, `get_control_for_field`, `render_value_help`, `handle_value_help_confirm`, `apply_default_values`, `get_missing_fields`, `on_event`
-- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `get_read_info`, `query_rows`, `calculate_virtual_elements`, `adjust_virtual_order_by`, `aggregate_rows`, `get_load_error`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `is_static_action`, `get_action_entries`, `get_action_button_type`, `is_hidden_by_annotation`, `navigate_to_intent`, `read_association_target`, `get_text`, ...
+- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `get_read_info`, `query_rows`, `calculate_virtual_elements`, `adjust_virtual_order_by`, `aggregate_rows`, `get_load_error`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `is_static_action`, `get_action_entries`, `get_action_button_type`, `is_hidden_by_annotation`, `navigate_to_intent`, `read_association_target`, `get_permissions`, `get_row_permissions`, `get_keys_of_row`, `read_drafts`, `get_etag_field`, `check_etag`, `get_text`, ...
 
 ## Extension points without a subclass
 
@@ -288,6 +288,9 @@ and qualifiers are read per entry:
 | `@ObjectModel.virtualElementCalculatedBy` | a virtual element - calculated after each read; not a filter field, not searched, sortable only with `@ObjectModel.sort.transformedBy` (see "Reading") |
 | `@Semantics.amount.currencyCode`, `.quantity.unitOfMeasure`, `.booleanIndicator` | numbers with units, Yes/No |
 | `@Semantics.user.createdBy`, `.systemDateTime.createdAt` | a record created with late numbering is found again by them |
+| `@Semantics.systemDateTime.localInstanceLastChangedAt`, `.lastChangedAt` | the field of the optimistic check before an update without a draft (the first one, else the second) |
+| `@Semantics.user.lastChangedBy` | of a draft: whose draft it is - another user's locks the record |
+| BDEF feature control (via `GET PERMISSIONS`) | `features`, `authorization`, `field ( readonly )`, `readonly : update`, `mandatory`, `mandatory : create`, internal operations - what is offered, enabled and accepted |
 | `@EndUserText.label` / `.quickInfo` | labels; the quick info is the tooltip of the label in the object page's forms and the action dialog and of the column headers |
 
 The **associations** come from the entity's DDL source (`DDDDLSRC`, read by
@@ -399,20 +402,48 @@ business object edits and activates the root.
 
 On the object page, a **draft business object is edited in a draft that spans
 roundtrips**: Edit creates it (committed), Save writes the changes into it
-and activates it, and Cancel or leaving the page discards it. When the
-activation is refused the draft keeps the changes and the page stays in edit
-mode. A draft that exists already (another user's, or one left by another
-app) is the business object's message; one of the user's own can be
-discarded - resuming it needs the draft read back, which is open.
+and activates it, and Cancel discards it. When the activation is refused the
+draft keeps the changes and the page stays in edit mode. Leaving the page
+while editing asks whether to **keep or discard the draft**. A record that has
+a draft of the user's own is **read back** (`READ ENTITIES` with `%is_draft`)
+and opens to be edited further; a draft left by another app makes Edit offer
+"Resume draft" or "Discard draft"; another user's draft locks the record
+("Locked by ..." above the header, no Edit or Delete). Whose draft it is, is
+decided by the draft's `@Semantics.user.lastChangedBy` field (none: the
+user's own). A record found only as a draft - what a factory action of a
+draft business object creates - opens in edit mode.
+
+**Feature control** (`GET PERMISSIONS`): the global, static and instance
+permissions decide what is offered and what is accepted on the server -
+Create, Edit, Delete, a create by association (`%assoc`), the actions
+(their buttons shown disabled; in the list report per row for an inline
+action and by the selected rows for a toolbar action), and the field control
+in edit mode: `field ( readonly )`, `readonly : update`, `mandatory`,
+`mandatory : create`, instance field control. A key is never typed in on
+change; on create it is read-only when the field control says so (early or
+managed numbering) or when it is a UUID (`RAW16`). An internal operation is
+not offered where `GET PERMISSIONS` reports it as disabled. An update of a
+read-only field, and an action a row does not allow, are refused.
+
+**Optimistic check**: before an update or delete of a business object
+without a draft, the record's etag field - the
+`@Semantics.systemDateTime.localInstanceLastChangedAt` field, else the
+`lastChangedAt` one - is compared with the stored record; a change in
+between is refused. The BDEF's `etag master` is not read (its source has no
+readable table here) - redefine `get_etag_field` to name another field.
 
 Keys are compared with **typed host variables**, not literals, so a RAW key
 (a UUID) reads the record again. A record created with **late numbering**
-(no key in `MAPPED`) is found again by `@Semantics.user.createdBy` and
-`@Semantics.systemDateTime.createdAt`; without them the page returns to the
-list. The fields a RAP message names (`%element`) are marked in edit mode.
+(no key in `MAPPED`, only a `%pid`) gets its final key with `CONVERT KEY`
+between `COMMIT ENTITIES BEGIN` and `END`; where that cannot run it is found
+again by `@Semantics.user.createdBy` and `@Semantics.systemDateTime.createdAt`,
+and without them the page returns to the list. The fields a RAP message
+names (`%element`) are marked in edit mode.
 
-Not yet: feature control (`GET PERMISSIONS`) and reading a draft back -
-see [ROADMAP.md](ROADMAP.md).
+`GET PERMISSIONS OPERATIONS`, `READ ENTITIES OPERATIONS` and `CONVERT KEY`
+are in three small classes of their own (`z2ui5_cl_rap_eml_perm`, `_read`,
+`_key`) that no offline gate reads, called dynamically: on a system where
+one does not activate, only its feature is lost.
 
 ## Filter syntax
 
@@ -522,6 +553,7 @@ Renders a Fiori-Elements-style list report for any CDS view, driven entirely by 
 - Mandatory and single-value filters from `@Consumption.filter`
 - Views per user (filters, search, sort order, hidden columns; one the default), a columns dialog, and the export of every matching row as a CSV file
 - Create where the entity allows it; row navigation to a generated object page
+- RAP feature control: an inline action enabled per row, a toolbar action by the selected rows; a draft business object shows the editing status of each row (own draft, locked by another user) and filters by it
 
 ### abap2UI5 List Report Call
 ```abap
@@ -539,7 +571,7 @@ Renders an object page for a single record of a CDS entity:
 - Status attributes with criticality from `@UI.dataPoint`
 - Sections from `@UI.facet`: collections with subsections, field groups, identification, tables of an association (`#LINEITEM_REFERENCE` - the target and the rows from the DDL source's association, or from `resolve_association`); Create in a composition's table
 - An avatar from `@UI.headerInfo.imageUrl` / `typeImageUrl`
-- Edit/Save/Delete (unless `@UI.updateHidden` / `.deleteHidden`) and the `@UI.identification` actions where the entity allows them - grouped into menu buttons, typed by criticality, at a section when qualified or in a field group; the actions of a child table on its selected rows; keys read-only on change, required fields checked, value helps, suggestions and dropdowns in edit mode, the fields of a save's messages marked; a draft business object edited in its draft
+- Edit/Save/Delete (unless `@UI.updateHidden` / `.deleteHidden`) and the `@UI.identification` actions where the entity allows them - grouped into menu buttons, typed by criticality, at a section when qualified or in a field group; the actions of a child table on its selected rows; keys read-only on change, required fields checked, value helps, suggestions and dropdowns in edit mode, the fields of a save's messages marked; a draft business object edited in its draft, an own draft resumed, another user's shown as "locked by"; the feature control of `GET PERMISSIONS` (operations, actions, read-only and mandatory fields)
 - A button that copies a link to the record (see "Deep links")
 - User-format dates/times, Yes/No booleans, amounts/quantities with unit via `@Semantics`
 
@@ -730,6 +762,26 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   methods of `z2ui5_cl_rap_util` (`get_read_info`, `build_query_filter`,
   `parse_order_by`, `remove_where_fields`, `aggregate_rows`, ...) and the
   floorplan's `query_available`.
+- RAP behaviour and draft (see "Writing"): feature control through
+  `GET PERMISSIONS`, reading a draft back, keeping a draft when leaving, the
+  editing status in the list report, late numbering through `CONVERT KEY`,
+  the optimistic check before an update. New classes `z2ui5_cl_rap_eml_perm`,
+  `_read` and `_key` (one dynamic EML statement each, called dynamically).
+  Leaving the object page while editing a draft no longer discards it - the
+  user is asked. A key field is now edited through the field control
+  (`get_field_for_edit`) instead of the `editable` parameter of
+  `render_field_input`. The object page's `render_action_buttons` has the new
+  optional `disabled`, the list report's `enabled_values`; the list report's
+  rows of a business object can carry the columns `cs_row_column` (`ZZDRAFT`,
+  `ZZDRAFT_TEXT`, `ZZACTION_n`). Appended: `cs_text` (11 texts, text pool
+  043-053), the object page's `cs_event-leave_decision` and
+  `ty_s_child-disabled_actions`, the list report's
+  `cs_event-selection_change`; new types of `z2ui5_cl_rap_util`
+  (`ty_s_permissions`, `ty_s_perm_set`, `ty_s_field_control`,
+  `ty_s_draft_status`, `cs_editing_status`) and its functions
+  (`get_field_control`, `get_instance_permissions`, `get_draft_status`, ...).
+  The derived type of a create by association is tried as `\ASSOC=` (the
+  documented form) before `\ASSOCIATION=`.
 
 ## Development
 
