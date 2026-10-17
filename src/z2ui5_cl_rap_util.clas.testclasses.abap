@@ -2639,3 +2639,150 @@ CLASS ltcl_filter_bar IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+" The object page's metadata of the third 2026-10 round: the values of a
+" 1:n child (an entry whose value is an association path), the fields of
+" a draft update, the change information and the order of the sections.
+CLASS ltcl_object_page_meta DEFINITION FINAL
+  FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+
+  PRIVATE SECTION.
+    TYPES:
+      BEGIN OF ty_s_row,
+        id     TYPE c LENGTH 4,
+        status TYPE c LENGTH 1,
+        price  TYPE p LENGTH 8 DECIMALS 2,
+      END OF ty_s_row.
+
+    TYPES:
+      BEGIN OF ty_s_other,
+        id     TYPE c LENGTH 4,
+        status TYPE c LENGTH 1,
+      END OF ty_s_other.
+
+    METHODS association_path     FOR TESTING RAISING cx_static_check.
+    METHODS path_fields          FOR TESTING RAISING cx_static_check.
+    METHODS side_effect_fields   FOR TESTING RAISING cx_static_check.
+    METHODS changed_fields       FOR TESTING RAISING cx_static_check.
+    METHODS admin_fields         FOR TESTING RAISING cx_static_check.
+    METHODS section_order        FOR TESTING RAISING cx_static_check.
+
+ENDCLASS.
+
+
+CLASS ltcl_object_page_meta IMPLEMENTATION.
+
+  METHOD association_path.
+    DATA(ls_path) = z2ui5_cl_rap_util=>parse_association_path( `'_Tags.TagId'` ).
+    cl_abap_unit_assert=>assert_equals( exp = `_TAGS.TAGID` act = ls_path-path ).
+    cl_abap_unit_assert=>assert_equals( exp = `_TAGS` act = ls_path-association ).
+    cl_abap_unit_assert=>assert_equals( exp = `TAGID` act = ls_path-element ).
+    "an element of the entity itself, and a path over two associations
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>parse_association_path( `'Status'` ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>parse_association_path( `_A._B.C` ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>parse_association_path( `_A.` ) ).
+  ENDMETHOD.
+
+
+  METHOD path_fields.
+    DATA(ls_entity) = VALUE z2ui5_cl_rap_util=>ty_s_entity_info(
+      name   = `Z_TRAVEL`
+      fields = VALUE #( ( name = `TRAVELID` )
+                        ( name = `STATUS` ) ) ).
+    z2ui5_cl_rap_util=>apply_annotations(
+      EXPORTING it_entity   = VALUE #( )
+                it_elements = VALUE #(
+                  "on the association itself
+                  ( element = `_Tags`  key = `UI.IDENTIFICATION$1$.POSITION`   value = `30` )
+                  ( element = `_Tags`  key = `UI.IDENTIFICATION$1$.VALUE`      value = `'_Tags.TagId'` )
+                  ( element = `_Tags`  key = `UI.IDENTIFICATION$1$.LABEL`      value = `'Tags'` )
+                  "on a field: the path entry is no entry of the field
+                  ( element = `Status` key = `UI.FIELDGROUP$1$.QUALIFIER`      value = `'General'` )
+                  ( element = `Status` key = `UI.FIELDGROUP$1$.VALUE`          value = `'_Tags.TagId'` )
+                  ( element = `Status` key = `UI.FIELDGROUP$1$.IMPORTANCE`     value = `#LOW` )
+                  ( element = `Status` key = `UI.FIELDGROUP$2$.QUALIFIER`      value = `'Basic'` )
+                  ( element = `Status` key = `UI.FIELDGROUP$2$.POSITION`       value = `10` )
+                  "an action is none
+                  ( element = `Status` key = `UI.LINEITEM$1$.TYPE`             value = `#FOR_ACTION` )
+                  ( element = `Status` key = `UI.LINEITEM$1$.VALUE`            value = `'_Tags.TagId'` ) )
+      CHANGING  cs_entity   = ls_entity ).
+
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = lines( ls_entity-path_fields ) ).
+    "sorted by source: FIELDGROUP before IDENTIFICATION
+    DATA(ls_group) = ls_entity-path_fields[ 1 ].
+    cl_abap_unit_assert=>assert_equals( exp = `FIELDGROUP` act = ls_group-source ).
+    cl_abap_unit_assert=>assert_equals( exp = `General` act = ls_group-qualifier ).
+    cl_abap_unit_assert=>assert_equals( exp = `LOW` act = ls_group-importance ).
+    DATA(ls_ident) = ls_entity-path_fields[ 2 ].
+    cl_abap_unit_assert=>assert_equals( exp = `IDENTIFICATION` act = ls_ident-source ).
+    cl_abap_unit_assert=>assert_equals( exp = 30 act = ls_ident-position ).
+    cl_abap_unit_assert=>assert_equals( exp = `Tags` act = ls_ident-label ).
+    cl_abap_unit_assert=>assert_equals( exp = `TAGID` act = ls_ident-element ).
+
+    READ TABLE ls_entity-fields INTO DATA(ls_status) WITH KEY name = `STATUS`.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = lines( ls_status-field_groups ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `Basic` act = ls_status-field_groups[ 1 ]-qualifier ).
+  ENDMETHOD.
+
+
+  METHOD side_effect_fields.
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>is_side_effect_field( fields = VALUE #( ( `*` ) )
+                                                                                field  = `STATUS` ) ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>is_side_effect_field( fields = VALUE #( ( `Price` ) ( `status` ) )
+                                                                                field  = `STATUS` ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_side_effect_field( fields = VALUE #( ( `PRICE` ) )
+                                                                                 field  = `STATUS` ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_side_effect_field( fields = VALUE #( )
+                                                                                 field  = `STATUS` ) ).
+  ENDMETHOD.
+
+
+  METHOD changed_fields.
+    DATA(ls_row) = VALUE ty_s_row( id = `0001` status = `A` price = `10.50` ).
+    DATA(ls_original) = VALUE ty_s_row( id = `0001` status = `O` price = `10.50` ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `STATUS` ) )
+                                        act = z2ui5_cl_rap_util=>get_changed_fields( row      = ls_row
+                                                                                     original = ls_original ) ).
+    "a component the original lacks is no change
+    ls_row-status = `O`.
+    ls_row-price = `11`.
+    DATA(ls_other) = VALUE ty_s_other( id = `0001` status = `O` ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>get_changed_fields( row      = ls_row
+                                                                                original = ls_other ) ).
+  ENDMETHOD.
+
+
+  METHOD admin_fields.
+    DATA(lt_admin) = z2ui5_cl_rap_util=>get_admin_fields( VALUE #(
+      ( name = `CHANGEDAT` admin_field = `LAST_CHANGED_AT` )
+      ( name = `STATUS` )
+      ( name = `ETAG`      admin_field = `LOCAL_LAST_CHANGED_AT` )
+      ( name = `CREATEDBY` admin_field = `CREATED_BY` )
+      ( name = `CREATEDAT` admin_field = `CREATED_AT` ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 3 act = lines( lt_admin ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `CREATEDBY` act = lt_admin[ 1 ]-name ).
+    cl_abap_unit_assert=>assert_equals( exp = `CREATEDAT` act = lt_admin[ 2 ]-name ).
+    cl_abap_unit_assert=>assert_equals( exp = `CHANGEDAT` act = lt_admin[ 3 ]-name ).
+  ENDMETHOD.
+
+
+  METHOD section_order.
+    DATA(lt_slots) = z2ui5_cl_rap_util=>order_sections(
+      ids    = VALUE #( ( `GENERAL` ) ( `ITEMS` ) )
+      custom = VALUE #( ( id = `NOTES`  anchor = `ITEMS` placement = `before` )
+                        ( id = `MAP`    anchor = `GENERAL` )
+                        ( id = `LAST` )
+                        ( id = `LOST`   anchor = `NOWHERE` placement = `BEFORE` ) ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_section_slot( ( id = `GENERAL` )
+                                                        ( id = `MAP`   custom = abap_true )
+                                                        ( id = `NOTES` custom = abap_true )
+                                                        ( id = `ITEMS` )
+                                                        ( id = `LAST`  custom = abap_true )
+                                                        ( id = `LOST`  custom = abap_true ) )
+      act = lt_slots ).
+  ENDMETHOD.
+
+ENDCLASS.

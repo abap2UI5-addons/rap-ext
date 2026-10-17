@@ -514,6 +514,51 @@ CLASS z2ui5_cl_rap_util DEFINITION
         exposed      TYPE string_table,
       END OF ty_s_ddl_associations.
 
+    " an entry of @UI.lineItem, @UI.identification or @UI.fieldGroup whose
+    " value is an association path ('_Tags.TagId') - the values of a 1:n
+    " child shown as the tokens of a MultiInput (added 2026-10, third
+    " round): the path, its association and the child's element (upper
+    " case), the annotation it came from (source LINEITEM, IDENTIFICATION,
+    " FIELDGROUP), its qualifier, position, label and importance
+    TYPES:
+      BEGIN OF ty_s_path_field,
+        path        TYPE string,
+        association TYPE string,
+        element     TYPE string,
+        source      TYPE string,
+        qualifier   TYPE string,
+        position    TYPE i,
+        label       TYPE string,
+        importance  TYPE string,
+      END OF ty_s_path_field.
+
+    TYPES ty_t_path_field TYPE STANDARD TABLE OF ty_s_path_field WITH EMPTY KEY.
+
+    " a section of the object page an extension adds
+    " (z2ui5_if_rap_ext~get_custom_sections; added 2026-10, third round):
+    " its id (the section_id extend_view gets), its title, and where it
+    " goes - placement BEFORE or AFTER (the default) the facet anchor (the
+    " id of a @UI.facet); no anchor, or one that is not there, is the end
+    TYPES:
+      BEGIN OF ty_s_custom_section,
+        id        TYPE string,
+        title     TYPE string,
+        anchor    TYPE string,
+        placement TYPE string,
+      END OF ty_s_custom_section.
+
+    TYPES ty_t_custom_section TYPE STANDARD TABLE OF ty_s_custom_section WITH EMPTY KEY.
+
+    " one place in the order of the sections (order_sections): a section
+    " of the facets, or - custom set - one of the extension
+    TYPES:
+      BEGIN OF ty_s_section_slot,
+        id     TYPE string,
+        custom TYPE abap_bool,
+      END OF ty_s_section_slot.
+
+    TYPES ty_t_section_slot TYPE STANDARD TABLE OF ty_s_section_slot WITH EMPTY KEY.
+
     TYPES:
       BEGIN OF ty_s_entity_info,
         "identification
@@ -565,6 +610,9 @@ CLASS z2ui5_cl_rap_util DEFINITION
         group_by              TYPE string_table,
         "every @UI.selectionPresentationVariant
         sel_pres_variants TYPE ty_t_sel_pres_variant,
+        "added 2026-10, third round (object page): the entries whose value
+        "is an association path - a MultiInput of the child's values
+        path_fields       TYPE ty_t_path_field,
       END OF ty_s_entity_info.
 
     "======= READING TYPES (added 2026-10, third round) =======
@@ -1403,6 +1451,67 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! an association path as an entry's value names it ('_Tags.TagId'):
+    "! path, association and element, upper case - initial when val is no
+    "! path of one association and one element (added 2026-10, third
+    "! round, like the methods below up to order_sections)
+    CLASS-METHODS parse_association_path
+      IMPORTING
+        val           TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_s_path_field.
+
+    "! the entries of @UI.lineItem, @UI.identification and @UI.fieldGroup in
+    "! it_annos (the annotations of one element) whose value is an
+    "! association path - a MultiInput of the child's values on the object
+    "! page. An entry of an action or a navigation is none
+    CLASS-METHODS parse_path_fields
+      IMPORTING
+        it_annos      TYPE ty_t_annotation
+      RETURNING
+        VALUE(result) TYPE ty_t_path_field.
+
+    "! a change of field updates the draft at once: fields names it (case
+    "! does not matter) or holds * (every field)
+    CLASS-METHODS is_side_effect_field
+      IMPORTING
+        fields        TYPE string_table
+        field         TYPE string
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! the components of row whose value differs from the component of the
+    "! same name of original (upper case) - a component original lacks is
+    "! left out
+    CLASS-METHODS get_changed_fields
+      IMPORTING
+        row           TYPE data
+        original      TYPE data
+      RETURNING
+        VALUE(result) TYPE string_table.
+
+    "! the administrative fields of it_fields (@Semantics.user.createdBy,
+    "! .systemDateTime.createdAt, .user.lastChangedBy,
+    "! .systemDateTime.lastChangedAt) in this order - what the object
+    "! page's change information shows. The local last changed at is the
+    "! business object's etag, no information for the user, and is left out
+    CLASS-METHODS get_admin_fields
+      IMPORTING
+        it_fields     TYPE ty_t_field_info
+      RETURNING
+        VALUE(result) TYPE ty_t_field_info.
+
+    "! the order of the sections: ids (the facet sections, in their order)
+    "! with the custom sections placed before or after their anchor - one
+    "! with no anchor, or an anchor not among ids, at the end, in the order
+    "! given
+    CLASS-METHODS order_sections
+      IMPORTING
+        ids           TYPE string_table
+        custom        TYPE ty_t_custom_section
+      RETURNING
+        VALUE(result) TYPE ty_t_section_slot.
+
     "! the parameters of a navigation to a semantic object from row: the
     "! value of field under its own name, else of every binding
     "! (local_element) under the binding's element - empty when row lacks
@@ -2012,6 +2121,16 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
                        CHANGING  ct_action = cs_entity-actions
                                  ct_group  = cs_entity-action_groups ).
 
+        "entries whose value is an association path - on any element,
+        "the association itself included (since 2026-10, third round)
+        LOOP AT parse_path_fields( lt_field_annos ) INTO DATA(ls_path).
+          IF NOT line_exists( cs_entity-path_fields[ path      = ls_path-path
+                                                     source    = ls_path-source
+                                                     qualifier = ls_path-qualifier ] ).
+            APPEND ls_path TO cs_entity-path_fields.
+          ENDIF.
+        ENDLOOP.
+
         READ TABLE cs_entity-fields ASSIGNING FIELD-SYMBOL(<ls_field>)
           WITH KEY name = lv_element.
         IF sy-subrc = 0.
@@ -2026,6 +2145,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     "of the annotations
     SORT cs_entity-actions STABLE BY source position.
     SORT cs_entity-action_groups STABLE BY source position.
+    SORT cs_entity-path_fields STABLE BY source qualifier position.
 
     LOOP AT cs_entity-fields ASSIGNING <ls_field>.
       IF <ls_field>-label IS INITIAL.
@@ -2214,6 +2334,11 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       IF lv_type CS `FOR_ACTION` OR lv_type CS `FOR_INTENT`.
         CONTINUE.
       ENDIF.
+      "a value that is an association path is a child's value, not this
+      "field's entry (parse_path_fields; since 2026-10, third round)
+      IF get_entry_value( it_entries = lt_entries idx = lv_idx prop = `VALUE` ) CS `.`.
+        CONTINUE.
+      ENDIF.
       DATA(ls_line_item) = VALUE ty_s_line_item(
         qualifier           = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) )
         position            = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) )
@@ -2300,7 +2425,8 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDIF.
       lv_idx = ls_entry-idx.
       lv_type = get_entry_value( it_entries = lt_entries idx = lv_idx prop = `TYPE` ).
-      IF lv_type CS `FOR_ACTION` OR lv_type CS `FOR_INTENT`.
+      IF lv_type CS `FOR_ACTION` OR lv_type CS `FOR_INTENT`
+        OR get_entry_value( it_entries = lt_entries idx = lv_idx prop = `VALUE` ) CS `.`.
         CONTINUE.
       ENDIF.
       DATA(ls_ident) = VALUE ty_s_field_group(
@@ -2330,7 +2456,8 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       lv_idx = ls_entry-idx.
       "an action of the group is no field of it (parse_actions)
       lv_type = get_entry_value( it_entries = lt_entries idx = lv_idx prop = `TYPE` ).
-      IF lv_type CS `FOR_ACTION` OR lv_type CS `FOR_INTENT`.
+      IF lv_type CS `FOR_ACTION` OR lv_type CS `FOR_INTENT`
+        OR get_entry_value( it_entries = lt_entries idx = lv_idx prop = `VALUE` ) CS `.`.
         CONTINUE.
       ENDIF.
       DATA(ls_group) = VALUE ty_s_field_group(
@@ -5808,6 +5935,153 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       RETURN.
     ENDIF.
     result = |{ lv_number }{ COND string( WHEN lv_unit IS INITIAL THEN `rem` ELSE lv_unit ) }|.
+
+  ENDMETHOD.
+
+
+  METHOD parse_association_path.
+
+    DATA(lv_path) = to_upper( condense( strip_quotes( val ) ) ).
+    SPLIT lv_path AT `.` INTO TABLE DATA(lt_parts).
+    IF lines( lt_parts ) <> 2.
+      RETURN.
+    ENDIF.
+    DATA(lv_assoc) = lt_parts[ 1 ].
+    DATA(lv_element) = lt_parts[ 2 ].
+    IF lv_assoc IS INITIAL OR lv_element IS INITIAL.
+      RETURN.
+    ENDIF.
+    result-path = lv_path.
+    result-association = lv_assoc.
+    result-element = lv_element.
+
+  ENDMETHOD.
+
+
+  METHOD parse_path_fields.
+
+    DATA lv_idx TYPE i.
+    DATA lt_sources TYPE string_table.
+
+    lt_sources = VALUE #( ( `LINEITEM` ) ( `IDENTIFICATION` ) ( `FIELDGROUP` ) ).
+    LOOP AT lt_sources INTO DATA(lv_source).
+      DATA(lt_entries) = get_entries( it_annos = it_annos prefix = |UI.{ lv_source }| ).
+      CLEAR lv_idx.
+      LOOP AT lt_entries INTO DATA(ls_entry).
+        IF ls_entry-idx = lv_idx.
+          CONTINUE.
+        ENDIF.
+        lv_idx = ls_entry-idx.
+        DATA(lv_type) = get_entry_value( it_entries = lt_entries idx = lv_idx prop = `TYPE` ).
+        IF lv_type CS `FOR_ACTION` OR lv_type CS `FOR_INTENT`.
+          CONTINUE.
+        ENDIF.
+        DATA(ls_path) = parse_association_path( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `VALUE` ) ).
+        IF ls_path IS INITIAL.
+          CONTINUE.
+        ENDIF.
+        IF hidden_value( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `HIDDEN` ) ) = `TRUE`.
+          CONTINUE.
+        ENDIF.
+        ls_path-source = lv_source.
+        ls_path-qualifier = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) ).
+        ls_path-position = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) ).
+        ls_path-label = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) ).
+        ls_path-importance = to_upper( replace( val  = strip_quotes( get_entry_value( it_entries = lt_entries
+                                                                                      idx        = lv_idx
+                                                                                      prop       = `IMPORTANCE` ) )
+                                                sub  = `#`
+                                                with = `` ) ).
+        APPEND ls_path TO result.
+      ENDLOOP.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD is_side_effect_field.
+
+    DATA(lv_field) = to_upper( field ).
+    LOOP AT fields INTO DATA(lv_name).
+      DATA(lv_upper) = to_upper( condense( lv_name ) ).
+      IF lv_upper = `*` OR lv_upper = lv_field.
+        result = abap_true.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_changed_fields.
+
+    DATA lo_struct TYPE REF TO cl_abap_structdescr.
+    DATA lv_name TYPE string.
+    FIELD-SYMBOLS <lv_new> TYPE any.
+    FIELD-SYMBOLS <lv_old> TYPE any.
+
+    TRY.
+        lo_struct ?= cl_abap_typedescr=>describe_by_data( row ).
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+    LOOP AT lo_struct->components INTO DATA(ls_comp).
+      lv_name = ls_comp-name.
+      UNASSIGN: <lv_new>, <lv_old>.
+      ASSIGN COMPONENT lv_name OF STRUCTURE row TO <lv_new>.
+      ASSIGN COMPONENT lv_name OF STRUCTURE original TO <lv_old>.
+      IF <lv_new> IS NOT ASSIGNED OR <lv_old> IS NOT ASSIGNED.
+        CONTINUE.
+      ENDIF.
+      IF <lv_new> <> <lv_old>.
+        APPEND lv_name TO result.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_admin_fields.
+
+    DATA lt_kinds TYPE string_table.
+    lt_kinds = VALUE #( ( `CREATED_BY` ) ( `CREATED_AT` ) ( `LAST_CHANGED_BY` ) ( `LAST_CHANGED_AT` ) ).
+    LOOP AT lt_kinds INTO DATA(lv_kind).
+      READ TABLE it_fields INTO DATA(ls_field) WITH KEY admin_field = lv_kind.
+      IF sy-subrc = 0.
+        APPEND ls_field TO result.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD order_sections.
+
+    DATA lt_placed TYPE string_table.
+
+    LOOP AT ids INTO DATA(lv_id).
+      LOOP AT custom INTO DATA(ls_before) WHERE anchor = lv_id.
+        IF to_upper( ls_before-placement ) = `BEFORE`.
+          APPEND VALUE #( id = ls_before-id custom = abap_true ) TO result.
+          APPEND ls_before-id TO lt_placed.
+        ENDIF.
+      ENDLOOP.
+      APPEND VALUE #( id = lv_id ) TO result.
+      LOOP AT custom INTO DATA(ls_after) WHERE anchor = lv_id.
+        IF to_upper( ls_after-placement ) <> `BEFORE`.
+          APPEND VALUE #( id = ls_after-id custom = abap_true ) TO result.
+          APPEND ls_after-id TO lt_placed.
+        ENDIF.
+      ENDLOOP.
+    ENDLOOP.
+
+    "no anchor, or one that is not there - at the end
+    LOOP AT custom INTO DATA(ls_rest).
+      IF line_exists( lt_placed[ table_line = ls_rest-id ] ).
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( id = ls_rest-id custom = abap_true ) TO result.
+    ENDLOOP.
 
   ENDMETHOD.
 
