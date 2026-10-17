@@ -162,6 +162,11 @@ CLASS z2ui5_cl_rap_util DEFINITION
         line_item_target          TYPE string,
         line_item_sem_object      TYPE string,
         line_item_sem_action      TYPE string,
+        "added 2026-10, third round: every @UI.identification entry that
+        "is no action, with its qualifier (empty for the unqualified one),
+        "position and label - is_identification and identification_pos
+        "stay the unqualified entry's
+        identifications           TYPE ty_t_field_group,
       END OF ty_s_field_info.
 
     TYPES ty_t_field_info TYPE STANDARD TABLE OF ty_s_field_info WITH DEFAULT KEY.
@@ -190,6 +195,9 @@ CLASS z2ui5_cl_rap_util DEFINITION
         title_field      TYPE string,
         description_field TYPE string,
         image_field      TYPE string,
+        "added 2026-10, third round: @UI.headerInfo.typeImageUrl - the
+        "image (a URL or sap-icon://) when the record has none of its own
+        type_image_url   TYPE string,
       END OF ty_s_header_info.
 
     TYPES:
@@ -232,9 +240,35 @@ CLASS z2ui5_cl_rap_util DEFINITION
         "button that navigates in the launchpad instead of an action
         semantic_object TYPE string,
         semantic_action TYPE string,
+        "added 2026-10, third round:
+        "the qualifier of the entry - a qualified @UI.identification or a
+        "@UI.fieldGroup (source FIELDGROUP) puts the action at the section
+        "of that qualifier instead of the header
+        qualifier           TYPE string,
+        "the criticality of the button: 0-3, #POSITIVE/#NEGATIVE/#CRITICAL,
+        "or the field that holds it (upper case)
+        criticality         TYPE string,
+        "the action group (#FOR_ACTION_GROUP) the action belongs to - a menu
+        group_id            TYPE string,
+        "ISOLATED (one request per row) or CHANGE_SET (one for all, the
+        "default)
+        invocation_grouping TYPE string,
       END OF ty_s_action.
 
     TYPES ty_t_action TYPE STANDARD TABLE OF ty_s_action WITH DEFAULT KEY.
+
+    " an entry of type #FOR_ACTION_GROUP: the menu button its actions
+    " (ty_s_action-group_id) are put into - added 2026-10, third round
+    TYPES:
+      BEGIN OF ty_s_action_group,
+        id        TYPE string,
+        label     TYPE string,
+        position  TYPE i,
+        source    TYPE string,
+        qualifier TYPE string,
+      END OF ty_s_action_group.
+
+    TYPES ty_t_action_group TYPE STANDARD TABLE OF ty_s_action_group WITH EMPTY KEY.
 
     " One @UI.chart entry
     TYPES:
@@ -353,6 +387,14 @@ CLASS z2ui5_cl_rap_util DEFINITION
         associations       TYPE ty_t_association,
         "every @UI.presentationVariant
         presentation_variants TYPE ty_t_presentation_variant,
+        "added 2026-10, third round
+        "the #FOR_ACTION_GROUP entries - the menus of the actions
+        action_groups         TYPE ty_t_action_group,
+        "@UI.createHidden, .updateHidden, .deleteHidden: TRUE, empty (not
+        "hidden), or the field whose value decides (upper case)
+        create_hidden         TYPE string,
+        update_hidden         TYPE string,
+        delete_hidden         TYPE string,
       END OF ty_s_entity_info.
 
     "======= PUBLIC METHODS =======
@@ -447,16 +489,37 @@ CLASS z2ui5_cl_rap_util DEFINITION
         VALUE(result) TYPE string.
 
     "! The WHERE condition (ABAP SQL) of a @UI.selectionVariant filter
-    "! string: conditions "Field OP Value" joined with AND, OP one of EQ NE
-    "! GT GE LT LE, the value optionally in quotes. Empty when the string
-    "! names a field that it_fields does not have or an operator it does
-    "! not know - a variant that cannot be read restricts nothing wrongly
+    "! string: conditions "Field OP Value" joined with AND and OR, grouped
+    "! with parentheses (AND binds stronger than OR), OP one of EQ NE GT GE
+    "! LT LE (or = &lt;&gt; &gt; &gt;= &lt; &lt;=), the value optionally in
+    "! quotes. Empty when the string names a field that it_fields does not
+    "! have, an operator it does not know or its parentheses do not match -
+    "! a variant that cannot be read restricts nothing wrongly
     CLASS-METHODS selection_filter_to_where
       IMPORTING
         filter        TYPE string
         it_fields     TYPE ty_t_field_info
       RETURNING
         VALUE(result) TYPE string.
+
+    "! The sap.m.ButtonType of an action button by its criticality: 3 or
+    "! #POSITIVE Accept, 1 or #NEGATIVE Reject, 2 or #CRITICAL Emphasized,
+    "! anything else Default
+    CLASS-METHODS criticality_button_type
+      IMPORTING
+        criticality   TYPE clike
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! Whether an action is static, by the components of a line of its
+    "! derived type \ACTION=...\TYPE=IMPORTING: an instance action carries
+    "! the instance's key (%KEY, %TKY, %PKY), a static one does not - it runs
+    "! without rows, with only %CID and %PARAM
+    CLASS-METHODS is_static_action_line
+      IMPORTING
+        components    TYPE string_table
+      RETURNING
+        VALUE(result) TYPE abap_bool.
 
     "! The criticality (1 negative, 2 critical, 3 positive, 0 neutral) of a
     "! value by @UI.dataPoint.criticalityCalculation
@@ -705,7 +768,65 @@ CLASS z2ui5_cl_rap_util DEFINITION
         prefix    TYPE string
         source    TYPE string
       CHANGING
-        ct_action TYPE ty_t_action.
+        ct_action TYPE ty_t_action
+        ct_group  TYPE ty_t_action_group.
+
+    "! @UI.createHidden and its siblings: TRUE, empty (false), or the field
+    "! that decides - #(Field), 'Field' or Field, upper case
+    CLASS-METHODS hidden_value
+      IMPORTING
+        val           TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    " a token of a selection variant's filter: ( ) AND OR, or a condition
+    " already turned into ABAP SQL
+    TYPES:
+      BEGIN OF ty_s_filter_token,
+        kind TYPE string,
+        sql  TYPE string,
+      END OF ty_s_filter_token.
+
+    TYPES ty_t_filter_token TYPE STANDARD TABLE OF ty_s_filter_token WITH EMPTY KEY.
+
+    "! the tokens of a selection variant's filter - failed when a condition
+    "! cannot be read
+    CLASS-METHODS selection_filter_tokens
+      IMPORTING
+        filter    TYPE string
+        it_fields TYPE ty_t_field_info
+      EXPORTING
+        et_tokens TYPE ty_t_filter_token
+        failed    TYPE abap_bool.
+
+    "! one condition "Field OP Value" as ABAP SQL - empty when it cannot be
+    "! read
+    CLASS-METHODS selection_condition_sql
+      IMPORTING
+        condition     TYPE string
+        it_fields     TYPE ty_t_field_info
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! an OR of ANDs from the token at index on (recursive descent) - index
+    "! is left behind what was read, failed set on a syntax error
+    CLASS-METHODS selection_filter_or
+      IMPORTING
+        it_tokens     TYPE ty_t_filter_token
+      CHANGING
+        index         TYPE i
+        failed        TYPE abap_bool
+      RETURNING
+        VALUE(result) TYPE string.
+
+    CLASS-METHODS selection_filter_and
+      IMPORTING
+        it_tokens     TYPE ty_t_filter_token
+      CHANGING
+        index         TYPE i
+        failed        TYPE abap_bool
+      RETURNING
+        VALUE(result) TYPE string.
 
     CLASS-METHODS parse_variants
       IMPORTING
@@ -897,6 +1018,14 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           cs_entity-header_info-image_field = to_upper( strip_quotes( lv_val ) ).
         WHEN `UI.HEADERINFO.IMAGEURL.VALUE`.
           cs_entity-header_info-image_field = to_upper( strip_quotes( lv_val ) ).
+        WHEN `UI.HEADERINFO.TYPEIMAGEURL`.
+          cs_entity-header_info-type_image_url = strip_quotes( lv_val ).
+        WHEN `UI.CREATEHIDDEN`.
+          cs_entity-create_hidden = hidden_value( lv_val ).
+        WHEN `UI.UPDATEHIDDEN`.
+          cs_entity-update_hidden = hidden_value( lv_val ).
+        WHEN `UI.DELETEHIDDEN`.
+          cs_entity-delete_hidden = hidden_value( lv_val ).
       ENDCASE.
       IF lv_key CP `OBJECTMODEL.SEMANTICKEY*`.
         APPEND to_upper( strip_quotes( lv_val ) ) TO cs_entity-semantic_key.
@@ -936,11 +1065,19 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         parse_actions( EXPORTING it_annos  = lt_field_annos
                                  prefix    = `UI.LINEITEM`
                                  source    = `LINEITEM`
-                       CHANGING  ct_action = cs_entity-actions ).
+                       CHANGING  ct_action = cs_entity-actions
+                                 ct_group  = cs_entity-action_groups ).
         parse_actions( EXPORTING it_annos  = lt_field_annos
                                  prefix    = `UI.IDENTIFICATION`
                                  source    = `IDENTIFICATION`
-                       CHANGING  ct_action = cs_entity-actions ).
+                       CHANGING  ct_action = cs_entity-actions
+                                 ct_group  = cs_entity-action_groups ).
+        "a #FOR_ACTION entry of a field group - an action at its section
+        parse_actions( EXPORTING it_annos  = lt_field_annos
+                                 prefix    = `UI.FIELDGROUP`
+                                 source    = `FIELDGROUP`
+                       CHANGING  ct_action = cs_entity-actions
+                                 ct_group  = cs_entity-action_groups ).
 
         READ TABLE cs_entity-fields ASSIGNING FIELD-SYMBOL(<ls_field>)
           WITH KEY name = lv_element.
@@ -952,7 +1089,10 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     ENDLOOP.
 
     SORT cs_entity-facets BY position.
-    SORT cs_entity-actions BY source position.
+    "by position - an action without one behind the others, in the order
+    "of the annotations
+    SORT cs_entity-actions STABLE BY source position.
+    SORT cs_entity-action_groups STABLE BY source position.
 
     LOOP AT cs_entity-fields ASSIGNING <ls_field>.
       IF <ls_field>-label IS INITIAL.
@@ -1111,7 +1251,9 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    "======= @UI.identification - the first entry that is not an action =======
+    "======= @UI.identification - every entry that is not an action =======
+    "is_identification is the unqualified entry - a qualified one belongs
+    "to the #IDENTIFICATION_REFERENCE facet of its qualifier only
     lt_entries = get_entries( it_annos = it_annos prefix = `UI.IDENTIFICATION` ).
     CLEAR lv_idx.
     LOOP AT lt_entries INTO ls_entry.
@@ -1123,9 +1265,18 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       IF lv_type CS `FOR_ACTION` OR lv_type CS `FOR_INTENT`.
         CONTINUE.
       ENDIF.
-      cs_field-is_identification = abap_true.
-      cs_field-identification_pos = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) ).
-      EXIT.
+      DATA(ls_ident) = VALUE ty_s_field_group(
+        qualifier = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) )
+        position  = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) )
+        label     = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) ) ).
+      IF line_exists( cs_field-identifications[ qualifier = ls_ident-qualifier ] ).
+        CONTINUE.
+      ENDIF.
+      APPEND ls_ident TO cs_field-identifications.
+      IF ls_ident-qualifier IS INITIAL.
+        cs_field-is_identification = abap_true.
+        cs_field-identification_pos = ls_ident-position.
+      ENDIF.
     ENDLOOP.
 
     "======= @UI.fieldGroup - every entry, one per qualifier =======
@@ -1136,6 +1287,11 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         CONTINUE.
       ENDIF.
       lv_idx = ls_entry-idx.
+      "an action of the group is no field of it (parse_actions)
+      lv_type = get_entry_value( it_entries = lt_entries idx = lv_idx prop = `TYPE` ).
+      IF lv_type CS `FOR_ACTION` OR lv_type CS `FOR_INTENT`.
+        CONTINUE.
+      ENDIF.
       DATA(ls_group) = VALUE ty_s_field_group(
         qualifier = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) )
         position  = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) )
@@ -1238,15 +1394,51 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDIF.
       lv_idx = ls_entry-idx.
       DATA(lv_type) = get_entry_value( it_entries = lt_entries idx = lv_idx prop = `TYPE` ).
+      DATA(lv_qualifier) = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) ).
+      DATA(lv_position) = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) ).
+      IF lv_position = 0.
+        "an entry without a position behind the others - as a column
+        lv_position = 9999.
+      ENDIF.
+
+      "a menu of actions: its id (id or actionGroupId) and label
+      IF lv_type CS `FOR_ACTION_GROUP`.
+        DATA(ls_group) = VALUE ty_s_action_group(
+          id        = to_upper( strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `ID` ) ) )
+          label     = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) )
+          position  = lv_position
+          source    = source
+          qualifier = lv_qualifier ).
+        IF ls_group-id IS INITIAL.
+          ls_group-id = to_upper( strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `ACTIONGROUPID` ) ) ).
+        ENDIF.
+        IF ls_group-id IS INITIAL OR line_exists( ct_group[ id = ls_group-id source = source ] ).
+          CONTINUE.
+        ENDIF.
+        IF ls_group-label IS INITIAL.
+          ls_group-label = ls_group-id.
+        ENDIF.
+        APPEND ls_group TO ct_group.
+        CONTINUE.
+      ENDIF.
+
       IF lv_type NS `FOR_ACTION` AND lv_type NS `FOR_INTENT_BASED_NAVIGATION`.
         CONTINUE.
       ENDIF.
       DATA(ls_action) = VALUE ty_s_action(
-        name     = to_upper( strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `DATAACTION` ) ) )
-        label    = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) )
-        position = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) )
-        source   = source
-        inline   = is_true( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `INLINE` ) ) ).
+        name      = to_upper( strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `DATAACTION` ) ) )
+        label     = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) )
+        position  = lv_position
+        source    = source
+        inline    = is_true( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `INLINE` ) )
+        qualifier = lv_qualifier
+        group_id  = to_upper( strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `ACTIONGROUPID` ) ) ) ).
+      "#ISOLATED, #CHANGE_SET - and the criticality: a number, #POSITIVE ...
+      "or a field, all upper case without the #
+      DATA(lv_grouping) = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `INVOCATIONGROUPING` ) ).
+      ls_action-invocation_grouping = to_upper( replace( val = lv_grouping sub = `#` with = `` ) ).
+      DATA(lv_crit) = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `CRITICALITY` ) ).
+      ls_action-criticality = to_upper( replace( val = lv_crit sub = `#` with = `` ) ).
       "a navigation: named after its target, never the name of an action
       IF lv_type CS `FOR_INTENT_BASED_NAVIGATION`.
         ls_action-semantic_object = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `SEMANTICOBJECT` ) ).
@@ -1257,13 +1449,58 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         ls_action-name = to_upper( |INTENT~{ ls_action-semantic_object }~{ ls_action-semantic_action }| ).
       ENDIF.
       IF ls_action-name IS INITIAL
-        OR line_exists( ct_action[ name = ls_action-name source = source ] ).
+        OR line_exists( ct_action[ name = ls_action-name source = source qualifier = lv_qualifier ] ).
         CONTINUE.
       ENDIF.
       IF ls_action-label IS INITIAL.
         ls_action-label = ls_action-name.
       ENDIF.
       APPEND ls_action TO ct_action.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD hidden_value.
+
+    "#(Field) - a path - or 'Field', true or false
+    DATA(lv_val) = strip_quotes( val ).
+    IF strlen( lv_val ) > 2 AND lv_val(2) = `#(`.
+      lv_val = substring( val = lv_val off = 2 ).
+      lv_val = replace( val = lv_val sub = `)` with = `` occ = 0 ).
+      lv_val = strip_quotes( lv_val ).
+    ENDIF.
+    lv_val = to_upper( condense( lv_val ) ).
+    IF lv_val = `FALSE` OR lv_val = ``.
+      RETURN.
+    ENDIF.
+    result = lv_val.
+
+  ENDMETHOD.
+
+
+  METHOD criticality_button_type.
+
+    DATA(lv_value) = to_upper( replace( val = strip_quotes( condense( criticality ) ) sub = `#` with = `` ) ).
+    result = SWITCH #( lv_value
+      WHEN `3` OR `POSITIVE` THEN `Accept`
+      WHEN `1` OR `NEGATIVE` THEN `Reject`
+      WHEN `2` OR `CRITICAL` THEN `Emphasized`
+      ELSE `Default` ).
+
+  ENDMETHOD.
+
+
+  METHOD is_static_action_line.
+
+    "no line read: nothing says the action is static
+    result = xsdbool( components IS NOT INITIAL ).
+    LOOP AT components INTO DATA(lv_component).
+      DATA(lv_name) = to_upper( lv_component ).
+      IF lv_name = `%KEY` OR lv_name = `%TKY` OR lv_name = `%PKY`.
+        result = abap_false.
+        RETURN.
+      ENDIF.
     ENDLOOP.
 
   ENDMETHOD.
@@ -1859,38 +2096,219 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
   METHOD selection_filter_to_where.
 
-    DATA lt_and TYPE string_table.
+    DATA lt_tokens TYPE ty_t_filter_token.
+    DATA lv_failed TYPE abap_bool.
+    DATA lv_index TYPE i VALUE 1.
 
-    "split at AND as a word, outside of quotes - the values are simple
-    "tokens in practice, a quoted AND is not supported
+    selection_filter_tokens( EXPORTING filter    = filter
+                                       it_fields = it_fields
+                             IMPORTING et_tokens = lt_tokens
+                                       failed    = lv_failed ).
+    IF lv_failed = abap_true OR lt_tokens IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    result = selection_filter_or( EXPORTING it_tokens = lt_tokens
+                                  CHANGING  index     = lv_index
+                                            failed    = lv_failed ).
+    "a closing parenthesis too many, or anything left over
+    IF lv_failed = abap_true OR lv_index <= lines( lt_tokens ).
+      CLEAR result.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD selection_filter_tokens.
+
+    DATA lv_condition TYPE string.
+    DATA lv_word TYPE string.
+    DATA lv_open TYPE abap_bool.
+    DATA lv_sql TYPE string.
+    DATA lv_closing TYPE i.
+    DATA lv_head TYPE string.
+    DATA lv_field TYPE string.
+    DATA lv_op TYPE string.
+    DATA lv_value TYPE string.
+    DATA lt_words TYPE string_table.
+
+    CLEAR: et_tokens, failed.
+
+    "words separated by blanks; AND, OR and parentheses outside of a quoted
+    "value separate the conditions, a condition is Field OP Value
     DATA(lv_filter) = condense( filter ).
-    REPLACE ALL OCCURRENCES OF ` and ` IN lv_filter WITH ` AND ` IGNORING CASE.
-    SPLIT lv_filter AT ` AND ` INTO TABLE DATA(lt_parts).
+    SPLIT lv_filter AT ` ` INTO TABLE lt_words.
+    APPEND `` TO lt_words.
+    LOOP AT lt_words INTO lv_word.
+      "the end, AND or OR: the condition so far is complete
+      DATA(lv_upper) = to_upper( lv_word ).
+      IF lv_open = abap_false AND ( lv_word IS INITIAL OR lv_upper = `AND` OR lv_upper = `OR` ).
+        IF lv_condition IS NOT INITIAL.
+          lv_sql = selection_condition_sql( condition = lv_condition
+                                            it_fields = it_fields ).
+          IF lv_sql IS INITIAL.
+            failed = abap_true.
+            RETURN.
+          ENDIF.
+          APPEND VALUE #( kind = `COND` sql = lv_sql ) TO et_tokens.
+          CLEAR lv_condition.
+        ENDIF.
+        IF lv_word IS NOT INITIAL.
+          APPEND VALUE #( kind = lv_upper ) TO et_tokens.
+        ENDIF.
+        CONTINUE.
+      ENDIF.
 
-    LOOP AT lt_parts INTO DATA(lv_part).
-      CONDENSE lv_part.
-      SPLIT lv_part AT ` ` INTO DATA(lv_field) DATA(lv_op) DATA(lv_value).
-      lv_field = to_upper( lv_field ).
-      lv_op = to_upper( lv_op ).
-      READ TABLE it_fields INTO DATA(ls_field) WITH KEY name = lv_field.
-      IF sy-subrc <> 0 OR lv_value IS INITIAL.
-        CLEAR result.
-        RETURN.
+      "opening parentheses in front of a condition
+      WHILE lv_open = abap_false AND lv_condition IS INITIAL
+        AND strlen( lv_word ) > 0 AND lv_word(1) = `(`.
+        APPEND VALUE #( kind = `(` ) TO et_tokens.
+        lv_word = substring( val = lv_word off = 1 ).
+      ENDWHILE.
+      IF lv_word IS INITIAL.
+        CONTINUE.
       ENDIF.
-      DATA(lv_sql_op) = SWITCH string( lv_op
-        WHEN `EQ` THEN `=`
-        WHEN `NE` THEN `<>`
-        WHEN `GT` THEN `>`
-        WHEN `GE` THEN `>=`
-        WHEN `LT` THEN `<`
-        WHEN `LE` THEN `<=` ).
-      IF lv_sql_op IS INITIAL.
-        CLEAR result.
-        RETURN.
+
+      "closing ones behind it - unless they are inside a quoted value
+      CLEAR lv_closing.
+      DATA(lv_value_open) = xsdbool( lv_open = abap_true OR ( strlen( lv_word ) > 0 AND lv_word(1) = `'` ) ).
+      WHILE strlen( lv_word ) > 0 AND substring( val = lv_word off = strlen( lv_word ) - 1 ) = `)`.
+        lv_head = substring( val = lv_word len = strlen( lv_word ) - 1 ).
+        "a quoted value ends with its quote, not with the parenthesis
+        IF lv_value_open = abap_true
+          AND NOT ( strlen( lv_head ) > 0 AND substring( val = lv_head off = strlen( lv_head ) - 1 ) = `'` ).
+          EXIT.
+        ENDIF.
+        lv_word = lv_head.
+        lv_closing = lv_closing + 1.
+      ENDWHILE.
+
+      IF lv_word IS NOT INITIAL.
+        lv_condition = COND #( WHEN lv_condition IS INITIAL THEN lv_word ELSE |{ lv_condition } { lv_word }| ).
       ENDIF.
-      APPEND |{ ls_field-name } { lv_sql_op } { literal( is_field = ls_field value = strip_quotes( condense( lv_value ) ) ) }|
-        TO lt_and.
+
+      "a quoted value is open while it has not ended with its quote
+      SPLIT lv_condition AT ` ` INTO lv_field lv_op lv_value.
+      lv_open = xsdbool( strlen( lv_value ) > 0 AND lv_value(1) = `'`
+                         AND ( strlen( lv_value ) = 1
+                               OR substring( val = lv_value off = strlen( lv_value ) - 1 ) <> `'` ) ).
+
+      IF lv_closing > 0.
+        IF lv_condition IS NOT INITIAL.
+          lv_sql = selection_condition_sql( condition = lv_condition
+                                            it_fields = it_fields ).
+          IF lv_sql IS INITIAL.
+            failed = abap_true.
+            RETURN.
+          ENDIF.
+          APPEND VALUE #( kind = `COND` sql = lv_sql ) TO et_tokens.
+        ENDIF.
+        CLEAR: lv_condition, lv_open.
+        DO lv_closing TIMES.
+          APPEND VALUE #( kind = `)` ) TO et_tokens.
+        ENDDO.
+      ENDIF.
     ENDLOOP.
+
+    IF lv_condition IS NOT INITIAL.
+      failed = abap_true.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD selection_condition_sql.
+
+    DATA lv_field TYPE string.
+    DATA lv_op TYPE string.
+    DATA lv_value TYPE string.
+    DATA(lv_condition) = condense( condition ).
+    SPLIT lv_condition AT ` ` INTO lv_field lv_op lv_value.
+    lv_field = to_upper( lv_field ).
+    lv_op = to_upper( lv_op ).
+    READ TABLE it_fields INTO DATA(ls_field) WITH KEY name = lv_field.
+    IF sy-subrc <> 0 OR lv_value IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA(lv_sql_op) = SWITCH string( lv_op
+      WHEN `EQ` OR `=`  THEN `=`
+      WHEN `NE` OR `<>` THEN `<>`
+      WHEN `GT` OR `>`  THEN `>`
+      WHEN `GE` OR `>=` THEN `>=`
+      WHEN `LT` OR `<`  THEN `<`
+      WHEN `LE` OR `<=` THEN `<=` ).
+    IF lv_sql_op IS INITIAL.
+      RETURN.
+    ENDIF.
+    result = |{ ls_field-name } { lv_sql_op } { literal( is_field = ls_field value = strip_quotes( condense( lv_value ) ) ) }|.
+
+  ENDMETHOD.
+
+
+  METHOD selection_filter_or.
+
+    DATA lt_or TYPE string_table.
+    DATA lv_and TYPE string.
+    DATA ls_next TYPE ty_s_filter_token.
+
+    DO.
+      lv_and = selection_filter_and( EXPORTING it_tokens = it_tokens
+                                     CHANGING  index     = index
+                                               failed    = failed ).
+      IF failed = abap_true.
+        RETURN.
+      ENDIF.
+      APPEND lv_and TO lt_or.
+      ls_next = VALUE #( it_tokens[ index ] OPTIONAL ).
+      IF ls_next-kind <> `OR`.
+        EXIT.
+      ENDIF.
+      index = index + 1.
+    ENDDO.
+
+    result = COND #( WHEN lines( lt_or ) = 1 THEN lt_or[ 1 ]
+                     ELSE |( { concat_lines_of( table = lt_or sep = ` OR ` ) } )| ).
+
+  ENDMETHOD.
+
+
+  METHOD selection_filter_and.
+
+    DATA lt_and TYPE string_table.
+    DATA lv_part TYPE string.
+    DATA ls_token TYPE ty_s_filter_token.
+    DATA ls_next TYPE ty_s_filter_token.
+
+    DO.
+      ls_token = VALUE #( it_tokens[ index ] OPTIONAL ).
+      index = index + 1.
+      CASE ls_token-kind.
+        WHEN `COND`.
+          lv_part = ls_token-sql.
+        WHEN `(`.
+          lv_part = selection_filter_or( EXPORTING it_tokens = it_tokens
+                                         CHANGING  index     = index
+                                                   failed    = failed ).
+          IF failed = abap_true.
+            RETURN.
+          ENDIF.
+          ls_next = VALUE #( it_tokens[ index ] OPTIONAL ).
+          IF ls_next-kind <> `)`.
+            failed = abap_true.
+            RETURN.
+          ENDIF.
+          index = index + 1.
+        WHEN OTHERS.
+          failed = abap_true.
+          RETURN.
+      ENDCASE.
+      APPEND lv_part TO lt_and.
+      ls_next = VALUE #( it_tokens[ index ] OPTIONAL ).
+      IF ls_next-kind <> `AND`.
+        EXIT.
+      ENDIF.
+      index = index + 1.
+    ENDDO.
 
     result = concat_lines_of( table = lt_and sep = ` AND ` ).
 

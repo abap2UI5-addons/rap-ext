@@ -40,6 +40,14 @@ CLASS ltcl_annotations DEFINITION FINAL
     METHODS consumption_filter        FOR TESTING RAISING cx_static_check.
     METHODS line_item_types           FOR TESTING RAISING cx_static_check.
     METHODS intent_navigation_entries FOR TESTING RAISING cx_static_check.
+    METHODS identification_qualified  FOR TESTING RAISING cx_static_check.
+    METHODS action_groups_and_props   FOR TESTING RAISING cx_static_check.
+    METHODS field_group_actions       FOR TESTING RAISING cx_static_check.
+    METHODS actions_by_position       FOR TESTING RAISING cx_static_check.
+    METHODS hidden_operations         FOR TESTING RAISING cx_static_check.
+    METHODS header_type_image         FOR TESTING RAISING cx_static_check.
+    METHODS button_type_criticality   FOR TESTING RAISING cx_static_check.
+    METHODS static_action_line        FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -435,6 +443,177 @@ CLASS ltcl_annotations IMPLEMENTATION.
       exp = `a\"b\\c\nd` ).
   ENDMETHOD.
 
+
+  METHOD identification_qualified.
+
+    " an unqualified and a qualified entry: the field is in the header and
+    " in the section of the qualifier - another field only in the section
+    apply( it_elements = VALUE #(
+      ( element = `TRAVELID` key = `UI.IDENTIFICATION$1$.POSITION`  value = `10` )
+      ( element = `TRAVELID` key = `UI.IDENTIFICATION$2$.POSITION`  value = `30` )
+      ( element = `TRAVELID` key = `UI.IDENTIFICATION$2$.QUALIFIER` value = `'Admin'` )
+      ( element = `TRAVELID` key = `UI.IDENTIFICATION$2$.LABEL`     value = `'Travel number'` )
+      ( element = `AGENCYID` key = `UI.IDENTIFICATION$1$.POSITION`  value = `20` )
+      ( element = `AGENCYID` key = `UI.IDENTIFICATION$1$.QUALIFIER` value = `'Admin'` ) ) ).
+
+    DATA(ls_travel) = field( `TRAVELID` ).
+    cl_abap_unit_assert=>assert_true( ls_travel-is_identification ).
+    cl_abap_unit_assert=>assert_equals( exp = 10 act = ls_travel-identification_pos ).
+    cl_abap_unit_assert=>assert_equals( exp = 2  act = lines( ls_travel-identifications ) ).
+    READ TABLE ls_travel-identifications INTO DATA(ls_admin) WITH KEY qualifier = `Admin`.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_equals( exp = 30              act = ls_admin-position ).
+    cl_abap_unit_assert=>assert_equals( exp = `Travel number` act = ls_admin-label ).
+
+    " a qualified entry alone is no header attribute
+    DATA(ls_agency) = field( `AGENCYID` ).
+    cl_abap_unit_assert=>assert_false( ls_agency-is_identification ).
+    cl_abap_unit_assert=>assert_equals( exp = `Admin` act = ls_agency-identifications[ 1 ]-qualifier ).
+
+  ENDMETHOD.
+
+
+  METHOD action_groups_and_props.
+
+    apply( it_elements = VALUE #(
+      ( element = `TRAVELID` key = `UI.LINEITEM$1$.TYPE`               value = `#FOR_ACTION_GROUP` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$1$.ID`                 value = `'Status'` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$1$.LABEL`              value = `'Change status'` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$1$.POSITION`           value = `5` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$2$.TYPE`               value = `#FOR_ACTION` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$2$.DATAACTION`         value = `'accept'` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$2$.ACTIONGROUPID`      value = `'Status'` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$2$.CRITICALITY`        value = `'3'` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$2$.INVOCATIONGROUPING` value = `#ISOLATED` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$3$.TYPE`               value = `#FOR_ACTION` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$3$.DATAACTION`         value = `'reject'` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$3$.CRITICALITY`        value = `'StatusCrit'` ) ) ).
+
+    " the group is no action - it is the menu of its actions
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = lines( ms_entity-actions ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = lines( ms_entity-action_groups ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `STATUS`        act = ms_entity-action_groups[ 1 ]-id ).
+    cl_abap_unit_assert=>assert_equals( exp = `Change status` act = ms_entity-action_groups[ 1 ]-label ).
+    cl_abap_unit_assert=>assert_equals( exp = `LINEITEM`      act = ms_entity-action_groups[ 1 ]-source ).
+
+    READ TABLE ms_entity-actions INTO DATA(ls_accept) WITH KEY name = `ACCEPT`.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_equals( exp = `STATUS`   act = ls_accept-group_id ).
+    cl_abap_unit_assert=>assert_equals( exp = `3`        act = ls_accept-criticality ).
+    cl_abap_unit_assert=>assert_equals( exp = `ISOLATED` act = ls_accept-invocation_grouping ).
+
+    READ TABLE ms_entity-actions INTO DATA(ls_reject) WITH KEY name = `REJECT`.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_equals( exp = `STATUSCRIT` act = ls_reject-criticality ).
+    cl_abap_unit_assert=>assert_initial( ls_reject-group_id ).
+    cl_abap_unit_assert=>assert_initial( ls_reject-invocation_grouping ).
+
+  ENDMETHOD.
+
+
+  METHOD field_group_actions.
+
+    " a #FOR_ACTION entry of a field group is an action at that section,
+    " not a field of the group; a qualified identification action likewise
+    apply( it_elements = VALUE #(
+      ( element = `STATUS` key = `UI.FIELDGROUP$1$.QUALIFIER`      value = `'Basic'` )
+      ( element = `STATUS` key = `UI.FIELDGROUP$1$.POSITION`       value = `10` )
+      ( element = `STATUS` key = `UI.FIELDGROUP$2$.QUALIFIER`      value = `'Other'` )
+      ( element = `STATUS` key = `UI.FIELDGROUP$2$.TYPE`           value = `#FOR_ACTION` )
+      ( element = `STATUS` key = `UI.FIELDGROUP$2$.DATAACTION`     value = `'recalc'` )
+      ( element = `STATUS` key = `UI.IDENTIFICATION$1$.TYPE`       value = `#FOR_ACTION` )
+      ( element = `STATUS` key = `UI.IDENTIFICATION$1$.DATAACTION` value = `'recalc'` )
+      ( element = `STATUS` key = `UI.IDENTIFICATION$1$.QUALIFIER`  value = `'Admin'` ) ) ).
+
+    DATA(ls_field) = field( `STATUS` ).
+    cl_abap_unit_assert=>assert_equals( exp = 1       act = lines( ls_field-field_groups ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `Basic` act = ls_field-field_group ).
+
+    READ TABLE ms_entity-actions INTO DATA(ls_group_action) WITH KEY source = `FIELDGROUP`.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_equals( exp = `RECALC` act = ls_group_action-name ).
+    cl_abap_unit_assert=>assert_equals( exp = `Other`  act = ls_group_action-qualifier ).
+    READ TABLE ms_entity-actions INTO DATA(ls_ident_action) WITH KEY source = `IDENTIFICATION`.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_equals( exp = `Admin`  act = ls_ident_action-qualifier ).
+    " no identification field - the action entry is none
+    cl_abap_unit_assert=>assert_false( ls_field-is_identification ).
+
+  ENDMETHOD.
+
+
+  METHOD actions_by_position.
+
+    " sorted by position over all elements - one without a position last
+    apply( it_elements = VALUE #(
+      ( element = `AGENCYID` key = `UI.LINEITEM$1$.TYPE`       value = `#FOR_ACTION` )
+      ( element = `AGENCYID` key = `UI.LINEITEM$1$.DATAACTION` value = `'last'` )
+      ( element = `STATUS`   key = `UI.LINEITEM$1$.TYPE`       value = `#FOR_ACTION` )
+      ( element = `STATUS`   key = `UI.LINEITEM$1$.DATAACTION` value = `'second'` )
+      ( element = `STATUS`   key = `UI.LINEITEM$1$.POSITION`   value = `20` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$1$.TYPE`       value = `#FOR_ACTION` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$1$.DATAACTION` value = `'first'` )
+      ( element = `TRAVELID` key = `UI.LINEITEM$1$.POSITION`   value = `10` ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( exp = `FIRST`  act = ms_entity-actions[ 1 ]-name ).
+    cl_abap_unit_assert=>assert_equals( exp = `SECOND` act = ms_entity-actions[ 2 ]-name ).
+    cl_abap_unit_assert=>assert_equals( exp = `LAST`   act = ms_entity-actions[ 3 ]-name ).
+
+  ENDMETHOD.
+
+
+  METHOD hidden_operations.
+
+    apply( it_entity = VALUE #( ( key = `UI.CREATEHIDDEN` value = `true` )
+                                ( key = `UI.UPDATEHIDDEN` value = `#(IsLocked)` )
+                                ( key = `UI.DELETEHIDDEN` value = `false` ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( exp = `TRUE`     act = ms_entity-create_hidden ).
+    cl_abap_unit_assert=>assert_equals( exp = `ISLOCKED` act = ms_entity-update_hidden ).
+    cl_abap_unit_assert=>assert_initial( ms_entity-delete_hidden ).
+
+  ENDMETHOD.
+
+
+  METHOD header_type_image.
+
+    apply( it_entity = VALUE #( ( key = `UI.HEADERINFO.TYPEIMAGEURL` value = `'sap-icon://flight'` )
+                                ( key = `UI.HEADERINFO.IMAGEURL`     value = `'AgencyName'` ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( exp = `sap-icon://flight` act = ms_entity-header_info-type_image_url ).
+    cl_abap_unit_assert=>assert_equals( exp = `AGENCYNAME`        act = ms_entity-header_info-image_field ).
+
+  ENDMETHOD.
+
+
+  METHOD button_type_criticality.
+
+    cl_abap_unit_assert=>assert_equals( exp = `Accept`     act = z2ui5_cl_rap_util=>criticality_button_type( `3` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `Accept`     act = z2ui5_cl_rap_util=>criticality_button_type( `#POSITIVE` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `Reject`     act = z2ui5_cl_rap_util=>criticality_button_type( `1` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `Reject`     act = z2ui5_cl_rap_util=>criticality_button_type( `negative` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `Emphasized` act = z2ui5_cl_rap_util=>criticality_button_type( `2` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `Default`    act = z2ui5_cl_rap_util=>criticality_button_type( `0` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `Default`    act = z2ui5_cl_rap_util=>criticality_button_type( `` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD static_action_line.
+
+    " an instance action carries the key of its instance
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_static_action_line(
+      VALUE #( ( `%CID_REF` ) ( `%KEY` ) ( `TRAVELID` ) ( `%PARAM` ) ) ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_static_action_line(
+      VALUE #( ( `%TKY` ) ( `%IS_DRAFT` ) ) ) ).
+    " a static one only its content ID and parameter
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>is_static_action_line(
+      VALUE #( ( `%CID` ) ( `%PARAM` ) ) ) ).
+    " nothing read - nothing says it is static
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_static_action_line( VALUE #( ) ) ).
+
+  ENDMETHOD.
+
 ENDCLASS.
 
 
@@ -610,6 +789,8 @@ CLASS ltcl_variants DEFINITION FINAL
     METHODS presentation_variants        FOR TESTING RAISING cx_static_check.
     METHODS selection_filter_where       FOR TESTING RAISING cx_static_check.
     METHODS selection_filter_unreadable  FOR TESTING RAISING cx_static_check.
+    METHODS selection_filter_or          FOR TESTING RAISING cx_static_check.
+    METHODS selection_filter_parentheses FOR TESTING RAISING cx_static_check.
     METHODS text_arrangement             FOR TESTING RAISING cx_static_check.
     METHODS criticality_maximize         FOR TESTING RAISING cx_static_check.
     METHODS criticality_minimize         FOR TESTING RAISING cx_static_check.
@@ -685,6 +866,47 @@ CLASS ltcl_variants IMPLEMENTATION.
       exp = `STATUS <> 'X''Y'`
       act = z2ui5_cl_rap_util=>selection_filter_to_where( filter    = `Status NE 'X'Y'`
                                                           it_fields = ms_entity-fields ) ).
+
+  ENDMETHOD.
+
+
+  METHOD selection_filter_or.
+
+    " AND binds stronger than OR - an OR is put into parentheses of its own
+    cl_abap_unit_assert=>assert_equals(
+      exp = `( STATUS = 'O' OR STATUS = 'A' AND PRIORITY >= '3' )`
+      act = z2ui5_cl_rap_util=>selection_filter_to_where( filter    = `Status EQ O or Status EQ A AND Priority GE 3`
+                                                          it_fields = ms_entity-fields ) ).
+    " a quoted value keeps its blanks and a word OR inside it
+    cl_abap_unit_assert=>assert_equals(
+      exp = `( STATUS = 'a OR b' OR AGENCYID = '7' )`
+      act = z2ui5_cl_rap_util=>selection_filter_to_where( filter    = `Status = 'a OR b' OR AgencyID = 7`
+                                                          it_fields = ms_entity-fields ) ).
+
+  ENDMETHOD.
+
+
+  METHOD selection_filter_parentheses.
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = `( STATUS = 'O' OR STATUS = 'A' ) AND PRIORITY >= '3'`
+      act = z2ui5_cl_rap_util=>selection_filter_to_where( filter    = `(Status EQ O OR Status EQ A) AND Priority GE 3`
+                                                          it_fields = ms_entity-fields ) ).
+    " parentheses as words of their own, nested - an AND needs none
+    cl_abap_unit_assert=>assert_equals(
+      exp = `PRIORITY > '1' AND ( STATUS = 'O' OR AGENCYID = '7' AND STATUS <> 'X' )`
+      act = z2ui5_cl_rap_util=>selection_filter_to_where(
+              filter    = `Priority GT 1 AND ( Status EQ O OR ( AgencyID EQ 7 AND Status NE 'X' ) )`
+              it_fields = ms_entity-fields ) ).
+    " parentheses that do not match, or an operator without its operand
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>selection_filter_to_where(
+      filter = `(Status EQ O OR Status EQ A` it_fields = ms_entity-fields ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>selection_filter_to_where(
+      filter = `Status EQ O) AND Priority GE 3` it_fields = ms_entity-fields ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>selection_filter_to_where(
+      filter = `Status EQ O OR` it_fields = ms_entity-fields ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>selection_filter_to_where(
+      filter = `() AND Status EQ O` it_fields = ms_entity-fields ) ).
 
   ENDMETHOD.
 
