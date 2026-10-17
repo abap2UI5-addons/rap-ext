@@ -41,6 +41,10 @@ CLASS ltcl_object_page DEFINITION FINAL
     METHODS field_control_in_edit      FOR TESTING RAISING cx_static_check.
     METHODS disabled_actions           FOR TESTING RAISING cx_static_check.
     METHODS identification_entry_display FOR TESTING RAISING cx_static_check.
+    METHODS path_sections              FOR TESTING RAISING cx_static_check.
+    METHODS path_children              FOR TESTING RAISING cx_static_check.
+    METHODS token_keys                 FOR TESTING RAISING cx_static_check.
+    METHODS change_info_section        FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -388,6 +392,94 @@ CLASS ltcl_object_page IMPLEMENTATION.
     ASSIGN COMPONENT `STATUS` OF STRUCTURE <ls_record> TO FIELD-SYMBOL(<lv_status>).
     <lv_status> = 'X'.
     cl_abap_unit_assert=>assert_initial( mo_cut->get_identification_fields( `Admin` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD path_sections.
+
+    "a field group facet whose only content is a MultiInput of a 1:n child
+    "is a section - without it, none
+    APPEND VALUE #( id = `T1` type = `#FIELDGROUP_REFERENCE` target_qualifier = `Tags`
+                    label = `Tags` position = 50 ) TO mo_cut->ms_entity-facets.
+    DATA(lt_before) = mo_cut->get_sections( ).
+    cl_abap_unit_assert=>assert_false( xsdbool( line_exists( lt_before[ id = `T1` ] ) ) ).
+    mo_cut->ms_entity-path_fields = VALUE #( ( path        = `_TAGS.TAGID`
+                                               association = `_TAGS`
+                                               element     = `TAGID`
+                                               source      = `FIELDGROUP`
+                                               qualifier   = `Tags` ) ).
+    DATA(lt_sections) = mo_cut->get_sections( ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( lt_sections[ id = `T1` type = `FIELDGROUP` ] ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD path_children.
+
+    DATA(ls_path) = VALUE z2ui5_cl_rap_object_page=>ty_s_path_child(
+      component  = `PATH_1`
+      field      = VALUE #( association = `_BOOKING` element = `BOOKINGID` source = `FIELDGROUP` qualifier = `Basic` )
+      entity     = booking_child( )-entity
+      can_create = abap_true ).
+    mo_cut->mt_path = VALUE #( ( ls_path )
+                               ( component = `PATH_2`
+                                 field     = VALUE #( source = `IDENTIFICATION` qualifier = `Basic` ) ) ).
+
+    DATA(lt_children) = mo_cut->get_path_children( source    = `FIELDGROUP`
+                                                   qualifier = `Basic` ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = lines( lt_children ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `PATH_1` act = lt_children[ 1 ]-component ).
+
+    "read and written like a table of the association: its ON condition
+    DATA(ls_child) = mo_cut->get_path_as_child( ls_path ).
+    cl_abap_unit_assert=>assert_equals( exp = `_BOOKING` act = ls_child-association ).
+    cl_abap_unit_assert=>assert_true( ls_child-can_create ).
+    mo_cut->get_child_filter( EXPORTING is_child  = ls_child
+                              IMPORTING et_values = DATA(lt_values) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_values
+      exp = VALUE z2ui5_cl_rap_floorplan=>ty_t_name_value( ( name = `PARENTUUID` value = `ABC123` ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD token_keys.
+
+    "a token's key holds the child's key values - and gives them back
+    DATA(lv_key) = mo_cut->get_token_key( it_keys = VALUE #( ( `TRAVELID` ) ( `STATUS` ) )
+                                          row     = VALUE ty_s_travel( travelid = '00000042'
+                                                                       status   = 'O' ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `00000042|O` act = lv_key ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_floorplan=>ty_t_name_value( ( name = `TRAVELID` value = `00000042` )
+                                                           ( name = `STATUS`   value = `O` ) )
+      act = mo_cut->get_token_keys( it_keys = VALUE #( ( `TRAVELID` ) ( `STATUS` ) )
+                                    key     = lv_key ) ).
+
+  ENDMETHOD.
+
+
+  METHOD change_info_section.
+
+    "the administrative fields - a section of their own at the end
+    mo_cut->ms_entity-fields = VALUE #( BASE mo_cut->ms_entity-fields
+      ( name = `CREATEDBY` label = `Created by` admin_field = `CREATED_BY` is_hidden = abap_true )
+      ( name = `CHANGEDAT` label = `Changed at` admin_field = `LAST_CHANGED_AT` is_hidden = abap_true ) ).
+    DATA(lt_sections) = mo_cut->get_sections( ).
+    DATA(ls_last) = lt_sections[ lines( lt_sections ) ].
+    cl_abap_unit_assert=>assert_equals( exp = z2ui5_cl_rap_object_page=>cs_section_id-change_info
+                                        act = ls_last-id ).
+    cl_abap_unit_assert=>assert_equals( exp = `ADMIN` act = ls_last-type ).
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = lines( mo_cut->get_admin_fields( ) ) ).
+
+    "one of them in a field group already - no second place
+    mo_cut->ms_entity-fields[ name = `CREATEDBY` ]-field_groups = VALUE #( ( qualifier = `Admin` ) ).
+    cl_abap_unit_assert=>assert_initial( mo_cut->get_admin_fields( ) ).
+    "and none on create
+    CLEAR mo_cut->ms_entity-fields[ name = `CREATEDBY` ]-field_groups.
+    mo_cut->mv_is_create = abap_true.
+    cl_abap_unit_assert=>assert_initial( mo_cut->get_admin_fields( ) ).
 
   ENDMETHOD.
 
