@@ -22,6 +22,7 @@ CLASS ltcl_list_report DEFINITION FINAL
     METHODS hidden_columns             FOR TESTING RAISING cx_static_check.
     METHODS actions_and_intents        FOR TESTING RAISING cx_static_check.
     METHODS virtual_no_filter          FOR TESTING RAISING cx_static_check.
+    METHODS actions_by_permissions     FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -184,6 +185,23 @@ CLASS ltcl_list_report IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = lines( lt_selection )
                                         exp = 2 ).
     cl_abap_unit_assert=>assert_false( xsdbool( line_exists( lt_selection[ name = `DAYSTOGO` ] ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD actions_by_permissions.
+
+    "GET PERMISSIONS not asked: the toolbar action is enabled
+    mo_cut->update_action_state( ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE z2ui5_cl_rap_list_report=>ty_t_name_value( ( name = `ACCEPT` value = `true` ) )
+                                        act = mo_cut->get_action_enabled( ) ).
+
+    "its global feature control disables it
+    mo_cut->ms_perm = VALUE #( answered = abap_true
+                               global   = VALUE #( actions = VALUE #( ( name = `ACCEPT` enabled = abap_false ) ) ) ).
+    mo_cut->update_action_state( ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE z2ui5_cl_rap_list_report=>ty_t_name_value( ( name = `ACCEPT` value = `false` ) )
+                                        act = mo_cut->get_action_enabled( ) ).
 
   ENDMETHOD.
 

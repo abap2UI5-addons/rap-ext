@@ -60,6 +60,9 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         columns           TYPE string VALUE `COLUMNS`,
         columns_ok        TYPE string VALUE `COLUMNS_OK`,
         popup_cancel      TYPE string VALUE `POPUP_CANCEL`,
+        "added 2026-10, third round: the selection of the rows changed -
+        "the toolbar actions follow the selected rows' feature control
+        selection_change  TYPE string VALUE `SELECTION_CHANGE`,
       END OF cs_event.
 
     "! the key of the standard view - the annotations' filters, sort order
@@ -86,6 +89,26 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
 
     "! the most rows an export writes
     CONSTANTS cv_export_max TYPE i VALUE 10000.
+
+    " the columns a row of a RAP business object gets (added 2026-10,
+    " third round): its draft status (z2ui5_cl_rap_util=>cs_editing_status)
+    " and its text, and whether an inline action is enabled - the prefix
+    " and the action's position
+    CONSTANTS:
+      BEGIN OF cs_row_column,
+        draft         TYPE string VALUE `ZZDRAFT`,
+        draft_text    TYPE string VALUE `ZZDRAFT_TEXT`,
+        action_prefix TYPE string VALUE `ZZACTION_`,
+      END OF cs_row_column.
+
+    " a toolbar action and whether the selected rows allow it
+    TYPES:
+      BEGIN OF ty_s_action_state,
+        name    TYPE string,
+        enabled TYPE abap_bool,
+      END OF ty_s_action_state.
+
+    TYPES ty_t_action_state TYPE STANDARD TABLE OF ty_s_action_state WITH EMPTY KEY.
 
     METHODS constructor
       IMPORTING
@@ -127,6 +150,11 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     "! the dialog that shows and hides columns
     DATA mt_column TYPE ty_t_column.
 
+    "! the editing status filter of a draft business object
+    "! (z2ui5_cl_rap_util=>cs_editing_status) and its entries
+    DATA mv_editing_status TYPE string.
+    DATA mt_editing_status TYPE ty_t_variant_item.
+
   PROTECTED SECTION.
     DATA mv_cds_view TYPE string.
     DATA mv_title    TYPE string.
@@ -157,6 +185,14 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     "! once, before a view applied)
     DATA mt_variants TYPE z2ui5_cl_rap_variant=>ty_t_variant.
     DATA ms_standard TYPE z2ui5_cl_rap_variant=>ty_s_data.
+    "! what GET PERMISSIONS answers for the loaded rows (added 2026-10,
+    "! third round)
+    DATA ms_perm TYPE ty_s_permissions.
+    "! the entity is the root of a draft business object
+    DATA mv_is_draft_bo TYPE abap_bool.
+    "! the toolbar actions, enabled by the feature control of the selected
+    "! rows (update_action_state)
+    DATA mt_action_state TYPE ty_t_action_state.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app;
@@ -259,13 +295,47 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         client       TYPE REF TO z2ui5_if_client
         event        TYPE string
         args_before  TYPE string_table OPTIONAL
-        row          TYPE data OPTIONAL.
+        row          TYPE data OPTIONAL
+        "added 2026-10, third round: a button's enabled by the action
+        "(name, value: true, false or a binding)
+        enabled_values TYPE ty_t_name_value OPTIONAL.
 
     "! the object page of the record an action created (its MAPPED keys)
     METHODS open_created
       IMPORTING
         client TYPE REF TO z2ui5_if_client
         keys   TYPE ty_t_name_value.
+
+    "! after a load of a RAP business object: its permissions (ms_perm),
+    "! the enabled inline actions and the draft status of every row (the
+    "! columns cs_row_column), the editing status filter applied, the
+    "! toolbar actions' state (added 2026-10, third round, like the
+    "! methods below)
+    METHODS apply_row_states.
+
+    "! the draft status of the rows of data: from the draft fields the
+    "! entity has (HASDRAFTENTITY, DRAFTENTITYLASTCHANGEDBY), else from
+    "! their drafts read back - another user's by who changed it last
+    METHODS fill_draft_status
+      IMPORTING
+        data TYPE REF TO data.
+
+    "! the toolbar actions enabled for the selected rows (mt_action_state):
+    "! the global permission, and every selected row's own
+    METHODS update_action_state.
+
+    "! whether each toolbar action is enabled - mt_action_state as the
+    "! values of render_action_buttons' enabled_values
+    METHODS get_action_enabled
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
+
+    "! the rows (mr_data) have the column name
+    METHODS has_row_column
+      IMPORTING
+        name          TYPE string
+      RETURNING
+        VALUE(result) TYPE abap_bool.
 
     "! the return from a called app: value help, action dialog, object page
     METHODS on_navigated
@@ -421,6 +491,16 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
       mt_row_key = get_row_key_fields( ).
       ms_caps = get_entity_capabilities( mv_cds_view ).
+      "a draft business object: the draft of each row, and a filter by it
+      IF ms_caps-is_rap_bo = abap_true AND is_draft_enabled( mv_cds_view ) = abap_true.
+        mv_is_draft_bo = abap_true.
+        mv_editing_status = z2ui5_cl_rap_util=>cs_editing_status-all.
+        mt_editing_status = VALUE #(
+          ( key = z2ui5_cl_rap_util=>cs_editing_status-all       text = get_text( cs_text-all ) )
+          ( key = z2ui5_cl_rap_util=>cs_editing_status-own_draft text = get_text( cs_text-own_drafts ) )
+          ( key = z2ui5_cl_rap_util=>cs_editing_status-locked    text = get_text( cs_text-locked_other ) )
+          ( key = z2ui5_cl_rap_util=>cs_editing_status-unchanged text = get_text( cs_text-unchanged ) ) ).
+      ENDIF.
       "@UI.createHidden: true - a path has no record to ask in a list
       IF is_hidden_by_annotation( ms_entity-create_hidden ) = abap_true.
         ms_caps-can_create = abap_false.
@@ -486,6 +566,13 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     IF client->check_on_event( cs_event-row_press ).
       on_row_press( client ).
+      RETURN.
+    ENDIF.
+
+    "the toolbar buttons follow the selected rows - built into the view
+    IF client->check_on_event( cs_event-selection_change ).
+      update_action_state( ).
+      render_page( client ).
       RETURN.
     ENDIF.
 
@@ -635,6 +722,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
       ASSIGN mr_data->* TO <lt_data>.
       mv_more = xsdbool( lv_count > lines( <lt_data> ) ).
+      apply_row_states( ).
     ELSE.
       mv_count = `0`.
       mv_more = abap_false.
@@ -1429,9 +1517,13 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         LOOP AT ls_entry-items INTO DATA(ls_item).
           lt_arg = args_before.
           APPEND ls_item-name TO lt_arg.
+          READ TABLE enabled_values INTO DATA(ls_item_binding) WITH KEY name = ls_item-name.
+          DATA(lv_item_enabled) = COND string( WHEN sy-subrc = 0 THEN ls_item_binding-value ELSE `true` ).
           lo_menu->tag( `MenuItem`
               )->a( n = `text`
                     t = ls_item-label
+              )->a( n = `enabled`
+                    v = lv_item_enabled
               )->a( n = `press`
                     v = client->_event( val   = event
                                         t_arg = lt_arg ) ).
@@ -1465,11 +1557,15 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       ENDIF.
       lt_arg = args_before.
       APPEND ls_entry-action-name TO lt_arg.
+      READ TABLE enabled_values INTO DATA(ls_binding) WITH KEY name = ls_entry-action-name.
+      DATA(lv_action_enabled) = COND string( WHEN sy-subrc = 0 THEN ls_binding-value ELSE `true` ).
       io_container->tag( `Button`
           )->a( n = `text`
                 t = ls_entry-action-label
           )->a( n = `type`
                 v = lv_button_type
+          )->a( n = `enabled`
+                v = lv_action_enabled
           )->a( n = `press`
                 v = client->_event( val   = event
                                     t_arg = lt_arg ) ).
@@ -1533,7 +1629,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD render_filter_bar.
 
-    IF mt_filter IS INITIAL AND ms_entity-is_searchable = abap_false.
+    IF mt_filter IS INITIAL AND ms_entity-is_searchable = abap_false AND mv_is_draft_bo = abap_false.
       RETURN.
     ENDIF.
 
@@ -1583,6 +1679,28 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         )->a( n = `class`
               v = `sapUiTinyMarginEnd` ).
 
+    "a draft business object: the editing status (since 2026-10, third
+    "round)
+    IF mv_is_draft_bo = abap_true.
+      lo_bar->ele( `Select`
+          )->a( n = `xmlns:core`
+                v = `sap.ui.core`
+          )->a( n = `selectedKey`
+                v = client->_bind( mv_editing_status )
+          )->a( n = `items`
+                v = client->_bind( mt_editing_status )
+          )->a( n = `change`
+                v = client->_event( cs_event-go )
+          )->a( n = `tooltip`
+                t = get_text( cs_text-editing_status )
+          )->tag( n  = `Item`
+                  ns = `core`
+              )->a( n = `key`
+                    v = `{KEY}`
+              )->a( n = `text`
+                    v = `{TEXT}` ).
+    ENDIF.
+
     lo_bar->tag( `ToolbarSpacer` ).
 
     lo_bar->tag( `Button`
@@ -1624,11 +1742,24 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
               v = `ColumnHeaders,HeaderToolbar`
         )->a( n = `mode`
               v = lv_mode ).
+    "the toolbar actions follow the feature control of the selected rows
+    IF lv_select = abap_true AND ms_perm-answered = abap_true.
+      lo_table->a( n = `selectionChange`
+                   v = client->_event( cs_event-selection_change ) ).
+    ENDIF.
 
     render_toolbar( io_table = lo_table
                     client   = client ).
 
+    "the draft status of a row of a draft business object - first
+    DATA(lv_draft_column) = has_row_column( cs_row_column-draft ).
     DATA(lo_columns) = lo_table->ele( `columns` ).
+    IF lv_draft_column = abap_true.
+      lo_columns->ele( `Column`
+          )->tag( `Text`
+              )->a( n = `text`
+                    t = get_text( cs_text-editing_status ) ).
+    ENDIF.
     LOOP AT lt_columns INTO DATA(ls_col).
       render_column( io_columns = lo_columns
                      is_col     = ls_col ).
@@ -1662,14 +1793,27 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     ENDIF.
     DATA(lo_cells) = lo_row->ele( `cells` ).
 
+    IF lv_draft_column = abap_true.
+      lo_cells->tag( `ObjectStatus`
+          )->a( n = `text`
+                v = |\{{ cs_row_column-draft_text }\}|
+          )->a( n = `state`
+                v = `{= ${ZZDRAFT} === 'LOCKED' ? 'Warning' : 'Information' }` ).
+    ENDIF.
+
     LOOP AT lt_columns INTO ls_col.
       render_cell( io_cells = lo_cells
                    is_col   = ls_col
                    client   = client ).
     ENDLOOP.
 
-    "inline actions - one button per row, the row found again by its keys
+    "inline actions - one button per row, the row found again by its keys;
+    "enabled by the row's feature control (since 2026-10, third round)
     LOOP AT lt_inline INTO ls_inline.
+      DATA(lv_inline_column) = |{ cs_row_column-action_prefix }{ sy-tabix }|.
+      DATA(lv_inline_enabled) = COND string( WHEN has_row_column( lv_inline_column ) = abap_true
+                                             THEN |\{{ lv_inline_column }\}|
+                                             ELSE `true` ).
       DATA(lt_action_arg) = VALUE string_table( ( ls_inline-name ) ).
       APPEND LINES OF lt_arg TO lt_action_arg.
       "the criticality as the type - a literal the view gate can check; a
@@ -1688,6 +1832,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                 t = ls_inline-label
           )->a( n = `type`
                 v = lv_inline_type
+          )->a( n = `enabled`
+                v = lv_inline_enabled
           )->a( n = `press`
                 v = client->_event( val   = cs_event-action
                                     t_arg = lt_action_arg ) ).
@@ -1722,11 +1868,12 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     "@UI.lineItem actions of type #FOR_ACTION - on the selected rows, a
     "static one without; by position, an action group as a menu
-    render_action_buttons( io_container = lo_toolbar
-                           it_actions   = get_line_item_actions( abap_false )
-                           it_groups    = ms_entity-action_groups
-                           client       = client
-                           event        = cs_event-action ).
+    render_action_buttons( io_container     = lo_toolbar
+                           it_actions       = get_line_item_actions( abap_false )
+                           it_groups        = ms_entity-action_groups
+                           client           = client
+                           event            = cs_event-action
+                           enabled_values   = get_action_enabled( ) ).
 
     "@UI.lineItem #FOR_INTENT_BASED_NAVIGATION - to another app
     LOOP AT get_line_item_intents( ) INTO DATA(ls_intent).
@@ -1916,6 +2063,247 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           )->a( n = `text`
                 v = lv_path ).
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD apply_row_states.
+
+    DATA lt_comp TYPE cl_abap_structdescr=>component_table.
+    DATA lr_extended TYPE REF TO data.
+    FIELD-SYMBOLS <lt_old> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_new> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lv_enabled> TYPE any.
+    FIELD-SYMBOLS <lv_state> TYPE any.
+    FIELD-SYMBOLS <ls_row> TYPE any.
+    DATA ls_inline TYPE z2ui5_cl_rap_util=>ty_s_action.
+
+    CLEAR: ms_perm, mt_action_state.
+    IF ms_caps-is_rap_bo = abap_false OR mr_data IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ms_perm = get_permissions( entity_name = mv_cds_view
+                               rows        = mr_data ).
+    DATA(lt_inline) = get_line_item_actions( abap_true ).
+
+    "the columns: an inline action's enabled, the draft status
+    TRY.
+        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( mr_data ) ).
+        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
+        lt_comp = lo_line->get_components( ).
+        DATA(lo_bool) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `ABAP_BOOL` ) ).
+        DATA(lo_string) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `STRING` ) ).
+        IF ms_perm-answered = abap_true.
+          LOOP AT lt_inline INTO ls_inline.
+            APPEND VALUE #( name = |{ cs_row_column-action_prefix }{ sy-tabix }| type = lo_bool ) TO lt_comp.
+          ENDLOOP.
+        ENDIF.
+        IF mv_is_draft_bo = abap_true.
+          APPEND VALUE #( name = cs_row_column-draft type = lo_string ) TO lt_comp.
+          APPEND VALUE #( name = cs_row_column-draft_text type = lo_string ) TO lt_comp.
+        ENDIF.
+        IF lines( lt_comp ) > lines( lo_line->get_components( ) ).
+          DATA(lo_new_table) = cl_abap_tabledescr=>create( cl_abap_structdescr=>create( lt_comp ) ).
+          CREATE DATA lr_extended TYPE HANDLE lo_new_table.
+          ASSIGN mr_data->* TO <lt_old>.
+          ASSIGN lr_extended->* TO <lt_new>.
+          MOVE-CORRESPONDING <lt_old> TO <lt_new>.
+          mr_data = lr_extended.
+        ENDIF.
+      CATCH cx_root ##NO_HANDLER.
+    ENDTRY.
+
+    ASSIGN mr_data->* TO <lt_new>.
+    IF ms_perm-answered = abap_true AND lt_inline IS NOT INITIAL.
+      LOOP AT <lt_new> ASSIGNING <ls_row>.
+        DATA(ls_row_perm) = z2ui5_cl_rap_util=>get_instance_permissions(
+          is_permissions = ms_perm
+          keys           = get_keys_of_row( entity_name = mv_cds_view
+                                            row         = <ls_row> ) ).
+        LOOP AT lt_inline INTO ls_inline.
+          UNASSIGN <lv_enabled>.
+          ASSIGN COMPONENT |{ cs_row_column-action_prefix }{ sy-tabix }| OF STRUCTURE <ls_row> TO <lv_enabled>.
+          IF <lv_enabled> IS ASSIGNED.
+            <lv_enabled> = z2ui5_cl_rap_util=>is_permitted( ops  = ls_row_perm-actions
+                                                            name = ls_inline-name ).
+          ENDIF.
+        ENDLOOP.
+      ENDLOOP.
+    ENDIF.
+
+    IF mv_is_draft_bo = abap_true.
+      fill_draft_status( mr_data ).
+      "the editing status filter - applied to the rows read, so the count
+      "is theirs and no "more" follows
+      IF mv_editing_status IS NOT INITIAL
+        AND mv_editing_status <> z2ui5_cl_rap_util=>cs_editing_status-all.
+        DATA lr_kept TYPE REF TO data.
+        CREATE DATA lr_kept LIKE <lt_new>.
+        ASSIGN lr_kept->* TO <lt_old>.
+        LOOP AT <lt_new> ASSIGNING <ls_row>.
+          UNASSIGN <lv_state>.
+          ASSIGN COMPONENT cs_row_column-draft OF STRUCTURE <ls_row> TO <lv_state>.
+          IF <lv_state> IS ASSIGNED AND z2ui5_cl_rap_util=>matches_editing_status( filter = mv_editing_status
+                                                                                   state  = <lv_state> ) = abap_true.
+            APPEND <ls_row> TO <lt_old>.
+          ENDIF.
+        ENDLOOP.
+        mr_data = lr_kept.
+        mv_count = |{ lines( <lt_old> ) }|.
+        mv_more = abap_false.
+      ENDIF.
+    ENDIF.
+
+    update_action_state( ).
+
+  ENDMETHOD.
+
+
+  METHOD fill_draft_status.
+
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_drafts> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lv_has> TYPE any.
+    FIELD-SYMBOLS <lv_owner> TYPE any.
+    FIELD-SYMBOLS <lv_state> TYPE any.
+    FIELD-SYMBOLS <lv_text> TYPE any.
+    DATA lt_draft_keys TYPE string_table.
+    DATA lt_owner TYPE ty_t_name_value.
+    DATA lv_has TYPE abap_bool.
+    DATA lv_owner TYPE string.
+
+    ASSIGN data->* TO <lt_rows>.
+    IF <lt_rows> IS INITIAL.
+      RETURN.
+    ENDIF.
+    "the entity's own draft fields, where a projection has them
+    DATA(lv_own_fields) = xsdbool( line_exists( ms_entity-fields[ name = `HASDRAFTENTITY` ] ) ).
+    READ TABLE ms_entity-fields INTO DATA(ls_by) WITH KEY admin_field = `LAST_CHANGED_BY`.
+    IF sy-subrc <> 0.
+      CLEAR ls_by.
+    ENDIF.
+
+    "else the drafts, read back - the key of each, and who changed it
+    IF lv_own_fields = abap_false.
+      DATA(lr_drafts) = read_drafts( entity_name = mv_cds_view
+                                     rows        = data ).
+      IF lr_drafts IS NOT BOUND.
+        RETURN.
+      ENDIF.
+      ASSIGN lr_drafts->* TO <lt_drafts>.
+      LOOP AT <lt_drafts> ASSIGNING FIELD-SYMBOL(<ls_draft>).
+        DATA(lv_draft_key) = concat_lines_of( table = VALUE string_table(
+          FOR ls_k IN get_keys_of_row( entity_name = mv_cds_view row = <ls_draft> ) ( ls_k-value ) ) sep = `|` ).
+        APPEND lv_draft_key TO lt_draft_keys.
+        CLEAR lv_owner.
+        IF ls_by-name IS NOT INITIAL.
+          UNASSIGN <lv_owner>.
+          ASSIGN COMPONENT ls_by-name OF STRUCTURE <ls_draft> TO <lv_owner>.
+          IF <lv_owner> IS ASSIGNED.
+            lv_owner = |{ <lv_owner> }|.
+          ENDIF.
+        ENDIF.
+        APPEND VALUE #( name = lv_draft_key value = lv_owner ) TO lt_owner.
+      ENDLOOP.
+    ENDIF.
+
+    LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      CLEAR: lv_has, lv_owner.
+      IF lv_own_fields = abap_true.
+        UNASSIGN <lv_has>.
+        ASSIGN COMPONENT `HASDRAFTENTITY` OF STRUCTURE <ls_row> TO <lv_has>.
+        lv_has = xsdbool( <lv_has> IS ASSIGNED AND <lv_has> IS NOT INITIAL ).
+        UNASSIGN <lv_owner>.
+        ASSIGN COMPONENT `DRAFTENTITYLASTCHANGEDBY` OF STRUCTURE <ls_row> TO <lv_owner>.
+        IF <lv_owner> IS NOT ASSIGNED.
+          ASSIGN COMPONENT `INPROCESSBYUSER` OF STRUCTURE <ls_row> TO <lv_owner>.
+        ENDIF.
+        IF <lv_owner> IS ASSIGNED.
+          lv_owner = |{ <lv_owner> }|.
+        ENDIF.
+      ELSE.
+        DATA(lv_row_key) = concat_lines_of( table = VALUE string_table(
+          FOR ls_r IN get_keys_of_row( entity_name = mv_cds_view row = <ls_row> ) ( ls_r-value ) ) sep = `|` ).
+        READ TABLE lt_owner INTO DATA(ls_owner) WITH KEY name = lv_row_key.
+        IF sy-subrc = 0.
+          lv_has = abap_true.
+          lv_owner = ls_owner-value.
+        ENDIF.
+      ENDIF.
+      DATA(ls_status) = z2ui5_cl_rap_util=>get_draft_status( has_draft = lv_has
+                                                             owner     = lv_owner
+                                                             user      = CONV #( sy-uname ) ).
+      UNASSIGN: <lv_state>, <lv_text>.
+      ASSIGN COMPONENT cs_row_column-draft OF STRUCTURE <ls_row> TO <lv_state>.
+      ASSIGN COMPONENT cs_row_column-draft_text OF STRUCTURE <ls_row> TO <lv_text>.
+      IF <lv_state> IS NOT ASSIGNED OR <lv_text> IS NOT ASSIGNED.
+        CONTINUE.
+      ENDIF.
+      <lv_state> = ls_status-state.
+      <lv_text> = SWITCH string( ls_status-state
+        WHEN z2ui5_cl_rap_util=>cs_editing_status-own_draft THEN get_text( cs_text-own_draft )
+        WHEN z2ui5_cl_rap_util=>cs_editing_status-locked
+          THEN replace( val = get_text( cs_text-locked_by ) sub = `&1` with = ls_status-user )
+        ELSE `` ).
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD update_action_state.
+
+    CLEAR mt_action_state.
+    DATA(lt_actions) = get_line_item_actions( abap_false ).
+    IF lt_actions IS INITIAL.
+      RETURN.
+    ENDIF.
+    "the selected rows - a static action needs none
+    DATA(lr_selected) = get_selected_rows( entity_name = mv_cds_view
+                                           data        = mr_data ).
+    FIELD-SYMBOLS <lt_selected> TYPE STANDARD TABLE.
+    LOOP AT lt_actions INTO DATA(ls_action).
+      DATA(lv_enabled) = z2ui5_cl_rap_util=>is_permitted( ops  = ms_perm-global-actions
+                                                          name = ls_action-name ).
+      IF lv_enabled = abap_true AND ms_perm-answered = abap_true AND lr_selected IS BOUND.
+        ASSIGN lr_selected->* TO <lt_selected>.
+        LOOP AT <lt_selected> ASSIGNING FIELD-SYMBOL(<ls_selected>).
+          IF z2ui5_cl_rap_util=>is_permitted(
+               ops  = z2ui5_cl_rap_util=>get_instance_permissions(
+                        is_permissions = ms_perm
+                        keys           = get_keys_of_row( entity_name = mv_cds_view
+                                                          row         = <ls_selected> ) )-actions
+               name = ls_action-name ) = abap_false.
+            lv_enabled = abap_false.
+            EXIT.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+      APPEND VALUE #( name = ls_action-name enabled = lv_enabled ) TO mt_action_state.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_action_enabled.
+    LOOP AT mt_action_state INTO DATA(ls_state).
+      APPEND VALUE #( name  = ls_state-name
+                      value = COND #( WHEN ls_state-enabled = abap_true THEN `true` ELSE `false` ) ) TO result.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD has_row_column.
+
+    IF mr_data IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    TRY.
+        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( mr_data ) ).
+        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
+        result = xsdbool( line_exists( lo_line->components[ name = to_upper( name ) ] ) ).
+      CATCH cx_root.
+        result = abap_false.
+    ENDTRY.
 
   ENDMETHOD.
 
