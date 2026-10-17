@@ -82,6 +82,17 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         unchanged      TYPE string VALUE `UNCHANGED`,
         not_allowed    TYPE string VALUE `NOT_ALLOWED`,
         field_read_only TYPE string VALUE `FIELD_READ_ONLY`,
+        "added 2026-10, third round (messages, files)
+        messages       TYPE string VALUE `MESSAGES`,
+        close          TYPE string VALUE `CLOSE`,
+        "&1 is the limit in KB
+        file_too_large TYPE string VALUE `FILE_TOO_LARGE`,
+        file_type      TYPE string VALUE `FILE_TYPE`,
+        file_empty     TYPE string VALUE `FILE_EMPTY`,
+        upload         TYPE string VALUE `UPLOAD`,
+        download       TYPE string VALUE `DOWNLOAD`,
+        no_file        TYPE string VALUE `NO_FILE`,
+        file_uploaded  TYPE string VALUE `FILE_UPLOADED`,
       END OF cs_text.
 
     " Where z2ui5_if_rap_ext~extend_view may add controls
@@ -107,6 +118,17 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     "! suggestions (load_suggestions); arguments: the field, the text
     CONSTANTS cv_event_suggest TYPE string VALUE `SUGGEST`.
 
+    "! the events of a file field (@Semantics.largeObject; added 2026-10,
+    "! third round): the user uploaded a file - argument the field, the file
+    "! in mv_file_value - or wants to download one (apply_upload,
+    "! download_file)
+    CONSTANTS cv_event_upload TYPE string VALUE `FILE_UPLOAD`.
+    CONSTANTS cv_event_download TYPE string VALUE `FILE_DOWNLOAD`.
+    "! the upload dialog of a file field opens (argument the field) or is
+    "! cancelled (render_upload_popup)
+    CONSTANTS cv_event_upload_open TYPE string VALUE `FILE_UPLOAD_OPEN`.
+    CONSTANTS cv_event_upload_cancel TYPE string VALUE `FILE_UPLOAD_CANCEL`.
+
     TYPES:
       BEGIN OF ty_s_capabilities,
         "a RAP business object (a BDEF with this entity as root)
@@ -128,15 +150,10 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
 
     TYPES ty_t_name_value TYPE STANDARD TABLE OF ty_s_name_value WITH DEFAULT KEY.
 
-    TYPES:
-      "! one message of a write, as RAP reported it
-      BEGIN OF ty_s_message,
-        text   TYPE string,
-        "error, warning, success or information
-        type   TYPE string,
-        "the fields the message is about (%element)
-        fields TYPE string_table,
-      END OF ty_s_message.
+    "! one message of a write, as RAP reported it: text, type (error,
+    "! warning, success, information), the fields it is about (%element)
+    "! and - appended 2026-10, third round - target, its entity
+    TYPES ty_s_message TYPE z2ui5_cl_rap_util=>ty_s_message.
 
     TYPES ty_t_message TYPE STANDARD TABLE OF ty_s_message WITH EMPTY KEY.
 
@@ -199,6 +216,15 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     "! types (load_suggestions). PUBLIC and a REF TO data for the same
     "! reason as mr_value_lists.
     DATA mr_suggestions TYPE REF TO data.
+
+    "! the messages the message view lists (show_messages) - PUBLIC to be
+    "! bound (added 2026-10, third round)
+    DATA mt_message_items TYPE z2ui5_cl_rap_util=>ty_t_message_item.
+
+    "! the file of the last upload, as a data URI, and its name - what the
+    "! upload control of a file field writes (added 2026-10, third round)
+    DATA mv_file_value TYPE string.
+    DATA mv_file_name TYPE string.
 
     "! Hand the floorplan an implementation of the extension points
     METHODS set_extension
@@ -417,7 +443,10 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         "a sap.ui.core.ValueState (Error, Warning) and its text - a message
         "of the last save about this field (added 2026-10)
         value_state      TYPE string OPTIONAL
-        value_state_text TYPE string OPTIONAL.
+        value_state_text TYPE string OPTIONAL
+        "the structure value is a component of - a file field names its
+        "file by the file name field (added 2026-10, third round)
+        record           TYPE data OPTIONAL.
 
     "! call the value help of is_field; source holds the values for the
     "! additional bindings with usage FILTER (the structure being edited)
@@ -626,12 +655,111 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE REF TO data.
 
-    "! a message box with every message
+    "! the messages of a write, by their severity (since 2026-10, third
+    "! round): only success and information - a toast; one message about
+    "! no field and no entity - a message box; else a message view in a
+    "! dialog, each message with its type, its fields and its entity.
+    "! details are the
+    "! messages with their severity (ty_s_result-details), messages the
+    "! texts - one that is no detail is of type; a success is left out when
+    "! there is an error. fields gives the labels of the fields
     METHODS show_messages
       IMPORTING
         client   TYPE REF TO z2ui5_if_client
         messages TYPE string_table
-        type     TYPE string DEFAULT `error`.
+        type     TYPE string DEFAULT `error`
+        "added 2026-10, third round
+        details  TYPE ty_t_message OPTIONAL
+        fields   TYPE z2ui5_cl_rap_util=>ty_t_field_info OPTIONAL.
+
+    "! the dialog with a sap.m.MessageView of mt_message_items - grouped by
+    "! entity when grouped is set (added 2026-10, third round)
+    METHODS render_message_view
+      IMPORTING
+        client  TYPE REF TO z2ui5_if_client
+        grouped TYPE abap_bool DEFAULT abap_false.
+
+    "! the most bytes an uploaded file may have - cv_file_max_size; redefine
+    "! it for another limit, 0 is none (added 2026-10, third round)
+    METHODS get_max_file_size
+      RETURNING
+        VALUE(result) TYPE i.
+
+    "! the controls of a file field (@Semantics.largeObject, value the
+    "! RAWSTRING): a link that downloads the file - named by the file name
+    "! field of record - and, when editable, a button that opens the upload
+    "! dialog (cv_event_upload_open, render_upload_popup). Plain controls,
+    "! because a form in ColumnLayout takes no box (added 2026-10, third
+    "! round)
+    METHODS render_file_field
+      IMPORTING
+        io_container TYPE REF TO z2ui5_cl_ui5_view_builder
+        is_field     TYPE z2ui5_cl_rap_util=>ty_s_field_info
+        client       TYPE REF TO z2ui5_if_client
+        value        TYPE data
+        record       TYPE data OPTIONAL
+        editable     TYPE abap_bool DEFAULT abap_true.
+
+    "! the upload dialog of the file field is_field: the core's upload
+    "! control (z2ui5.cc.FileUploader) writes the file into mv_file_value
+    "! and sends cv_event_upload, Cancel sends cv_event_upload_cancel - the
+    "! floorplan shows its own view or dialog again on both (added 2026-10,
+    "! third round)
+    METHODS render_upload_popup
+      IMPORTING
+        client   TYPE REF TO z2ui5_if_client
+        is_field TYPE z2ui5_cl_rap_util=>ty_s_field_info.
+
+    "! on cv_event_upload: the file of mv_file_value into the file field
+    "! the event names (a large object of it_fields) of target, its MIME
+    "! type and file name into their fields - checked on the server: its
+    "! size (get_max_file_size) and its type (acceptableMimeTypes). A file
+    "! that is refused is a message; abap_true when the file was taken
+    "! (added 2026-10, third round)
+    METHODS apply_upload
+      IMPORTING
+        client        TYPE REF TO z2ui5_if_client
+        it_fields     TYPE z2ui5_cl_rap_util=>ty_t_field_info
+      CHANGING
+        target        TYPE data
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! on cv_event_download: the browser downloads the file of the field
+    "! the event names from source, with its MIME type and file name
+    "! (added 2026-10, third round)
+    METHODS download_file
+      IMPORTING
+        client    TYPE REF TO z2ui5_if_client
+        it_fields TYPE z2ui5_cl_rap_util=>ty_t_field_info
+        source    TYPE data.
+
+    "! the name of the default function of action (BDEF `default function
+    "! GetDefaultsFor...`) - GetDefaultsFor and the action's name, as RAP
+    "! names it; redefine it for another (added 2026-10, third round)
+    METHODS get_default_function_name
+      IMPORTING
+        action        TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the default values of the parameter of action - what its default
+    "! function answers for the first of rows (a table of the entity; a
+    "! static action needs none) - into the initial fields of param.
+    "! Nothing changes when the business object has no default function
+    "! (z2ui5_cl_rap_eml=>read_action_defaults; added 2026-10, third round)
+    METHODS apply_action_defaults
+      IMPORTING
+        entity_name TYPE string
+        action      TYPE string
+        rows        TYPE REF TO data OPTIONAL
+        context     TYPE ty_s_rap_context OPTIONAL
+        is_draft    TYPE abap_bool DEFAULT abap_false
+      CHANGING
+        param       TYPE data.
+
+    "! the most bytes an uploaded file may have by default (5 MB)
+    CONSTANTS cv_file_max_size TYPE i VALUE 5242880.
 
     "! write one row of a database table with ABAP SQL: the authorization
     "! S_TABU_NAM (activity 02) for the table, a lock (ENQUEUE_E_TABLE) on
@@ -942,7 +1070,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       RETURN.
     ENDIF.
     io_container->a( n = `valueState`
-                     v = value_state
+                     t = value_state
         )->a( n = `valueStateText`
               t = value_state_text ).
   ENDMETHOD.
@@ -1030,6 +1158,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-unchanged    THEN `Ungeändert`
         WHEN cs_text-not_allowed  THEN `Für diesen Eintrag nicht erlaubt`
         WHEN cs_text-field_read_only THEN `Diese Felder können nicht geändert werden`
+        WHEN cs_text-messages     THEN `Meldungen`
+        WHEN cs_text-close        THEN `Schließen`
+        WHEN cs_text-file_too_large THEN `Die Datei ist zu groß (höchstens &1 KB)`
+        WHEN cs_text-file_type    THEN `Dieser Dateityp ist nicht erlaubt`
+        WHEN cs_text-file_empty   THEN `Die Datei ist leer`
+        WHEN cs_text-upload       THEN `Hochladen`
+        WHEN cs_text-download     THEN `Herunterladen`
+        WHEN cs_text-no_file      THEN `Keine Datei`
+        WHEN cs_text-file_uploaded THEN `Datei übernommen - sichern, um sie zu speichern`
         ELSE key ).
     ELSE.
       "the text pool of this class, original language English - translate
@@ -1088,6 +1225,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-unchanged     THEN 'Unchanged'(051)
         WHEN cs_text-not_allowed   THEN 'Not allowed for this record'(052)
         WHEN cs_text-field_read_only THEN 'These fields cannot be changed'(053)
+        WHEN cs_text-messages      THEN 'Messages'(054)
+        WHEN cs_text-close         THEN 'Close'(055)
+        WHEN cs_text-file_too_large THEN 'The file is too large (at most &1 KB)'(056)
+        WHEN cs_text-file_type     THEN 'This file type is not allowed'(057)
+        WHEN cs_text-file_empty    THEN 'The file is empty'(058)
+        WHEN cs_text-upload        THEN 'Upload'(059)
+        WHEN cs_text-download      THEN 'Download'(060)
+        WHEN cs_text-no_file       THEN 'No file'(061)
+        WHEN cs_text-file_uploaded THEN 'File taken over - save to keep it'(062)
         ELSE key ).
     ENDIF.
 
@@ -1594,7 +1740,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     FIELD-SYMBOLS <lt_target> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
 
-    DATA(lv_field) = client->get_event_arg( 1 ).
+    DATA(lv_field) = client->get_event_arg( ).
     DATA(lv_text) = condense( client->get_event_arg( 2 ) ).
     IF mr_suggestions IS NOT BOUND.
       RETURN.
@@ -1651,6 +1797,27 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     FIELD-SYMBOLS <lt_list> TYPE any.
 
     DATA(lv_editable) = xsdbool( editable = abap_true AND is_field-is_readonly = abap_false ).
+
+    "a file (@Semantics.largeObject): a download link and an upload
+    "control - the RAWSTRING itself is never bound (added 2026-10, third
+    "round)
+    IF is_field-is_large_object = abap_true.
+      IF record IS SUPPLIED.
+        render_file_field( io_container = io_container
+                           is_field     = is_field
+                           client       = client
+                           value        = value
+                           record       = record
+                           editable     = lv_editable ).
+      ELSE.
+        render_file_field( io_container = io_container
+                           is_field     = is_field
+                           client       = client
+                           value        = value
+                           editable     = lv_editable ).
+      ENDIF.
+      RETURN.
+    ENDIF.
 
     IF is_field-is_boolean = abap_true.
       io_container->tag( `CheckBox`
@@ -2739,11 +2906,377 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD show_messages.
 
-    IF messages IS INITIAL.
+    DATA lt_all TYPE ty_t_message.
+    DATA lt_texts TYPE string_table.
+    DATA lt_groups TYPE string_table.
+
+    "the messages with their severity, and the texts that are none of them
+    "(the floorplan's own, a refusal of the framework) with type
+    lt_all = details.
+    LOOP AT messages INTO DATA(lv_text).
+      IF NOT line_exists( lt_all[ text = lv_text ] ).
+        APPEND VALUE #( text = lv_text type = type ) TO lt_all.
+      ENDIF.
+    ENDLOOP.
+    lt_all = z2ui5_cl_rap_util=>prepare_messages( lt_all ).
+
+    CASE z2ui5_cl_rap_util=>get_message_display( lt_all ).
+      WHEN z2ui5_cl_rap_util=>cs_message_display-none.
+        RETURN.
+      WHEN z2ui5_cl_rap_util=>cs_message_display-toast.
+        LOOP AT lt_all INTO DATA(ls_toast).
+          APPEND ls_toast-text TO lt_texts.
+        ENDLOOP.
+        client->message_toast_display( concat_lines_of( table = lt_texts sep = cl_abap_char_utilities=>newline ) ).
+      WHEN z2ui5_cl_rap_util=>cs_message_display-box.
+        DATA(ls_single) = lt_all[ 1 ].
+        client->message_box_display( text = ls_single-text
+                                     type = ls_single-type ).
+      WHEN OTHERS.
+        mt_message_items = z2ui5_cl_rap_util=>get_message_items( messages  = lt_all
+                                                                  it_fields = fields ).
+        LOOP AT mt_message_items INTO DATA(ls_item) WHERE group_name IS NOT INITIAL.
+          IF NOT line_exists( lt_groups[ table_line = ls_item-group_name ] ).
+            APPEND ls_item-group_name TO lt_groups.
+          ENDIF.
+        ENDLOOP.
+        render_message_view( client  = client
+                             grouped = xsdbool( lines( lt_groups ) > 1 ) ).
+    ENDCASE.
+
+  ENDMETHOD.
+
+
+  METHOD render_message_view.
+
+    "the dialog's state: its most severe message
+    DATA(lv_dialog_state) = `None`.
+    IF line_exists( mt_message_items[ type = `Error` ] ).
+      lv_dialog_state = `Error`.
+    ELSEIF line_exists( mt_message_items[ type = `Warning` ] ).
+      lv_dialog_state = `Warning`.
+    ENDIF.
+
+    DATA(lo_popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+    DATA(lo_msg_dialog) = lo_popup->ele( n  = `FragmentDefinition`
+                                          ns = `core`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+        )->ele( `Dialog`
+            )->a( n = `title`
+                  t = get_text( cs_text-messages )
+            )->a( n = `state`
+                  v = lv_dialog_state
+            )->a( n = `contentWidth`
+                  v = `640px`
+            )->a( n = `contentHeight`
+                  v = `440px`
+            )->a( n = `verticalScrolling`
+                  b = abap_false
+            )->a( n = `resizable`
+                  b = abap_true
+            )->a( n = `draggable`
+                  b = abap_true ).
+
+    lo_msg_dialog->ele( `content`
+        )->ele( `MessageView`
+            )->a( n = `items`
+                  v = client->_bind( mt_message_items )
+            )->a( n = `groupItems`
+                  b = grouped
+            )->ele( `items`
+                )->tag( `MessageItem`
+                    )->a( n = `type`
+                          v = `{TYPE}`
+                    )->a( n = `title`
+                          v = `{TITLE}`
+                    )->a( n = `subtitle`
+                          v = `{SUBTITLE}`
+                    )->a( n = `description`
+                          v = `{DESCRIPTION}`
+                    )->a( n = `groupName`
+                          v = `{GROUP_NAME}` ).
+
+    "closed in the browser - nothing waits for it on the server
+    lo_msg_dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-close )
+            )->a( n = `press`
+                  v = client->follow_up_action( client->cs_event-popup_close ) ).
+
+    client->popup_display( lo_popup->stringify( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD get_max_file_size.
+    result = cv_file_max_size.
+  ENDMETHOD.
+
+
+  METHOD render_file_field.
+
+    FIELD-SYMBOLS <lv_file_name> TYPE any.
+
+    "the file's name, if the record has a field for it
+    DATA(lv_link_text) = get_text( cs_text-download ).
+    IF is_field-lob_file_name_field IS NOT INITIAL AND record IS SUPPLIED.
+      ASSIGN COMPONENT is_field-lob_file_name_field OF STRUCTURE record TO <lv_file_name>.
+      IF sy-subrc = 0 AND <lv_file_name> IS NOT INITIAL.
+        lv_link_text = <lv_file_name>.
+      ENDIF.
+    ENDIF.
+
+    "controls a form takes as they are - a ColumnLayout refuses a box
+    "around them, and the upload control, so that opens in a dialog
+    IF value IS NOT INITIAL.
+      io_container->tag( `Link`
+          )->a( n = `text`
+                t = lv_link_text
+          )->a( n = `press`
+                v = client->_event( val = cv_event_download
+                                    arg = is_field-name ) ).
+    ELSE.
+      io_container->tag( `Text`
+          )->a( n = `text`
+                t = get_text( cs_text-no_file ) ).
+    ENDIF.
+
+    IF editable = abap_true AND is_field-is_readonly = abap_false.
+      io_container->tag( `Button`
+          )->a( n = `icon`
+                v = `sap-icon://upload`
+          )->a( n = `text`
+                t = get_text( cs_text-upload )
+          )->a( n = `tooltip`
+                t = is_field-tooltip
+          )->a( n = `press`
+                v = client->_event( val = cv_event_upload_open
+                                    arg = is_field-name ) ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD render_upload_popup.
+
+    CLEAR: mv_file_value, mv_file_name.
+    DATA(lo_upload_popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+    DATA(lo_upload_dialog) = lo_upload_popup->ele( n  = `FragmentDefinition`
+                                                    ns = `core`
+        )->a( n = `xmlns`
+              v = `sap.m`
+        )->a( n = `xmlns:core`
+              v = `sap.ui.core`
+        )->a( n = `xmlns:z2ui5`
+              v = `z2ui5.cc`
+        )->ele( `Dialog`
+            )->a( n = `title`
+                  t = is_field-label
+            )->a( n = `contentWidth`
+                  v = `450px` ).
+
+    lo_upload_dialog->ele( `content`
+        )->ele( `VBox`
+            )->a( n = `class`
+                  v = `sapUiSmallMargin`
+            )->tag( n  = `FileUploader`
+                    ns = `z2ui5`
+                )->a( n = `value`
+                      v = client->_bind( mv_file_value )
+                )->a( n = `path`
+                      v = client->_bind( mv_file_name )
+                )->a( n = `fileType`
+                      t = z2ui5_cl_rap_util=>get_file_extensions( is_field-lob_mime_types )
+                )->a( n = `uploadButtonText`
+                      t = get_text( cs_text-upload )
+                )->a( n = `upload`
+                      v = client->_event( val = cv_event_upload
+                                          arg = is_field-name ) ).
+
+    lo_upload_dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-cancel )
+            )->a( n = `press`
+                  v = client->_event( cv_event_upload_cancel ) ).
+
+    client->popup_display( lo_upload_popup->stringify( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD apply_upload.
+
+    FIELD-SYMBOLS <lv_content> TYPE any.
+    FIELD-SYMBOLS <lv_mime> TYPE any.
+    FIELD-SYMBOLS <lv_name> TYPE any.
+
+    DATA(lv_field) = to_upper( client->get_event_arg( ) ).
+    DATA(lv_uri) = mv_file_value.
+    DATA(lv_file_name) = mv_file_name.
+    "the browser's copy of the file is not needed any more
+    CLEAR: mv_file_value, mv_file_name.
+
+    "only a file field the floorplan shows, and one that is not read-only
+    READ TABLE it_fields INTO DATA(ls_field) WITH KEY name = lv_field.
+    IF sy-subrc <> 0 OR ls_field-is_large_object = abap_false OR ls_field-is_readonly = abap_true.
       RETURN.
     ENDIF.
-    client->message_box_display( text = concat_lines_of( table = messages sep = cl_abap_char_utilities=>newline )
-                                 type = type ).
+    ASSIGN COMPONENT ls_field-name OF STRUCTURE target TO <lv_content>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    "the browser hands over a path - the name is its last part
+    DATA(lv_slash) = find( val = lv_file_name sub = `/` occ = -1 ).
+    DATA(lv_backslash) = find( val = lv_file_name sub = `\` occ = -1 ).
+    IF lv_backslash > lv_slash.
+      lv_slash = lv_backslash.
+    ENDIF.
+    IF lv_slash >= 0.
+      lv_file_name = substring( val = lv_file_name off = lv_slash + 1 ).
+    ENDIF.
+
+    DATA(ls_file) = z2ui5_cl_rap_util=>parse_data_uri( uri       = lv_uri
+                                                        file_name = lv_file_name ).
+    DATA(lv_max) = get_max_file_size( ).
+    CASE z2ui5_cl_rap_util=>check_file( file     = ls_file
+                                        accepted = ls_field-lob_mime_types
+                                        max_size = lv_max ).
+      WHEN z2ui5_cl_rap_util=>cs_file_check-empty.
+        client->message_box_display( text = get_text( cs_text-file_empty )
+                                     type = `error` ).
+        RETURN.
+      WHEN z2ui5_cl_rap_util=>cs_file_check-too_large.
+        client->message_box_display( text = replace( val  = get_text( cs_text-file_too_large )
+                                                     sub  = `&1`
+                                                     with = |{ lv_max DIV 1024 }| )
+                                     type = `error` ).
+        RETURN.
+      WHEN z2ui5_cl_rap_util=>cs_file_check-type.
+        client->message_box_display( text = |{ get_text( cs_text-file_type ) }: { ls_file-mime_type }|
+                                     type = `error` ).
+        RETURN.
+    ENDCASE.
+
+    TRY.
+        <lv_content> = ls_file-content.
+        IF ls_field-lob_mime_field IS NOT INITIAL.
+          ASSIGN COMPONENT ls_field-lob_mime_field OF STRUCTURE target TO <lv_mime>.
+          IF sy-subrc = 0.
+            <lv_mime> = ls_file-mime_type.
+          ENDIF.
+        ENDIF.
+        IF ls_field-lob_file_name_field IS NOT INITIAL.
+          ASSIGN COMPONENT ls_field-lob_file_name_field OF STRUCTURE target TO <lv_name>.
+          IF sy-subrc = 0.
+            <lv_name> = ls_file-file_name.
+          ENDIF.
+        ENDIF.
+        result = abap_true.
+      CATCH cx_root INTO DATA(lx_upload).
+        client->message_box_display( text = lx_upload->get_text( )
+                                     type = `error` ).
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD download_file.
+
+    FIELD-SYMBOLS <lv_content> TYPE any.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+    DATA lv_content TYPE xstring.
+    DATA lv_mime TYPE string.
+    DATA lv_name TYPE string.
+
+    DATA(lv_field) = to_upper( client->get_event_arg( ) ).
+    READ TABLE it_fields INTO DATA(ls_field) WITH KEY name = lv_field.
+    IF sy-subrc <> 0 OR ls_field-is_large_object = abap_false.
+      RETURN.
+    ENDIF.
+    ASSIGN COMPONENT ls_field-name OF STRUCTURE source TO <lv_content>.
+    IF sy-subrc <> 0 OR <lv_content> IS INITIAL.
+      RETURN.
+    ENDIF.
+    TRY.
+        lv_content = <lv_content>.
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+    IF ls_field-lob_mime_field IS NOT INITIAL.
+      ASSIGN COMPONENT ls_field-lob_mime_field OF STRUCTURE source TO <lv_value>.
+      IF sy-subrc = 0.
+        lv_mime = <lv_value>.
+      ENDIF.
+    ENDIF.
+    IF ls_field-lob_file_name_field IS NOT INITIAL.
+      UNASSIGN <lv_value>.
+      ASSIGN COMPONENT ls_field-lob_file_name_field OF STRUCTURE source TO <lv_value>.
+      IF sy-subrc = 0.
+        lv_name = <lv_value>.
+      ENDIF.
+    ENDIF.
+    IF lv_name IS INITIAL.
+      lv_name = to_lower( ls_field-name ).
+    ENDIF.
+    "contentDispositionPreference is read (lob_disposition), the browser
+    "downloads the file either way - a data URI opened in a new tab is
+    "refused by the browsers
+    client->follow_up_action( val   = client->cs_event-download_b64_file
+                              t_arg = VALUE #( ( z2ui5_cl_rap_util=>to_data_uri( content   = lv_content
+                                                                                 mime_type = lv_mime ) )
+                                               ( lv_name ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD get_default_function_name.
+    result = |GetDefaultsFor{ action }|.
+  ENDMETHOD.
+
+
+  METHOD apply_action_defaults.
+
+    FIELD-SYMBOLS <lv_default> TYPE any.
+    FIELD-SYMBOLS <lv_target> TYPE any.
+
+    IF eml_available( ) = abap_false
+      OR get_capabilities( entity_name = entity_name
+                           context     = context )-is_rap_bo = abap_false.
+      RETURN.
+    ENDIF.
+    DATA(lr_defaults) = z2ui5_cl_rap_eml=>read_action_defaults(
+                          entity_name = entity_name
+                          function    = get_default_function_name( action )
+                          rows        = rows
+                          context     = context
+                          is_static   = is_static_action( entity_name = entity_name
+                                                          action      = action
+                                                          context     = context )
+                          is_draft    = is_draft ).
+    IF lr_defaults IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_defaults->* TO FIELD-SYMBOL(<ls_defaults>).
+    DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_defaults> ) ).
+    LOOP AT lo_struct->components INTO DATA(ls_comp).
+      ASSIGN COMPONENT ls_comp-name OF STRUCTURE <ls_defaults> TO <lv_default>.
+      IF sy-subrc <> 0 OR <lv_default> IS INITIAL.
+        CONTINUE.
+      ENDIF.
+      ASSIGN COMPONENT ls_comp-name OF STRUCTURE param TO <lv_target>.
+      IF sy-subrc = 0 AND <lv_target> IS INITIAL.
+        TRY.
+            <lv_target> = <lv_default>.
+          CATCH cx_root ##NO_HANDLER.
+        ENDTRY.
+      ENDIF.
+    ENDLOOP.
 
   ENDMETHOD.
 

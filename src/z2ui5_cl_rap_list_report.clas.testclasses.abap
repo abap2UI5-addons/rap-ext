@@ -23,6 +23,7 @@ CLASS ltcl_list_report DEFINITION FINAL
     METHODS actions_and_intents        FOR TESTING RAISING cx_static_check.
     METHODS virtual_no_filter          FOR TESTING RAISING cx_static_check.
     METHODS actions_by_permissions     FOR TESTING RAISING cx_static_check.
+    METHODS inbound_filter_presets     FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -202,6 +203,27 @@ CLASS ltcl_list_report IMPLEMENTATION.
     mo_cut->update_action_state( ).
     cl_abap_unit_assert=>assert_equals( exp = VALUE z2ui5_cl_rap_list_report=>ty_t_name_value( ( name = `ACCEPT` value = `false` ) )
                                         act = mo_cut->get_action_enabled( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD inbound_filter_presets.
+
+    "a parameter of a filter field sets its value exactly, one of another
+    "field adds its filter, an unknown one is ignored
+    mo_cut->set_filter_presets( VALUE #( ( name = `status`  value = `O` )
+                                         ( name = `TravelId` value = `42` )
+                                         ( name = `Unknown`  value = `x` ) ) ).
+    mo_cut->apply_filter_presets( ).
+    cl_abap_unit_assert=>assert_equals( act = mo_cut->mt_filter[ name = `STATUS` ]-value
+                                        exp = `=O` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_cut->mt_filter[ name = `TRAVELID` ]-value
+                                        exp = `=42` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_cut->mt_filter[ name = `TRAVELID` ]-label
+                                        exp = `Travel` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_cut->mt_filter )
+                                        exp = 3 ).
+    cl_abap_unit_assert=>assert_initial( mo_cut->mt_filter_preset ).
 
   ENDMETHOD.
 

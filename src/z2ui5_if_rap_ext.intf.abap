@@ -122,4 +122,19 @@ INTERFACE z2ui5_if_rap_ext
     CHANGING
       target      TYPE string.
 
+  "! an inbound parameter of a link or a launchpad tile, before
+  "! z2ui5_cl_rap_start hands it to the floorplan: for a list report or a
+  "! worklist the value of the filter of the field it names (by name,
+  "! case-insensitive), for an object page a key. Change name to the field
+  "! it fills (a semantic object's parameter that is called differently),
+  "! value to translate it, clear name to ignore it - a parameter that
+  "! names no field is ignored anyway (added 2026-10, third round)
+  METHODS map_inbound_parameter DEFAULT IGNORE
+    IMPORTING
+      floorplan   TYPE string
+      entity_name TYPE string
+    CHANGING
+      name        TYPE string
+      value       TYPE string.
+
 ENDINTERFACE.

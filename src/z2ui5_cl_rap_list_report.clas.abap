@@ -116,6 +116,15 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         title         TYPE string OPTIONAL
         max_rows      TYPE i DEFAULT 500.
 
+    "! values for the filters before the list is read - the inbound
+    "! parameters of a navigation (z2ui5_cl_rap_start), by the name of the
+    "! field, case-insensitive; a parameter that names no field is ignored.
+    "! They win over the defaults and the default view (added 2026-10,
+    "! third round)
+    METHODS set_filter_presets
+      IMPORTING
+        params TYPE ty_t_name_value.
+
     "! the number of rows that match the filters (not only the loaded ones)
     DATA mv_count    TYPE string.
     "! the rows - with the selection column when the entity has actions
@@ -156,6 +165,9 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     DATA mt_editing_status TYPE ty_t_variant_item.
 
   PROTECTED SECTION.
+    "! the inbound parameters set_filter_presets got - applied once, when
+    "! the list starts (added 2026-10, third round)
+    DATA mt_filter_preset TYPE ty_t_name_value.
     DATA mv_cds_view TYPE string.
     DATA mv_title    TYPE string.
     DATA mv_max_rows TYPE i.
@@ -281,6 +293,19 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       IMPORTING
         client TYPE REF TO z2ui5_if_client
         param  TYPE REF TO data OPTIONAL.
+
+    "! the rows the pending action runs on: the row of an inline action,
+    "! else the selected rows - a table of the entity (added 2026-10, third
+    "! round)
+    METHODS get_action_rows
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
+    "! the inbound parameters (set_filter_presets) as the values of the
+    "! filters of the fields they name - a field without a filter gets one;
+    "! z2ui5_cl_rap_util=>match_inbound_parameters decides which (added
+    "! 2026-10, third round)
+    METHODS apply_filter_presets.
 
     "! the buttons of it_actions, by position (get_action_entries): a
     "! button per action, its criticality its type, and a MenuButton per
@@ -464,6 +489,35 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD set_filter_presets.
+    mt_filter_preset = params.
+  ENDMETHOD.
+
+
+  METHOD apply_filter_presets.
+
+    LOOP AT z2ui5_cl_rap_util=>match_inbound_parameters( params    = mt_filter_preset
+                                                         it_fields = ms_entity-fields ) INTO DATA(ls_preset).
+      "exactly the value the navigation names - not the "contains" of a
+      "typed text
+      DATA(lv_preset_value) = COND string( WHEN ls_preset-value IS INITIAL THEN ``
+                                           ELSE |={ ls_preset-value }| ).
+      READ TABLE mt_filter ASSIGNING FIELD-SYMBOL(<ls_filter>) WITH KEY name = ls_preset-name.
+      IF sy-subrc = 0.
+        <ls_filter>-value = lv_preset_value.
+        CONTINUE.
+      ENDIF.
+      READ TABLE ms_entity-fields INTO DATA(ls_field) WITH KEY name = ls_preset-name.
+      APPEND VALUE ty_s_filter( name    = ls_field-name
+                                label   = ls_field-label
+                                value   = lv_preset_value
+                                show_vh = xsdbool( ls_field-value_help-entity_name IS NOT INITIAL ) ) TO mt_filter.
+    ENDLOOP.
+    CLEAR mt_filter_preset.
+
+  ENDMETHOD.
+
+
   METHOD z2ui5_if_app~main.
 
     IF client->check_on_init( ).
@@ -525,6 +579,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       "the standard view: the annotations' filters, sort order, columns
       ms_standard = capture_variant( ).
       init_variants( ).
+      "the parameters of an inbound navigation win over the default view
+      apply_filter_presets( ).
       load_data( ).
       render_page( client ).
       RETURN.
@@ -722,6 +778,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
       ASSIGN mr_data->* TO <lt_data>.
       mv_more = xsdbool( lv_count > lines( <lt_data> ) ).
+      "the files stay on the server - the object page reads them (since
+      "2026-10, third round)
+      z2ui5_cl_rap_util=>clear_large_objects( data      = mr_data
+                                              it_fields = ms_entity-fields ).
       apply_row_states( ).
     ELSE.
       mv_count = `0`.
@@ -1431,8 +1491,13 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     DATA(lr_param) = create_action_parameter( entity_name = mv_cds_view
                                               action      = mv_pending_action ).
     IF lr_param IS BOUND.
-      "the parameter first - the action runs on the return (on_navigated)
+      "the parameter first - the action runs on the return (on_navigated);
+      "its default function fills it (since 2026-10, third round)
       ASSIGN lr_param->* TO FIELD-SYMBOL(<ls_param>).
+      apply_action_defaults( EXPORTING entity_name = mv_cds_view
+                                       action      = mv_pending_action
+                                       rows        = get_action_rows( )
+                             CHANGING  param       = <ls_param> ).
       READ TABLE ms_entity-actions INTO DATA(ls_action) WITH KEY name = mv_pending_action.
       DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = <ls_param>
                                                         title = ls_action-label ).
@@ -1447,28 +1512,34 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD execute_action.
+  METHOD get_action_rows.
 
     FIELD-SYMBOLS <ls_row> TYPE any.
     FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
-    DATA lr_rows TYPE REF TO data.
 
     IF mt_pending_keys IS INITIAL.
-      lr_rows = get_selected_rows( entity_name = mv_cds_view
-                                   data        = mr_data ).
-    ELSE.
-      "the row of an inline action, found again by its keys
-      DATA(lr_row) = find_row_by_keys( data       = mr_data
-                                       key_fields = mt_row_key
-                                       key_values = mt_pending_keys ).
-      lr_rows = create_entity_table( mv_cds_view ).
-      IF lr_row IS BOUND AND lr_rows IS BOUND.
-        ASSIGN lr_rows->* TO <lt_rows>.
-        ASSIGN lr_row->* TO <ls_row>.
-        APPEND INITIAL LINE TO <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_new>).
-        MOVE-CORRESPONDING <ls_row> TO <ls_new>.
-      ENDIF.
+      result = get_selected_rows( entity_name = mv_cds_view
+                                  data        = mr_data ).
+      RETURN.
     ENDIF.
+    "the row of an inline action, found again by its keys
+    DATA(lr_row) = find_row_by_keys( data       = mr_data
+                                     key_fields = mt_row_key
+                                     key_values = mt_pending_keys ).
+    result = create_entity_table( mv_cds_view ).
+    IF lr_row IS BOUND AND result IS BOUND.
+      ASSIGN result->* TO <lt_rows>.
+      ASSIGN lr_row->* TO <ls_row>.
+      APPEND INITIAL LINE TO <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_new>).
+      MOVE-CORRESPONDING <ls_row> TO <ls_new>.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD execute_action.
+
+    DATA(lr_rows) = get_action_rows( ).
 
     READ TABLE ms_entity-actions INTO DATA(ls_action) WITH KEY name = mv_pending_action source = `LINEITEM`.
     DATA(ls_result) = run_action( entity_name         = mv_cds_view
@@ -1490,11 +1561,15 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       ELSE.
         show_messages( client   = client
                        messages = ls_result-messages
+                       details  = ls_result-details
+                       fields   = ms_entity-fields
                        type     = `success` ).
       ENDIF.
     ELSE.
       show_messages( client   = client
-                     messages = ls_result-messages ).
+                     messages = ls_result-messages
+                     details  = ls_result-details
+                     fields   = ms_entity-fields ).
     ENDIF.
 
   ENDMETHOD.

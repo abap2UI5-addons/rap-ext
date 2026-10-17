@@ -163,6 +163,27 @@ CLASS z2ui5_cl_rap_eml DEFINITION
       RETURNING
         VALUE(result) TYPE REF TO data.
 
+    "! The default values of an action's parameter: the %param of what the
+    "! default function of the action answers (BDEF `default function
+    "! GetDefaultsFor...` - function is its name), executed with READ
+    "! ENTITIES OPERATIONS for the first instance of rows (a table of the
+    "! entity) - for a static action (is_static) without one. is_draft
+    "! addresses the draft of the instance. Unbound when the business object
+    "! has no such function or it could not be run. The derived types of a
+    "! function (\FUNCTION=...\TYPE=IMPORTING / RESULT) and the operation
+    "! IF_ABAP_BEHV=>OP-R-EXECUTE are written from the documentation and
+    "! read dynamically - docs/system-test.md (added 2026-10, third round)
+    CLASS-METHODS read_action_defaults
+      IMPORTING
+        entity_name   TYPE clike
+        function      TYPE clike
+        rows          TYPE REF TO data OPTIONAL
+        context       TYPE ty_s_context OPTIONAL
+        is_static     TYPE abap_bool DEFAULT abap_false
+        is_draft      TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
   PRIVATE SECTION.
 
     TYPES:
@@ -392,6 +413,18 @@ CLASS z2ui5_cl_rap_eml DEFINITION
     CLASS-METHODS set_control_all
       CHANGING
         instance TYPE data.
+
+    "! one message (msg, an IF_ABAP_BEHV_MESSAGE) into messages and, with
+    "! its severity, the fields of the %element of entry (a response entry,
+    "! when there is one) and target (the entity), into details
+    CLASS-METHODS add_message
+      IMPORTING
+        msg      TYPE any
+        entry    TYPE any OPTIONAL
+        target   TYPE string OPTIONAL
+      CHANGING
+        messages TYPE string_table
+        details  TYPE z2ui5_cl_rap_floorplan=>ty_t_message.
 
 ENDCLASS.
 
@@ -1072,21 +1105,43 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     "a response row names its entity and points at the entries of it; the
     "entries carry %msg, and %element flags the fields a message is about.
     "Read generically - every data reference in the row is followed,
-    "whatever the component is called
+    "whatever the component is called. Since 2026-10 (third round) the
+    "messages of no entity (%other) are collected too: an entry that is a
+    "message itself, and a table of messages in the row - how the dynamic
+    "form hands %other over is not documented (docs/system-test.md)
     FIELD-SYMBOLS <lr_entries> TYPE any.
     FIELD-SYMBOLS <lt_entries> TYPE ANY TABLE.
     FIELD-SYMBOLS <lo_msg> TYPE any.
-    FIELD-SYMBOLS <ls_element> TYPE any.
-    FIELD-SYMBOLS <lv_flag> TYPE any.
+    FIELD-SYMBOLS <lv_entity> TYPE any.
     DATA lr_ref TYPE REF TO data.
+    DATA lv_target TYPE string.
+    DATA lv_kind TYPE abap_typekind.
 
     LOOP AT responses ASSIGNING FIELD-SYMBOL(<ls_response>).
+      CLEAR lv_target.
+      ASSIGN COMPONENT `ENTITY_NAME` OF STRUCTURE <ls_response> TO <lv_entity>.
+      IF sy-subrc = 0.
+        lv_target = <lv_entity>.
+      ENDIF.
       DO.
         ASSIGN COMPONENT sy-index OF STRUCTURE <ls_response> TO <lr_entries>.
         IF sy-subrc <> 0.
           EXIT.
         ENDIF.
-        IF cl_abap_typedescr=>describe_by_data( <lr_entries> )->type_kind <> cl_abap_typedescr=>typekind_dref.
+        lv_kind = cl_abap_typedescr=>describe_by_data( <lr_entries> )->type_kind.
+        IF lv_kind = cl_abap_typedescr=>typekind_table.
+          "%other: a table of messages in the row itself
+          ASSIGN <lr_entries> TO <lt_entries>.
+          LOOP AT <lt_entries> ASSIGNING <lo_msg>.
+            IF cl_abap_typedescr=>describe_by_data( <lo_msg> )->type_kind = cl_abap_typedescr=>typekind_oref.
+              add_message( EXPORTING msg      = <lo_msg>
+                           CHANGING  messages = messages
+                                     details  = details ).
+            ENDIF.
+          ENDLOOP.
+          CONTINUE.
+        ENDIF.
+        IF lv_kind <> cl_abap_typedescr=>typekind_dref.
           CONTINUE.
         ENDIF.
         lr_ref = <lr_entries>.
@@ -1098,45 +1153,73 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
           CONTINUE.
         ENDIF.
         LOOP AT <lt_entries> ASSIGNING FIELD-SYMBOL(<ls_entry>).
-          ASSIGN COMPONENT `%MSG` OF STRUCTURE <ls_entry> TO <lo_msg>.
-          IF sy-subrc <> 0 OR <lo_msg> IS INITIAL.
+          "a message of no instance - an entry that is the message itself
+          IF cl_abap_typedescr=>describe_by_data( <ls_entry> )->type_kind = cl_abap_typedescr=>typekind_oref.
+            add_message( EXPORTING msg      = <ls_entry>
+                                   target   = lv_target
+                         CHANGING  messages = messages
+                                   details  = details ).
             CONTINUE.
           ENDIF.
-          TRY.
-              DATA(lo_message) = CAST if_message( <lo_msg> ).
-              DATA(lv_text) = lo_message->get_text( ).
-              IF lv_text IS INITIAL OR line_exists( messages[ table_line = lv_text ] ).
-                CONTINUE.
-              ENDIF.
-              APPEND lv_text TO messages.
-
-              DATA(ls_detail) = VALUE z2ui5_cl_rap_floorplan=>ty_s_message( text = lv_text type = `error` ).
-              TRY.
-                  ls_detail-type = SWITCH #( CAST if_abap_behv_message( <lo_msg> )->m_severity
-                    WHEN if_abap_behv_message=>severity-warning     THEN `warning`
-                    WHEN if_abap_behv_message=>severity-success     THEN `success`
-                    WHEN if_abap_behv_message=>severity-information THEN `information`
-                    WHEN if_abap_behv_message=>severity-none        THEN `information`
-                    ELSE `error` ).
-                CATCH cx_root ##NO_HANDLER.
-              ENDTRY.
-              UNASSIGN <ls_element>.
-              ASSIGN COMPONENT `%ELEMENT` OF STRUCTURE <ls_entry> TO <ls_element>.
-              IF <ls_element> IS ASSIGNED.
-                DATA(lo_element) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_element> ) ).
-                LOOP AT lo_element->components INTO DATA(ls_comp).
-                  ASSIGN COMPONENT ls_comp-name OF STRUCTURE <ls_element> TO <lv_flag>.
-                  IF sy-subrc = 0 AND <lv_flag> = if_abap_behv=>mk-on.
-                    APPEND CONV string( ls_comp-name ) TO ls_detail-fields.
-                  ENDIF.
-                ENDLOOP.
-              ENDIF.
-              APPEND ls_detail TO details.
-            CATCH cx_root ##NO_HANDLER.
-          ENDTRY.
+          ASSIGN COMPONENT `%MSG` OF STRUCTURE <ls_entry> TO <lo_msg>.
+          IF sy-subrc <> 0.
+            CONTINUE.
+          ENDIF.
+          add_message( EXPORTING msg      = <lo_msg>
+                                 entry    = <ls_entry>
+                                 target   = lv_target
+                       CHANGING  messages = messages
+                                 details  = details ).
         ENDLOOP.
       ENDDO.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD add_message.
+
+    FIELD-SYMBOLS <ls_element> TYPE any.
+    FIELD-SYMBOLS <lv_flag> TYPE any.
+
+    IF msg IS INITIAL.
+      RETURN.
+    ENDIF.
+    TRY.
+        DATA(lo_message) = CAST if_message( msg ).
+        DATA(lv_text) = lo_message->get_text( ).
+        IF lv_text IS INITIAL OR line_exists( messages[ table_line = lv_text ] ).
+          RETURN.
+        ENDIF.
+        APPEND lv_text TO messages.
+
+        DATA(ls_detail) = VALUE z2ui5_cl_rap_floorplan=>ty_s_message( text   = lv_text
+                                                                      type   = `error`
+                                                                      target = target ).
+        TRY.
+            ls_detail-type = SWITCH #( CAST if_abap_behv_message( msg )->m_severity
+              WHEN if_abap_behv_message=>severity-warning     THEN `warning`
+              WHEN if_abap_behv_message=>severity-success     THEN `success`
+              WHEN if_abap_behv_message=>severity-information THEN `information`
+              WHEN if_abap_behv_message=>severity-none        THEN `information`
+              ELSE `error` ).
+          CATCH cx_root ##NO_HANDLER.
+        ENDTRY.
+        IF entry IS SUPPLIED.
+          ASSIGN COMPONENT `%ELEMENT` OF STRUCTURE entry TO <ls_element>.
+          IF sy-subrc = 0.
+            DATA(lo_element) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_element> ) ).
+            LOOP AT lo_element->components INTO DATA(ls_comp).
+              ASSIGN COMPONENT ls_comp-name OF STRUCTURE <ls_element> TO <lv_flag>.
+              IF sy-subrc = 0 AND <lv_flag> = if_abap_behv=>mk-on.
+                APPEND CONV string( ls_comp-name ) TO ls_detail-fields.
+              ENDIF.
+            ENDLOOP.
+          ENDIF.
+        ENDIF.
+        APPEND ls_detail TO details.
+      CATCH cx_root ##NO_HANDLER.
+    ENDTRY.
 
   ENDMETHOD.
 
@@ -1549,6 +1632,111 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
         CONTINUE.
       ENDIF.
       <lv_flag> = if_abap_behv=>mk-on.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD read_action_defaults.
+
+    DATA lt_ops TYPE abp_behv_retrievals_tab.
+    DATA lt_failed TYPE abp_behv_response_tab.
+    DATA lt_reported TYPE abp_behv_response_tab.
+    DATA lr_in TYPE REF TO data.
+    DATA lr_out TYPE REF TO data.
+    DATA lt_kinds TYPE string_table.
+    FIELD-SYMBOLS <lt_in> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_out> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
+    FIELD-SYMBOLS <lv_op> TYPE any.
+    FIELD-SYMBOLS <lv_comp> TYPE any.
+
+    DATA(lv_entity) = to_upper( entity_name ).
+    DATA(lv_function) = to_upper( function ).
+    DATA(lv_bdef) = get_bdef( entity_name = lv_entity
+                              context     = context ).
+    "the operation of a function - read by name, so a release without it
+    "only loses the defaults
+    ASSIGN (`IF_ABAP_BEHV=>OP-R-EXECUTE`) TO <lv_op>.
+    IF sy-subrc <> 0 OR lv_function IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    "a function's derived types are named like an action's (\ACTION=);
+    "\FUNCTION= is tried first
+    lt_kinds = VALUE #( ( `\FUNCTION=` ) ( `\ACTION=` ) ).
+    LOOP AT lt_kinds INTO DATA(lv_kind).
+      TRY.
+          lr_in = create_instances( entity_name = lv_entity
+                                    bdef        = lv_bdef
+                                    type_suffix = |{ lv_kind }{ lv_function }\\TYPE=IMPORTING| ).
+          lr_out = create_instances( entity_name = lv_entity
+                                     bdef        = lv_bdef
+                                     type_suffix = |{ lv_kind }{ lv_function }\\TYPE=RESULT| ).
+          EXIT.
+        CATCH cx_sy_create_data_error.
+          CLEAR: lr_in, lr_out.
+      ENDTRY.
+    ENDLOOP.
+    IF lr_in IS NOT BOUND OR lr_out IS NOT BOUND.
+      RETURN.
+    ENDIF.
+
+    ASSIGN lr_in->* TO <lt_in>.
+    APPEND INITIAL LINE TO <lt_in> ASSIGNING FIELD-SYMBOL(<ls_in>).
+    IF is_static = abap_false.
+      IF rows IS NOT BOUND.
+        RETURN.
+      ENDIF.
+      ASSIGN rows->* TO <lt_rows>.
+      IF lines( <lt_rows> ) = 0.
+        RETURN.
+      ENDIF.
+      LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+        MOVE-CORRESPONDING <ls_row> TO <ls_in>.
+        EXIT.
+      ENDLOOP.
+      IF is_draft = abap_true.
+        set_draft( CHANGING instance = <ls_in> ).
+      ENDIF.
+    ENDIF.
+    ASSIGN COMPONENT `%CID` OF STRUCTURE <ls_in> TO <lv_comp>.
+    IF sy-subrc = 0.
+      <lv_comp> = `Z2UI5_DEFAULTS_1`.
+    ENDIF.
+
+    APPEND INITIAL LINE TO lt_ops ASSIGNING FIELD-SYMBOL(<ls_op>).
+    <ls_op>-op = <lv_op>.
+    <ls_op>-entity_name = lv_entity.
+    <ls_op>-instances = lr_in.
+    <ls_op>-results = lr_out.
+    "the function's name - SUB_NAME, read by name like the operation
+    ASSIGN COMPONENT `SUB_NAME` OF STRUCTURE <ls_op> TO <lv_comp>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    <lv_comp> = lv_function.
+
+    DATA(lv_class) = cs_dynamic-read.
+    DATA(lv_method) = `READ`.
+    TRY.
+        CALL METHOD (lv_class)=>(lv_method)
+          CHANGING
+            operations = lt_ops
+            failed     = lt_failed
+            reported   = lt_reported.
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+
+    ASSIGN lr_out->* TO <lt_out>.
+    LOOP AT <lt_out> ASSIGNING FIELD-SYMBOL(<ls_out>).
+      ASSIGN COMPONENT `%PARAM` OF STRUCTURE <ls_out> TO FIELD-SYMBOL(<ls_param>).
+      IF sy-subrc = 0.
+        CREATE DATA result LIKE <ls_param>.
+        ASSIGN result->* TO FIELD-SYMBOL(<ls_result>).
+        <ls_result> = <ls_param>.
+      ENDIF.
+      EXIT.
     ENDLOOP.
 
   ENDMETHOD.

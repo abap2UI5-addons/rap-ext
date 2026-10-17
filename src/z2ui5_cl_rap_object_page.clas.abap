@@ -483,6 +483,16 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
       RETURNING
         VALUE(result) TYPE z2ui5_cl_rap_util=>ty_s_field_info.
 
+    "! a record opened in edit mode (constructor editable, a link with
+    "! mode=edit): the edit mode stays only where Edit would be allowed -
+    "! not locked by another user's draft, updatable, not hidden by the
+    "! annotation @UI.updateHidden - and a draft business object starts its draft
+    "! (start_draft; an existing draft asks what to do with it). Else the
+    "! record shows in display mode (added 2026-10, third round)
+    METHODS apply_start_mode
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
     "! the draft of the record, read back (READ ENTITIES with %is_draft) -
     "! unbound when there is none or it cannot be read
     METHODS read_own_draft
@@ -574,7 +584,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ms_caps = get_entity_capabilities( entity_name = mv_entity_name
                                          context     = ms_context ).
 
-      IF mt_keys IS NOT INITIAL.
+      "a record handed over without its files (a list does not carry them)
+      "is read again with them (since 2026-10, third round)
+      IF mt_keys IS NOT INITIAL
+        OR ( mv_is_create = abap_false AND line_exists( ms_entity-fields[ is_large_object = abap_true ] ) ).
         reload_data( ).
       ENDIF.
 
@@ -591,6 +604,13 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       "backup original data for cancel
       CREATE DATA ms_data_backup LIKE ms_data->*.
       ms_data_backup->* = ms_data->*.
+
+      "opened in edit mode (editable, e.g. by a link with mode=edit): only
+      "where the record may be changed, a draft business object in a draft
+      "of its own (since 2026-10, third round)
+      IF mv_editable = abap_true AND mv_is_create = abap_false AND mv_draft = abap_false.
+        apply_start_mode( client ).
+      ENDIF.
 
       IF mv_title IS INITIAL.
         IF ms_entity-header_info-type_name IS NOT INITIAL.
@@ -614,6 +634,45 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     IF client->check_on_event( cv_event_suggest ).
       load_suggestions( client    = client
                         it_fields = ms_entity-fields ).
+      RETURN.
+    ENDIF.
+
+    "the file of a file field (@Semantics.largeObject; since 2026-10,
+    "third round): taken into the record - written with the next Save -,
+    "or downloaded
+    IF client->check_on_event( cv_event_upload_open ).
+      READ TABLE ms_entity-fields INTO DATA(ls_upload_field) WITH KEY name = to_upper( client->get_event_arg( ) ).
+      IF sy-subrc = 0 AND mv_editable = abap_true AND ls_upload_field-is_large_object = abap_true.
+        render_upload_popup( client   = client
+                             is_field = get_field_for_edit( ls_upload_field ) ).
+      ENDIF.
+      RETURN.
+    ENDIF.
+    IF client->check_on_event( cv_event_upload_cancel ).
+      client->popup_destroy( ).
+      RETURN.
+    ENDIF.
+    IF client->check_on_event( cv_event_upload ).
+      client->popup_destroy( ).
+      IF mv_editable = abap_true.
+        DATA(lt_upload_fields) = ms_entity-fields.
+        LOOP AT lt_upload_fields ASSIGNING FIELD-SYMBOL(<ls_upload_field>).
+          <ls_upload_field> = get_field_for_edit( <ls_upload_field> ).
+        ENDLOOP.
+        DATA(lv_taken) = apply_upload( EXPORTING client    = client
+                                                 it_fields = lt_upload_fields
+                                       CHANGING  target    = ms_data->* ).
+        IF lv_taken = abap_true.
+          client->message_toast_display( get_text( cs_text-file_uploaded ) ).
+        ENDIF.
+      ENDIF.
+      render_page( client ).
+      RETURN.
+    ENDIF.
+    IF client->check_on_event( cv_event_download ).
+      download_file( client    = client
+                     it_fields = ms_entity-fields
+                     source    = ms_data->* ).
       RETURN.
     ENDIF.
 
@@ -643,7 +702,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                                    is_draft  = abap_true ).
         IF ls_leave_discard-success = abap_false.
           show_messages( client   = client
-                         messages = ls_leave_discard-messages ).
+                         messages = ls_leave_discard-messages
+                         details  = ls_leave_discard-details
+                         fields   = ms_entity-fields ).
           RETURN.
         ENDIF.
         mv_draft = abap_false.
@@ -702,7 +763,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                              is_draft  = abap_true ).
         IF ls_discard-success = abap_false.
           show_messages( client   = client
-                         messages = ls_discard-messages ).
+                         messages = ls_discard-messages
+                         details  = ls_discard-details
+                         fields   = ms_entity-fields ).
           RETURN.
         ENDIF.
         IF start_draft( client ) = abap_true.
@@ -725,7 +788,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                             is_draft  = abap_true ).
         IF ls_cancel-success = abap_false.
           show_messages( client   = client
-                         messages = ls_cancel-messages ).
+                         messages = ls_cancel-messages
+                         details  = ls_cancel-details
+                         fields   = ms_entity-fields ).
           RETURN.
         ENDIF.
         mv_draft = abap_false.
@@ -923,7 +988,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
     IF result = abap_false.
       show_messages( client   = client
-                     messages = ls_result-messages ).
+                     messages = ls_result-messages
+                     details  = ls_result-details
+                     fields   = ms_entity-fields ).
     ENDIF.
 
   ENDMETHOD.
@@ -938,7 +1005,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     result = ls_result-success.
     IF result = abap_false.
       show_messages( client   = client
-                     messages = ls_result-messages ).
+                     messages = ls_result-messages
+                     details  = ls_result-details
+                     fields   = ms_entity-fields ).
     ENDIF.
 
   ENDMETHOD.
@@ -1208,6 +1277,24 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD apply_start_mode.
+
+    IF ms_draft-state = z2ui5_cl_rap_util=>cs_editing_status-locked
+      OR ms_caps-can_update = abap_false
+      OR ms_perm-can_update = abap_false
+      OR is_hidden_by_annotation( value = ms_entity-update_hidden
+                                  row   = ms_data->* ) = abap_true.
+      mv_editable = abap_false.
+      RETURN.
+    ENDIF.
+    "the decision about an existing draft comes back as draft_decision
+    IF is_draft_enabled( get_bdef( ) ) = abap_true AND start_draft( client ) = abap_false.
+      mv_editable = abap_false.
+    ENDIF.
+
+  ENDMETHOD.
+
+
   METHOD start_draft.
 
     DATA(ls_result) = run_draft_action( bdef      = get_bdef( )
@@ -1241,7 +1328,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     mt_messages = ls_result-details.
     IF ls_result-success = abap_false.
       show_messages( client   = client
-                     messages = ls_result-messages ).
+                     messages = ls_result-messages
+                     details  = ls_result-details
+                     fields   = ms_entity-fields ).
       RETURN.
     ENDIF.
     "the draft has the changes now - the next change is compared with it
@@ -1255,7 +1344,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     IF ls_result-success = abap_false.
       "the draft keeps the changes, the page stays in edit mode
       show_messages( client   = client
-                     messages = ls_result-messages ).
+                     messages = ls_result-messages
+                     details  = ls_result-details
+                     fields   = ms_entity-fields ).
       RETURN.
     ENDIF.
 
@@ -1456,6 +1547,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD on_action.
 
+    FIELD-SYMBOLS <lt_record> TYPE STANDARD TABLE.
+
     "only an action this page offers, whatever the event names
     mv_pending_action = client->get_event_arg( ).
     CLEAR mv_pending_child.
@@ -1469,8 +1562,21 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                               action      = mv_pending_action
                                               context     = ms_context ).
     IF lr_param IS BOUND.
-      "the parameter first - the action runs on the return
+      "the parameter first - the action runs on the return; its default
+      "function fills it for this record (since 2026-10, third round)
       ASSIGN lr_param->* TO FIELD-SYMBOL(<ls_param>).
+      DATA(lr_record) = create_entity_table( mv_entity_name ).
+      IF lr_record IS BOUND.
+        ASSIGN lr_record->* TO <lt_record>.
+        APPEND INITIAL LINE TO <lt_record> ASSIGNING FIELD-SYMBOL(<ls_record>).
+        MOVE-CORRESPONDING ms_data->* TO <ls_record>.
+      ENDIF.
+      apply_action_defaults( EXPORTING entity_name = mv_entity_name
+                                       action      = mv_pending_action
+                                       rows        = lr_record
+                                       context     = ms_context
+                                       is_draft    = mv_draft
+                             CHANGING  param       = <ls_param> ).
       DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = <ls_param>
                                                         title = ls_action-label ).
       lo_dialog->set_extension( mo_ext ).
@@ -1541,17 +1647,24 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ELSE.
         show_messages( client   = client
                        messages = ls_result-messages
+                       details  = ls_result-details
+                       fields   = ms_entity-fields
                        type     = `success` ).
       ENDIF.
     ELSE.
       show_messages( client   = client
-                     messages = ls_result-messages ).
+                     messages = ls_result-messages
+                     details  = ls_result-details
+                     fields   = ms_entity-fields ).
     ENDIF.
 
   ENDMETHOD.
 
 
   METHOD on_child_action.
+
+    FIELD-SYMBOLS <ls_children> TYPE any.
+    FIELD-SYMBOLS <lt_children> TYPE any.
 
     "arg 1 the section's component, arg 2 the action - one the table offers
     READ TABLE mt_child INTO DATA(ls_child) WITH KEY component = client->get_event_arg( ).
@@ -1571,8 +1684,26 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                               action      = mv_pending_action
                                               context     = ls_context ).
     IF lr_param IS BOUND.
-      "the parameter first - the action runs on the return
+      "the parameter first - the action runs on the return; its default
+      "function fills it for the first selected row (since 2026-10, third
+      "round)
       ASSIGN lr_param->* TO FIELD-SYMBOL(<ls_param>).
+      DATA lr_child_rows TYPE REF TO data.
+      IF mr_child_rows IS BOUND.
+        ASSIGN mr_child_rows->* TO <ls_children>.
+        ASSIGN COMPONENT ls_child-component OF STRUCTURE <ls_children> TO <lt_children>.
+        IF sy-subrc = 0.
+          lr_child_rows = REF #( <lt_children> ).
+          lr_child_rows = get_selected_rows( entity_name = ls_child-entity-name
+                                             data        = lr_child_rows ).
+        ENDIF.
+      ENDIF.
+      apply_action_defaults( EXPORTING entity_name = ls_child-entity-name
+                                       action      = mv_pending_action
+                                       rows        = lr_child_rows
+                                       context     = ls_context
+                                       is_draft    = mv_draft
+                             CHANGING  param       = <ls_param> ).
       DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = <ls_param>
                                                         title = ls_action-label ).
       lo_dialog->set_extension( mo_ext ).
@@ -1638,11 +1769,15 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ELSE.
         show_messages( client   = client
                        messages = ls_result-messages
+                       details  = ls_result-details
+                       fields   = ms_entity-fields
                        type     = `success` ).
       ENDIF.
     ELSE.
       show_messages( client   = client
-                     messages = ls_result-messages ).
+                     messages = ls_result-messages
+                     details  = ls_result-details
+                     fields   = ms_entity-fields ).
     ENDIF.
 
   ENDMETHOD.
@@ -2543,7 +2678,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                             editable         = abap_true
                             vh_event         = cs_event-value_help
                             value_state      = lv_value_state
-                            value_state_text = lv_value_state_text ).
+                            value_state_text = lv_value_state_text
+                            record           = ms_data->* ).
 
       "=== DISPLAY MODE: render read-only controls ===
       ELSE.
@@ -2551,8 +2687,17 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         DATA(lv_display_val) = format_value( is_field = ls_field
                                              val      = <field> ).
 
+        "a file (@Semantics.largeObject) -> a link that downloads it
+        IF ls_field-is_large_object = abap_true.
+          render_file_field( io_container = lo_form
+                             is_field     = ls_field
+                             client       = client
+                             value        = <field>
+                             record       = ms_data->*
+                             editable     = abap_false ).
+
         "criticality -> ObjectStatus
-        IF ls_field-datapoint_crit_field IS NOT INITIAL.
+        ELSEIF ls_field-datapoint_crit_field IS NOT INITIAL.
           lo_form->tag( `ObjectStatus`
               )->a( n = `text`
                     t = lv_display_val
