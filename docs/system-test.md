@@ -18,7 +18,7 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
       `z2ui5_cl_rap_variant` and the table `z2ui5_t_rap_var` (its
       sidecar was written by hand, after the core's exported `z2ui5_t_01`)
 - [ ] the text pool of `z2ui5_cl_rap_floorplan` arrived (SE24 > Goto > Text
-      Elements, 53 entries); an English logon shows its texts
+      Elements, 62 entries); an English logon shows its texts
 - [ ] **unverified syntax**: `z2ui5_cl_rap_eml_perm` (`GET PERMISSIONS
       OPERATIONS ... FAILED ... REPORTED`, operand `ABP_BEHV_PERMISSIONS_TAB`),
       `z2ui5_cl_rap_eml_read` (`READ ENTITIES OPERATIONS ... FAILED ...
@@ -117,6 +117,45 @@ instance feature control on `acceptTravel` / `rejectTravel` and Edit).
       second save is refused with "changed meanwhile"; check that the field
       compared (`@Semantics.systemDateTime.localInstanceLastChangedAt`, else
       `.lastChangedAt`) is the BDEF's `etag master`
+
+## 3b · Messages, action dialogs, files
+
+- [ ] a save with an error on a field and a warning: the dialog lists both
+      with their types and the field's label, the field is marked in edit
+      mode; a save that only reports success shows a toast; a success next
+      to an error is not shown
+- [ ] a message of `%other` (a validation that reports without an
+      instance, `APPEND VALUE #( %msg = ... ) TO reported-%other`): it is
+      listed - note how the dynamic `REPORTED` carries it (an entry that is
+      the message, or a table in the response row; `collect_messages`
+      reads both)
+- [ ] two messages of different entities (the travel and a booking): the
+      view groups them by entity
+- [ ] the Close button closes the message dialog (a frontend event,
+      nothing reaches the server)
+- [ ] an action with `default function GetDefaultsFor<Action>` in its BDEF:
+      the dialog opens with the function's values - for an instance action
+      of the selected row (and of the object page's record, also of its
+      draft), for a static one without a row. Note which derived types exist
+      (`\BDEF=..\ENTITY=..\FUNCTION=<name>\TYPE=IMPORTING` / `RESULT`, or
+      `\ACTION=`), that `IF_ABAP_BEHV=>OP-R-EXECUTE` and the `SUB_NAME` of
+      `ABP_BEHV_RETRIEVALS_TAB` exist, and that RAP names the function
+      `GetDefaultsFor` + the action (else `get_default_function_name`)
+- [ ] an abstract entity with an abstract BDEF and `field ( mandatory )`:
+      does `GET PERMISSIONS` answer for it (the field is required in the
+      dialog)? If not, the mandatory parameter is only checked by RAP - note
+      it (ROADMAP 12)
+- [ ] a `@Semantics.largeObject` field: Upload opens the dialog, a file is
+      taken (MIME type and file name filled), Save writes it (also through a
+      draft); the link downloads it with its name; a file over the limit and
+      one of a type not in `acceptableMimeTypes` are refused; check the
+      MIME type the browser hands over for a PDF and an image
+- [ ] a list report of the entity: its rows carry no file content (the
+      browser's JSON), the object page shows the file after a row press
+- [ ] a file parameter of an action (a `@Semantics.largeObject` field in
+      the abstract entity): upload in the dialog, the action receives it
+- [ ] the size of a file the roundtrip carries (a data URI in JSON): a 5 MB
+      file arrives - note the limit the ICF service or the core sets
 
 ## 4 · RAP, draft (`/DMO/C_TRAVEL_A_D`)
 
@@ -259,5 +298,12 @@ and a projection with a virtual element
 
 - [ ] `?app_start=z2ui5_cl_rap_test_start&floorplan=OBJECT_PAGE&entity=I_COUNTRY&Country=DE`
       opens Germany, and `entity=I_LANGUAGE` is refused
+- [ ] `...&floorplan=LIST_REPORT&entity=/DMO/C_TRAVEL_PROCESSOR_M&agencyid=070001`
+      opens the list filtered by the agency (`=070001` in the filter);
+      `&unknown=1` is ignored; a launchpad tile's startup parameters arrive
+      the same way (`t_comp_params`)
+- [ ] `...&entity=/DMO/C_TRAVEL_A_D&TravelUUID=...&mode=edit` opens the
+      record in edit mode in a draft; another user's draft opens it in
+      display mode
 - [ ] the object page's link button copies a link that opens the record again
       (the app state link without `get_start_app`, the start app's with it)

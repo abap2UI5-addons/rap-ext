@@ -49,6 +49,18 @@ clicked through in an SAP system yet** - that is the first open item, and
     not have - a virtual element stays no filter field. Likewise a
     **fuzzy search** (`@Search.fuzzinessThreshold`, HANA only) and
     **parameters of a custom entity** (`get_parameters` answers none).
+11. **XLSX export** next to the CSV export: no spreadsheet writer is part of
+    every release - `CL_XLSX_DOCUMENT` is on-premise only and
+    `XCO_CP_XLSX` is not in the API set abaplint checks against, so either
+    would be a dynamic call no gate reads; the CSV (UTF-8 with BOM) opens in
+    every spreadsheet. A decision first.
+12. **What RAP answers for the newer dynamic paths** (docs/system-test.md,
+    3b): the derived types of a default function (`\FUNCTION=` or
+    `\ACTION=`, `IF_ABAP_BEHV=>OP-R-EXECUTE`, the `SUB_NAME` of a retrieval),
+    how `%other` arrives in a dynamic `REPORTED`, and whether `GET
+    PERMISSIONS` answers `field ( mandatory )` of an abstract BDEF - no
+    other way to read it is known here (the BDEF source has no readable
+    table, open item 3).
 
 ### How the dynamic EML statements were unblocked
 
@@ -68,6 +80,24 @@ like the others - is still the better one; the classes go when it lands.
 
 ### 2026-10, third round
 
+- **Messages by severity**: success and information as a toast, a single
+  message of the floorplan as a message box, everything else in a
+  `sap.m.MessageView` dialog - each message with its type, its fields and
+  its entity; a success is left out when there is an error; the fields keep
+  their value state. The messages of `REPORTED` without an entity
+  (`%other`) are collected too.
+- **Action dialogs**: the default values of a BDEF `default function
+  GetDefaultsFor<Action>` (executed for the first selected row, the record,
+  or statically), mandatory parameters by `GET PERMISSIONS` on the abstract
+  entity where RAP answers it.
+- **Files** (`@Semantics.largeObject`, `@Semantics.mimeType`): download link,
+  upload dialog with the core's upload control in the object page and the
+  action dialog, MIME type and file name filled, size and type checked on
+  the server; the list report keeps files on the server.
+- **Inbound navigation**: `z2ui5_cl_rap_start` hands its parameters to the
+  list report and the worklist as filter values (case-insensitive, unknown
+  ones ignored, `z2ui5_if_rap_ext~map_inbound_parameter` maps them), and
+  `mode=edit` opens the object page in edit mode.
 - **Feature control** (`GET PERMISSIONS`, formerly open item 2): global,
   static and instance permissions - Create, Edit, Delete, create by
   association, actions (disabled buttons; per row in the list report, by

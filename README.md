@@ -173,13 +173,14 @@ ENDCLASS.
 ```
 
 Overridable steps per floorplan:
-- **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `on_action`, `execute_action`, `render_action_buttons`, `open_created`, `on_navigated`, `load_data`, `get_where_clause`, `get_line_item_fields`, `get_selection_fields`, `get_row_key_fields`, `get_line_item_actions`, `get_line_item_intents`, `get_visible_columns`, `get_missing_filters`, `on_nav_path`, `on_intent`, `on_export`, `render_export_button`, `init_variants`, `render_variant_controls`, `render_variant_popup`, `render_column_popup`, `on_variant_event`, `capture_variant`, `apply_variant`, `apply_row_states`, `fill_draft_status`, `update_action_state`, `get_action_enabled`, `has_row_column`, `on_event`
+- **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `on_action`, `execute_action`, `render_action_buttons`, `open_created`, `on_navigated`, `load_data`, `get_where_clause`, `get_line_item_fields`, `get_selection_fields`, `get_row_key_fields`, `get_line_item_actions`, `get_line_item_intents`, `get_visible_columns`, `get_missing_filters`, `on_nav_path`, `on_intent`, `on_export`, `render_export_button`, `init_variants`, `get_action_rows`, `apply_filter_presets`, `render_variant_controls`, `render_variant_popup`, `render_column_popup`, `on_variant_event`, `capture_variant`, `apply_variant`, `apply_row_states`, `fill_draft_status`, `update_action_state`, `get_action_enabled`, `has_row_column`, `on_event`
 - **Worklist**: everything of the list report (it is a subclass of it), plus `load_segments`
-- **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_content`, `render_section_form`, `render_section_fields`, `render_section_table`, `get_sections`, `save_data`, `delete_data`, `reload_data`, `load_child_rows`, `get_association_target`, `get_child_filter`, `get_child_context`, `on_child_create`, `get_bdef`, `get_root_keys`, `get_own_keys`, `start_draft`, `save_draft`, `find_created_record`, `get_link`, `on_action`, `execute_action`, `get_record_actions`, `get_identification_fields`, `render_section_actions`, `render_action_buttons`, `on_child_action`, `execute_child_action`, `open_created`, `on_child_row`, `format_value`, `load_permissions`, `get_field_for_edit`, `read_own_draft`, `read_draft_status`, `resume_draft`, `render_draft_info`, `get_disabled_actions`, `on_event`
+- **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_content`, `render_section_form`, `render_section_fields`, `render_section_table`, `get_sections`, `save_data`, `delete_data`, `reload_data`, `load_child_rows`, `get_association_target`, `get_child_filter`, `get_child_context`, `on_child_create`, `get_bdef`, `get_root_keys`, `get_own_keys`, `start_draft`, `save_draft`, `find_created_record`, `get_link`, `on_action`, `execute_action`, `get_record_actions`, `get_identification_fields`, `render_section_actions`, `render_action_buttons`, `on_child_action`, `execute_child_action`, `open_created`, `on_child_row`, `format_value`, `load_permissions`, `get_field_for_edit`, `read_own_draft`, `read_draft_status`, `resume_draft`, `render_draft_info`, `get_disabled_actions`, `apply_start_mode`, `on_event`
 - **Overview Page**: `render_page`, `render_table_card`, `render_kpi_card`, `render_chart_card`, `render_card_link`, `load_all_cards`, `load_kpi_value`, `load_chart_rows`, `collect_card_rows`, `display`, `on_card`, `on_card_row`, `on_event`
 - **Value Help**: `render_dialog`, `render_filter_dialog`, `load_data`, `get_where_clause`, `on_confirm`, `on_event`
-- **Action Dialog**: `render_action_dialog`, `get_control_for_field`, `render_value_help`, `handle_value_help_confirm`, `apply_default_values`, `get_missing_fields`, `on_event`
-- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `get_read_info`, `query_rows`, `calculate_virtual_elements`, `adjust_virtual_order_by`, `aggregate_rows`, `get_load_error`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `is_static_action`, `get_action_entries`, `get_action_button_type`, `is_hidden_by_annotation`, `navigate_to_intent`, `read_association_target`, `get_permissions`, `get_row_permissions`, `get_keys_of_row`, `read_drafts`, `get_etag_field`, `check_etag`, `get_text`, ...
+- **Action Dialog**: `render_action_dialog`, `get_control_for_field`, `render_value_help`, `handle_value_help_confirm`, `apply_default_values`, `get_mandatory_parameters`, `apply_mandatory_parameters`, `get_missing_fields`, `on_event`
+- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `get_read_info`, `query_rows`, `calculate_virtual_elements`, `adjust_virtual_order_by`, `aggregate_rows`, `get_load_error`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `is_static_action`, `get_action_entries`, `get_action_button_type`, `is_hidden_by_annotation`, `navigate_to_intent`, `read_association_target`, `get_permissions`, `get_row_permissions`, `get_keys_of_row`, `read_drafts`, `get_etag_field`, `check_etag`, `show_messages`, `render_message_view`, `render_file_field`, `render_upload_popup`, `apply_upload`, `download_file`, `get_max_file_size`, `get_default_function_name`, `apply_action_defaults`, `get_text`, ...
+- **Deep links** (`z2ui5_cl_rap_start`): `get_allowed_entities`, `get_extension`, `get_parameters`, `map_parameters`, `open`, `render_message`
 
 ## Extension points without a subclass
 
@@ -245,6 +246,7 @@ client->nav_app_call( lo_report ).
 | `resolve_association` | the target entity of a `#LINEITEM_REFERENCE` facet - decided before the DDL source is asked |
 | `adjust_capabilities` | what may be written: switch on the writes of a database table, withhold an operation of a business object |
 | `get_start_app` | the `z2ui5_cl_rap_start` subclass whose links the object page copies (see "Deep links") |
+| `map_inbound_parameter` | a parameter of a link or a launchpad tile before `z2ui5_cl_rap_start` uses it - rename it to the field it fills, change its value, clear its name to ignore it |
 | `extend_view` | add controls at fixed places (`z2ui5_cl_rap_floorplan=>cs_spot`): the table toolbar, the object page's header actions and sections, the dialog's content, the overview's cards - their events arrive in `on_event` first |
 
 The built-in texts are German for a German logon (`sy-langu` `D`) and
@@ -290,6 +292,8 @@ and qualifiers are read per entry:
 | `@Semantics.user.createdBy`, `.systemDateTime.createdAt` | a record created with late numbering is found again by them |
 | `@Semantics.systemDateTime.localInstanceLastChangedAt`, `.lastChangedAt` | the field of the optimistic check before an update without a draft (the first one, else the second) |
 | `@Semantics.user.lastChangedBy` | of a draft: whose draft it is - another user's locks the record |
+| `@Semantics.largeObject` (`mimeType`, `fileName`, `acceptableMimeTypes`, `contentDispositionPreference`), `@Semantics.mimeType` | a file field (a `RAWSTRING`): a link that downloads it, in edit mode and in the action dialog an Upload button; the MIME type and file name go into their fields; the size (`get_max_file_size`, 5 MB) and the type are checked on the server (see "Files") |
+| BDEF `default function GetDefaultsFor<Action>` | the default values of the action's parameter dialog (see "Writing") |
 | BDEF feature control (via `GET PERMISSIONS`) | `features`, `authorization`, `field ( readonly )`, `readonly : update`, `mandatory`, `mandatory : create`, internal operations - what is offered, enabled and accepted |
 | `@EndUserText.label` / `.quickInfo` | labels; the quick info is the tooltip of the label in the object page's forms and the action dialog and of the column headers |
 
@@ -445,6 +449,56 @@ are in three small classes of their own (`z2ui5_cl_rap_eml_perm`, `_read`,
 `_key`) that no offline gate reads, called dynamically: on a system where
 one does not activate, only its feature is lost.
 
+**Messages by severity** (since 2026-10, third round): what a write reports
+is shown by its severity - only success and information messages as a
+toast; one message of the floorplan itself (no field, no entity) as a
+message box; everything else in a dialog with a `sap.m.MessageView` that
+lists each message with its own type, the labels of the fields it names
+(`%element`) as subtitle and, when there are several, grouped by entity. A
+success message is left out when there is an error. The messages of
+`REPORTED` without an entity (`%other`) are collected too. The fields a
+message names keep their value state in edit mode. `show_messages`
+decides it (`z2ui5_cl_rap_util=>prepare_messages`, `get_message_display`).
+
+**Action dialogs**: the parameter dialog of an action is filled by its
+**default function** (`default function GetDefaultsFor<Action>` in the BDEF):
+before the dialog opens it is executed (`READ ENTITIES OPERATIONS`, through
+`z2ui5_cl_rap_eml_read`) for the first selected row, the record of the object
+page or - for a static action - without one, and its result fills the
+parameter's empty fields; `@UI.defaultValue` fills what is still empty.
+`get_default_function_name` names another function. A parameter is mandatory
+by `@ObjectModel.mandatory`, the extension, or - where `GET PERMISSIONS`
+answers for the abstract entity - by its BDEF's `field ( mandatory )`
+(`get_mandatory_parameters`; whether RAP answers that for an abstract entity
+is for the system test).
+
+### Files
+
+A field with `@Semantics.largeObject` (a `RAWSTRING`) is a file: the object
+page shows a link that downloads it (named by its `fileName` field), and in
+edit mode an Upload button opens a dialog with the core's upload control
+(`z2ui5.cc.FileUploader`). The file is taken into the record - its MIME type
+and file name into their fields - and written with the next Save (or into
+the draft). The server checks it: its size (`get_max_file_size`, by default
+`cv_file_max_size`, 5 MB) and its type (`acceptableMimeTypes`, `image/*`
+included; a browser that names no type is judged by the file's extension);
+the file dialog offers the known extensions of the accepted types. A file
+parameter of an action is the same: a `@Semantics.largeObject` field of the
+abstract entity. The list report does not send files to the browser - the
+object page reads its record again with them. `contentDispositionPreference`
+is read; the file is downloaded either way (a browser refuses to open a
+data URI in a new tab).
+
+```cds
+@Semantics.largeObject: { mimeType: 'MimeType', fileName: 'FileName',
+                          acceptableMimeTypes: [ 'image/png', 'application/pdf' ],
+                          contentDispositionPreference: #ATTACHMENT }
+Attachment : abap.rawstring(0);
+@Semantics.mimeType: true
+MimeType   : abap.char(128);
+FileName   : abap.char(128);
+```
+
 ## Filter syntax
 
 The filter bar (and `build_filter_condition`) understands:
@@ -596,9 +650,23 @@ parameters of a launchpad tile - so a link outlives the abap2UI5 draft:
 ```
 
 `floorplan` is `OBJECT_PAGE` (the default when keys are given),
-`LIST_REPORT` or `WORKLIST`; every other parameter is a key. A URL can name
-any entity, so `z2ui5_cl_rap_start` opens none by itself - a subclass lists
-the entities it may open:
+`LIST_REPORT` or `WORKLIST`; every other parameter is a key of the object
+page - and, for a list report or a worklist, the value of the filter of the
+field it names (case-insensitive; a field outside the filter bar gets a
+filter of its own, a parameter that names no field is ignored), applied
+over the default view (`set_filter_presets`). `mode=edit` opens the object
+page in edit mode - a draft business object in a draft of its own - where
+Edit would be allowed; `mode` is therefore no key name. A semantic object's
+parameters that are called differently are mapped by
+`z2ui5_if_rap_ext~map_inbound_parameter` (or a redefined `map_parameters`):
+
+```
+...?app_start=zcl_my_rap_start&floorplan=LIST_REPORT&entity=/DMO/C_TRAVEL_PROCESSOR_M&AgencyID=070001
+...?app_start=zcl_my_rap_start&entity=I_COUNTRY&Country=DE&mode=edit
+```
+
+A URL can name any entity, so `z2ui5_cl_rap_start` opens none by itself - a
+subclass lists the entities it may open:
 
 ```abap
 CLASS zcl_my_rap_start DEFINITION PUBLIC INHERITING FROM z2ui5_cl_rap_start
@@ -782,6 +850,24 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   (`get_field_control`, `get_instance_permissions`, `get_draft_status`, ...).
   The derived type of a create by association is tried as `\ASSOC=` (the
   documented form) before `\ASSOCIATION=`.
+- Messages, files, inbound navigation: `show_messages` shows by severity
+  (a toast, a message box or a message view) instead of one message box,
+  and has the new optional `details` and `fields`; the floorplan's
+  `ty_s_message` is now `z2ui5_cl_rap_util=>ty_s_message` (the same
+  components, `target` appended). `render_field_input` has the new optional
+  `record` and draws a file field as a link and an Upload button. The list
+  report clears the files of its rows (`clear_large_objects`), and the
+  object page reads a record it got without keys again when the entity has
+  a file field. New public members: the floorplan's `mt_message_items`,
+  `mv_file_value`, `mv_file_name`, `cv_event_upload`, `cv_event_download`,
+  `cv_event_upload_open`, `cv_event_upload_cancel`, the list report's
+  `set_filter_presets`, `z2ui5_cl_rap_start=>cs_param-mode` and
+  `cs_mode`, `z2ui5_cl_rap_eml=>read_action_defaults`;
+  `z2ui5_if_rap_ext~map_inbound_parameter` (`DEFAULT IGNORE`). Appended:
+  `ty_s_field_info` (`is_large_object`, `lob_mime_field`,
+  `lob_file_name_field`, `lob_mime_types`, `lob_disposition`,
+  `is_mime_type`), `cs_text` (9 texts, text pool 054-062). The
+  floorplan's own dialogs are now read by the view gate too.
 
 ## Development
 
