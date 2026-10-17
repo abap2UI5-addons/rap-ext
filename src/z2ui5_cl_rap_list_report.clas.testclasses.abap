@@ -35,6 +35,8 @@ CLASS ltcl_list_report DEFINITION FINAL
     METHODS selection_for_intents      FOR TESTING RAISING cx_static_check.
     METHODS adaptable_fields           FOR TESTING RAISING cx_static_check.
     METHODS variant_keys               FOR TESTING RAISING cx_static_check.
+    METHODS analytics_group_rows       FOR TESTING RAISING cx_static_check.
+    METHODS table_type_and_columns     FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -435,6 +437,60 @@ CLASS ltcl_list_report IMPLEMENTATION.
                                         act = mo_cut->get_variant_key( VALUE #( name = `Mine` ) ) ).
     cl_abap_unit_assert=>assert_equals( exp = `OTHER~Theirs`
                                         act = mo_cut->get_variant_key( VALUE #( name = `Theirs` owner = `OTHER` ) ) ).
+
+  ENDMETHOD.
+
+  METHOD analytics_group_rows.
+
+    TYPES:
+      BEGIN OF ty_s_row,
+        travelid TYPE string,
+        status   TYPE string,
+      END OF ty_s_row.
+    DATA lt_rows TYPE STANDARD TABLE OF ty_s_row WITH EMPTY KEY.
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lv_kind> TYPE any.
+    FIELD-SYMBOLS <lv_label> TYPE any.
+    DATA lt_labels TYPE string_table.
+    DATA lt_kinds TYPE string_table.
+
+    "the rows come ordered by the group field (get_order_by)
+    lt_rows = VALUE #( ( travelid = `1` status = `A` )
+                       ( travelid = `2` status = `A` )
+                       ( travelid = `3` status = `B` ) ).
+    mo_cut->mr_data = REF #( lt_rows ).
+    mo_cut->mv_group_field = `STATUS`.
+
+    "not analytical: the rows stay as they are
+    mo_cut->apply_analytics( `` ).
+    cl_abap_unit_assert=>assert_false( mo_cut->has_row_column( mo_cut->cs_row_column-row_kind ) ).
+
+    mo_cut->mv_analytical = abap_true.
+    mo_cut->apply_analytics( `` ).
+    ASSIGN mo_cut->mr_data->* TO <lt_rows>.
+    cl_abap_unit_assert=>assert_equals( exp = 5 act = lines( <lt_rows> ) ).
+    LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      ASSIGN COMPONENT mo_cut->cs_row_column-row_kind OF STRUCTURE <ls_row> TO <lv_kind>.
+      ASSIGN COMPONENT mo_cut->cs_row_column-row_label OF STRUCTURE <ls_row> TO <lv_label>.
+      APPEND <lv_kind> TO lt_kinds.
+      APPEND <lv_label> TO lt_labels.
+    ENDLOOP.
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `GROUP` ) ( `` ) ( `` ) ( `GROUP` ) ( `` ) )
+                                        act = lt_kinds ).
+    cl_abap_unit_assert=>assert_equals( exp = `Status: A` act = lt_labels[ 1 ] ).
+    cl_abap_unit_assert=>assert_equals( exp = `Status: B` act = lt_labels[ 4 ] ).
+
+  ENDMETHOD.
+
+
+  METHOD table_type_and_columns.
+
+    DATA(lo_grid) = NEW z2ui5_cl_rap_list_report( cds_view_name = `Z_TRAVEL`
+                                                  table_type    = `grid`
+                                                  analytical    = abap_true ).
+    cl_abap_unit_assert=>assert_equals( exp = `GRID` act = lo_grid->mv_table_type ).
+    cl_abap_unit_assert=>assert_true( lo_grid->mv_analytical ).
+    cl_abap_unit_assert=>assert_equals( exp = `RESPONSIVE` act = mo_cut->mv_table_type ).
 
   ENDMETHOD.
 

@@ -282,8 +282,9 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    lv_cond = build_search_condition( it_fields = ms_entity-fields
-                                      search    = mv_search ).
+    lv_cond = build_search_condition( it_fields   = ms_entity-fields
+                                      search      = mv_search
+                                      entity_name = mv_cds_view ).
     IF lv_cond IS NOT INITIAL.
       APPEND lv_cond TO lt_and.
     ENDIF.

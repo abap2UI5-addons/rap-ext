@@ -149,6 +149,14 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         "added 2026-10, third round: the text of a field with
         "@ObjectModel.text.association - the prefix and the field's position
         text_prefix   TYPE string VALUE `ZZTEXT_`,
+        "added 2026-10, third round (analytical list): the kind of the row
+        "(z2ui5_cl_rap_util=>cs_row_kind) and the text of a group or total
+        row_kind      TYPE string VALUE `ZZROW_KIND`,
+        row_label     TYPE string VALUE `ZZROW_LABEL`,
+        "whether the row is shown (an ABAP_BOOL) - the collapsed nodes of a
+        "tree (z2ui5_cl_rap_tree); with it the table does not grow, it
+        "shows the loaded rows
+        row_visible   TYPE string VALUE `ZZROW_VISIBLE`,
       END OF cs_row_column.
 
     " a row of the define conditions dialog (added 2026-10, third round)
@@ -172,13 +180,27 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
 
     TYPES ty_t_action_state TYPE STANDARD TABLE OF ty_s_action_state WITH EMPTY KEY.
 
+    " the table of the rows (constructor table_type; added 2026-10, third
+    " round): RESPONSIVE - a sap.m.Table; GRID - a sap.ui.table.Table, for
+    " long lists, with a check box per row and a navigation column
+    CONSTANTS:
+      BEGIN OF cs_table_type,
+        responsive TYPE string VALUE `RESPONSIVE`,
+        grid       TYPE string VALUE `GRID`,
+      END OF cs_table_type.
+
     METHODS constructor
       IMPORTING
         cds_view_name TYPE clike
         title         TYPE string OPTIONAL
         max_rows      TYPE i DEFAULT 500
         "added 2026-10, third round: cs_initial_load
-        initial_load  TYPE string DEFAULT `AUTO`.
+        initial_load  TYPE string DEFAULT `AUTO`
+        "added 2026-10, third round: cs_table_type, and the analytical
+        "list - the fields with @Aggregation.default summed up per group
+        "(a group header row) and in a total row
+        table_type    TYPE string DEFAULT `RESPONSIVE`
+        analytical    TYPE abap_bool DEFAULT abap_false.
 
     "! values for the filters before the list is read - the inbound
     "! parameters of a navigation (z2ui5_cl_rap_start), by the name of the
@@ -658,6 +680,65 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! added 2026-10, third round: the table (cs_table_type) and the
+    "! analytical list (constructor analytical)
+    DATA mv_table_type TYPE string.
+    DATA mv_analytical TYPE abap_bool.
+
+    "! the toolbar's content - what render_toolbar puts into the table's
+    "! header toolbar and the grid table into its extension (added 2026-10,
+    "! third round)
+    METHODS render_toolbar_content
+      IMPORTING
+        io_toolbar TYPE REF TO z2ui5_cl_ui5_view_builder
+        client     TYPE REF TO z2ui5_if_client.
+
+    "! the rows as a sap.ui.table.Table (cs_table_type-grid): a check box
+    "! column for the selection, the columns, the inline actions and a
+    "! navigation column (added 2026-10, third round)
+    METHODS render_grid_table
+      IMPORTING
+        io_page TYPE REF TO z2ui5_cl_ui5_view_builder
+        client  TYPE REF TO z2ui5_if_client.
+
+    "! a column of the grid table - its label and its cell (render_cell)
+    METHODS render_grid_column
+      IMPORTING
+        io_columns TYPE REF TO z2ui5_cl_ui5_view_builder
+        is_col     TYPE z2ui5_cl_rap_util=>ty_s_field_info
+        client     TYPE REF TO z2ui5_if_client.
+
+    "! the analytical list: a group header row with the subtotals before
+    "! the rows of each value of the group field, a total row at the end -
+    "! the fields with @Aggregation.default, aggregated over every row
+    "! that matches where, not only the loaded ones (added 2026-10, third
+    "! round)
+    METHODS apply_analytics
+      IMPORTING
+        where TYPE string.
+
+    "! the aggregates of it_aggregations per value of group_by (none: one
+    "! row, the total) as a table of the entity - by GROUP BY in the
+    "! database, computed from the rows (aggregate_rows) for a custom
+    "! entity or a virtual element
+    METHODS read_aggregates
+      IMPORTING
+        where           TYPE string
+        it_aggregations TYPE z2ui5_cl_rap_util=>ty_t_aggregation
+        group_by        TYPE string OPTIONAL
+      RETURNING
+        VALUE(result)   TYPE REF TO data.
+
+    "! the rows (mr_data) with the columns of it_columns added - the ones
+    "! they have already are kept
+    METHODS add_row_columns
+      IMPORTING
+        it_columns TYPE cl_abap_structdescr=>component_table.
+
+    "! the selected rows - a group or total row is never one (added
+    "! 2026-10, third round)
+    METHODS get_selected_rows REDEFINITION.
+
   PRIVATE SECTION.
 
 ENDCLASS.
@@ -675,6 +756,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     mv_page_size = max_rows.
     mv_initial_load = COND #( WHEN initial_load IS INITIAL THEN cs_initial_load-auto
                               ELSE to_upper( initial_load ) ).
+    mv_table_type = COND #( WHEN to_upper( table_type ) = cs_table_type-grid THEN cs_table_type-grid
+                            ELSE cs_table_type-responsive ).
+    mv_analytical = analytical.
   ENDMETHOD.
 
 
@@ -1013,6 +1097,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                                               it_fields = ms_entity-fields ).
       apply_row_states( ).
       apply_text_columns( ).
+      apply_analytics( lv_where ).
     ELSE.
       mv_count = `0`.
       mv_more = abap_false.
@@ -1045,8 +1130,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    lv_cond = build_search_condition( it_fields = ms_entity-fields
-                                      search    = mv_search ).
+    lv_cond = build_search_condition( it_fields   = ms_entity-fields
+                                      search      = mv_search
+                                      entity_name = mv_cds_view ).
     IF lv_cond IS NOT INITIAL.
       APPEND lv_cond TO lt_and.
     ENDIF.
@@ -2141,7 +2227,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     DATA(lo_view) = z2ui5_cl_ui5_view_builder=>factory( ).
 
-    DATA(lo_page) = lo_view->ele( n  = `View`
+    DATA(lo_root) = lo_view->ele( n  = `View`
                                    ns = `mvc`
         )->a( n = `xmlns`
               v = `sap.m`
@@ -2150,16 +2236,22 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         )->a( n = `displayBlock`
               v = `true`
         )->a( n = `height`
-              v = `100%`
+              v = `100%` ).
+    "the library of the grid table - only when it is used, a declared one
+    "is loaded (added 2026-10, third round)
+    IF mv_table_type = cs_table_type-grid.
+      lo_root->a( n = `xmlns:table`
+                  v = `sap.ui.table` ).
+    ENDIF.
 
-        )->ele( `Shell`
-            )->ele( `Page`
-                )->a( n = `title`
-                      t = mv_title
-                )->a( n = `showNavButton`
-                      b = client->check_app_prev_stack( )
-                )->a( n = `navButtonPress`
-                      v = client->_event( cs_event-back ) ).
+    DATA(lo_page) = lo_root->ele( `Shell`
+        )->ele( `Page`
+            )->a( n = `title`
+                  t = mv_title
+            )->a( n = `showNavButton`
+                  b = client->check_app_prev_stack( )
+            )->a( n = `navButtonPress`
+                  v = client->_event( cs_event-back ) ).
 
     render_filter_bar( io_page = lo_page
                        client  = client ).
@@ -2391,6 +2483,14 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   METHOD render_table.
 
     FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
+
+    "the grid table (added 2026-10, third round)
+    IF mv_table_type = cs_table_type-grid.
+      render_grid_table( io_page = io_page
+                         client  = client ).
+      RETURN.
+    ENDIF.
+
     ASSIGN mr_data->* TO <lt_data>.
 
     DATA(lt_columns) = get_visible_columns( ).
@@ -2407,10 +2507,20 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     "come ordered by it from the database (since 2026-10, third round)
     DATA(lv_items) = `{path:'` && client->_bind( val  = <lt_data>
                                                  path = abap_true ) && `'`.
-    IF mv_group_field IS NOT INITIAL AND line_exists( mt_sort_field[ name = mv_group_field ] ).
+    "- an analytical list has group rows of its own
+    DATA(lv_summary) = xsdbool( mv_analytical = abap_true AND has_row_column( cs_row_column-row_kind ) = abap_true ).
+    IF mv_group_field IS NOT INITIAL AND line_exists( mt_sort_field[ name = mv_group_field ] )
+      AND lv_summary = abap_false.
       lv_items = lv_items && `, sorter: {path: '` && mv_group_field && `', group: true}`.
     ENDIF.
     lv_items = lv_items && `}`.
+    "rows that are hidden (cs_row_column-row_visible) would count for the
+    "growing - the loaded rows are shown at once
+    DATA(lv_row_visible) = has_row_column( cs_row_column-row_visible ).
+    DATA(lv_growing) = `true`.
+    IF lv_row_visible = abap_true.
+      lv_growing = `false`.
+    ENDIF.
 
     DATA(lo_table) = io_page->ele( `Table`
         )->a( n = `items`
@@ -2418,7 +2528,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         )->a( n = `noDataText`
               v = client->_bind( mv_no_data )
         )->a( n = `growing`
-              v = `true`
+              v = lv_growing
         )->a( n = `growingThreshold`
               v = `50`
         )->a( n = `sticky`
@@ -2437,6 +2547,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     "the draft status of a row of a draft business object - first
     DATA(lv_draft_column) = has_row_column( cs_row_column-draft ).
     DATA(lo_columns) = lo_table->ele( `columns` ).
+    "the analytical list: the text of a group or total row first
+    IF lv_summary = abap_true.
+      lo_columns->ele( `Column` ).
+    ENDIF.
     IF lv_draft_column = abap_true.
       lo_columns->ele( `Column`
           )->tag( `Text`
@@ -2460,10 +2574,15 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     LOOP AT mt_row_key INTO DATA(lv_key).
       APPEND `${` && lv_key && `}` TO lt_arg.
     ENDLOOP.
+    "a group or total row of the analytical list navigates nowhere
+    DATA(lv_row_type) = `Navigation`.
+    IF lv_summary = abap_true.
+      lv_row_type = `{= ${ZZROW_KIND} ? 'Inactive' : 'Navigation' }`.
+    ENDIF.
     IF mt_row_key IS NOT INITIAL.
       lo_row = lo_items->ele( `ColumnListItem`
           )->a( n = `type`
-                v = `Navigation`
+                v = lv_row_type
           )->a( n = `press`
                 v = client->_event( val   = cs_event-row_press
                                     t_arg = lt_arg ) ).
@@ -2474,6 +2593,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       lo_row->a( n = `selected`
                  v = |\{{ cv_select_column }\}| ).
     ENDIF.
+    IF lv_row_visible = abap_true.
+      lo_row->a( n = `visible`
+                 v = |\{{ cs_row_column-row_visible }\}| ).
+    ENDIF.
     "the row's criticality - the entity's own @UI.lineItem (since 2026-10,
     "third round)
     IF ms_entity-row_criticality IS NOT INITIAL AND line_exists( ms_entity-fields[ name = ms_entity-row_criticality ] ).
@@ -2482,6 +2605,12 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                                              kind       = `HIGHLIGHT` ) ).
     ENDIF.
     DATA(lo_cells) = lo_row->ele( `cells` ).
+
+    IF lv_summary = abap_true.
+      lo_cells->tag( `ObjectIdentifier`
+          )->a( n = `title`
+                v = |\{{ cs_row_column-row_label }\}| ).
+    ENDIF.
 
     IF lv_draft_column = abap_true.
       lo_cells->tag( `ObjectStatus`
@@ -2547,18 +2676,26 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD render_toolbar.
 
-    DATA(lo_toolbar) = io_table->ele( `headerToolbar`
+    DATA(lo_header_toolbar) = io_table->ele( `headerToolbar`
         )->ele( `OverflowToolbar` ).
 
-    lo_toolbar->tag( `Title`
+    render_toolbar_content( io_toolbar = lo_header_toolbar
+                            client     = client ).
+
+  ENDMETHOD.
+
+
+  METHOD render_toolbar_content.
+
+    io_toolbar->tag( `Title`
         )->a( n = `text`
               v = mv_title && ` (` && client->_bind( mv_count ) && `)` ).
 
-    lo_toolbar->tag( `ToolbarSpacer` ).
+    io_toolbar->tag( `ToolbarSpacer` ).
 
     "@UI.lineItem actions of type #FOR_ACTION - on the selected rows, a
     "static one without; by position, an action group as a menu
-    render_action_buttons( io_container     = lo_toolbar
+    render_action_buttons( io_container     = io_toolbar
                            it_actions       = get_line_item_actions( abap_false )
                            it_groups        = ms_entity-action_groups
                            client           = client
@@ -2567,7 +2704,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     "@UI.lineItem #FOR_INTENT_BASED_NAVIGATION - to another app
     LOOP AT get_line_item_intents( ) INTO DATA(ls_intent).
-      lo_toolbar->tag( `Button`
+      io_toolbar->tag( `Button`
           )->a( n = `text`
                 t = ls_intent-label
           )->a( n = `press`
@@ -2575,14 +2712,14 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                                     arg = ls_intent-name ) ).
     ENDLOOP.
 
-    render_sort_controls( io_toolbar = lo_toolbar
+    render_sort_controls( io_toolbar = io_toolbar
                           client     = client ).
 
-    render_variant_controls( io_toolbar = lo_toolbar
+    render_variant_controls( io_toolbar = io_toolbar
                              client     = client ).
 
     IF ms_caps-can_create = abap_true.
-      lo_toolbar->tag( `Button`
+      io_toolbar->tag( `Button`
           )->a( n = `text`
                 t = get_text( cs_text-create )
           )->a( n = `press`
@@ -2594,13 +2731,13 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     ENDIF.
 
     render_extension( spot         = cs_spot-toolbar
-                      io_container = lo_toolbar
+                      io_container = io_toolbar
                       client       = client ).
 
-    render_export_button( io_toolbar = lo_toolbar
+    render_export_button( io_toolbar = io_toolbar
                           client     = client ).
 
-    lo_toolbar->tag( `Button`
+    io_toolbar->tag( `Button`
         )->a( n = `icon`
               v = `sap-icon://refresh`
         )->a( n = `tooltip`
@@ -3716,6 +3853,467 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     result = COND #( WHEN is_variant-owner IS INITIAL THEN is_variant-name
                      ELSE |{ is_variant-owner }~{ is_variant-name }| ).
+
+  ENDMETHOD.
+
+
+  METHOD render_grid_table.
+
+    FIELD-SYMBOLS <lt_grid_data> TYPE STANDARD TABLE.
+    DATA lt_grid_arg TYPE string_table.
+
+    ASSIGN mr_data->* TO <lt_grid_data>.
+    DATA(lt_grid_columns) = get_visible_columns( ).
+    DATA(lt_grid_inline) = get_line_item_actions( abap_true ).
+    DATA(lv_grid_select) = has_selection( ).
+    LOOP AT mt_row_key INTO DATA(lv_grid_key).
+      APPEND `${` && lv_grid_key && `}` TO lt_grid_arg.
+    ENDLOOP.
+
+    DATA(lo_grid) = io_page->ele( n  = `Table`
+                                  ns = `table`
+        )->a( n = `rows`
+              v = `{` && client->_bind( val  = <lt_grid_data>
+                                        path = abap_true ) && `}`
+        )->a( n = `noData`
+              v = client->_bind( mv_no_data )
+        )->a( n = `selectionMode`
+              v = `None`
+        )->a( n = `visibleRowCount`
+              v = `15` ).
+
+    "the toolbar - a grid table has it in its extension
+    DATA(lo_grid_toolbar) = lo_grid->ele( n  = `extension`
+                                          ns = `table`
+        )->ele( `OverflowToolbar` ).
+    render_toolbar_content( io_toolbar = lo_grid_toolbar
+                            client     = client ).
+
+    DATA(lo_grid_columns) = lo_grid->ele( n  = `columns`
+                                          ns = `table` ).
+
+    "the selection: a check box per row, bound like the responsive table's
+    IF lv_grid_select = abap_true.
+      DATA(lo_grid_check) = lo_grid_columns->ele( n  = `Column`
+                                                  ns = `table`
+          )->a( n = `width`
+                v = `3rem`
+          )->ele( n  = `template`
+                  ns = `table`
+              )->tag( `CheckBox`
+                  )->a( n = `selected`
+                        v = |\{{ cv_select_column }\}| ).
+      IF ms_perm-answered = abap_true.
+        lo_grid_check->a( n = `select`
+                          v = client->_event( cs_event-selection_change ) ).
+      ENDIF.
+    ENDIF.
+
+    IF has_row_column( cs_row_column-draft ) = abap_true.
+      lo_grid_columns->ele( n  = `Column`
+                            ns = `table`
+          )->ele( n  = `label`
+                  ns = `table`
+              )->tag( `Label`
+                  )->a( n = `text`
+                        t = get_text( cs_text-editing_status )
+          )->end(
+          )->ele( n  = `template`
+                  ns = `table`
+              )->tag( `ObjectStatus`
+                  )->a( n = `text`
+                        v = |\{{ cs_row_column-draft_text }\}|
+                  )->a( n = `state`
+                        v = `{= ${ZZDRAFT} === 'LOCKED' ? 'Warning' : 'Information' }` ).
+    ENDIF.
+
+    LOOP AT lt_grid_columns INTO DATA(ls_grid_col).
+      render_grid_column( io_columns = lo_grid_columns
+                          is_col     = ls_grid_col
+                          client     = client ).
+    ENDLOOP.
+
+    "inline actions - a button column each
+    LOOP AT lt_grid_inline INTO DATA(ls_grid_inline).
+      DATA(lv_grid_inline_column) = |{ cs_row_column-action_prefix }{ sy-tabix }|.
+      DATA(lv_grid_enabled) = COND string( WHEN has_row_column( lv_grid_inline_column ) = abap_true
+                                           THEN |\{{ lv_grid_inline_column }\}|
+                                           ELSE `true` ).
+      DATA(lt_grid_action_arg) = VALUE string_table( ( ls_grid_inline-name ) ).
+      APPEND LINES OF lt_grid_arg TO lt_grid_action_arg.
+      lo_grid_columns->ele( n  = `Column`
+                            ns = `table`
+          )->a( n = `width`
+                v = `8rem`
+          )->ele( n  = `template`
+                  ns = `table`
+              )->tag( `Button`
+                  )->a( n = `text`
+                        t = ls_grid_inline-label
+                  )->a( n = `enabled`
+                        v = lv_grid_enabled
+                  )->a( n = `press`
+                        v = client->_event( val   = cs_event-action
+                                            t_arg = lt_grid_action_arg ) ).
+    ENDLOOP.
+
+    "the row's object page - a grid table has no row press
+    IF mt_row_key IS NOT INITIAL.
+      lo_grid_columns->ele( n  = `Column`
+                            ns = `table`
+          )->a( n = `width`
+                v = `3rem`
+          )->a( n = `hAlign`
+                v = `Center`
+          )->ele( n  = `template`
+                  ns = `table`
+              )->tag( `Button`
+                  )->a( n = `icon`
+                        v = `sap-icon://navigation-right-arrow`
+                  )->a( n = `tooltip`
+                        t = get_text( cs_text-open )
+                  )->a( n = `type`
+                        v = `Transparent`
+                  )->a( n = `press`
+                        v = client->_event( val   = cs_event-row_press
+                                            t_arg = lt_grid_arg ) ).
+    ENDIF.
+
+    io_page->tag( `Button`
+        )->a( n = `text`
+              t = get_text( cs_text-more )
+        )->a( n = `width`
+              v = `100%`
+        )->a( n = `type`
+              v = `Transparent`
+        )->a( n = `visible`
+              v = client->_bind( mv_more )
+        )->a( n = `press`
+              v = client->_event( cs_event-more ) ).
+
+  ENDMETHOD.
+
+
+  METHOD render_grid_column.
+
+    DATA(lv_grid_label) = is_col-line_item_label.
+    IF lv_grid_label IS INITIAL.
+      lv_grid_label = is_col-label.
+    ENDIF.
+    READ TABLE mt_column_width INTO DATA(ls_grid_width) WITH KEY name = is_col-name.
+    DATA(lv_grid_width) = z2ui5_cl_rap_util=>normalize_css_width(
+      COND #( WHEN sy-subrc = 0 THEN ls_grid_width-value ELSE is_col-line_item_width ) ).
+
+    DATA(lo_grid_column) = io_columns->ele( n  = `Column`
+                                            ns = `table` ).
+    IF lv_grid_width IS NOT INITIAL.
+      lo_grid_column->a( n = `width`
+                         v = lv_grid_width ).
+    ENDIF.
+    lo_grid_column->ele( n  = `label`
+                         ns = `table`
+        )->tag( `Label`
+            )->a( n = `text`
+                  t = lv_grid_label
+            )->a( n = `tooltip`
+                  t = is_col-tooltip ).
+
+    DATA(lo_grid_template) = lo_grid_column->ele( n  = `template`
+                                                  ns = `table` ).
+    render_cell( io_cells = lo_grid_template
+                 is_col   = is_col
+                 client   = client ).
+
+  ENDMETHOD.
+
+
+  METHOD apply_analytics.
+
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_groups> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_total> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_new> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <ls_row> TYPE any.
+    FIELD-SYMBOLS <ls_new> TYPE any.
+    FIELD-SYMBOLS <ls_group> TYPE any.
+    FIELD-SYMBOLS <lv_value> TYPE any.
+    FIELD-SYMBOLS <lv_target> TYPE any.
+    DATA lr_new TYPE REF TO data.
+    DATA lr_groups TYPE REF TO data.
+    DATA lr_total TYPE REF TO data.
+    DATA lv_prev TYPE string.
+    DATA lv_value TYPE string.
+    DATA lv_first TYPE abap_bool VALUE abap_true.
+    DATA lv_group TYPE string.
+
+    IF mv_analytical = abap_false OR mr_data IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    DATA(lt_aggs) = z2ui5_cl_rap_util=>get_aggregations( ms_entity-fields ).
+    IF mv_group_field IS NOT INITIAL AND line_exists( mt_sort_field[ name = mv_group_field ] ).
+      lv_group = mv_group_field.
+    ENDIF.
+    IF lt_aggs IS INITIAL AND lv_group IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    DATA(lo_string) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `STRING` ) ).
+    add_row_columns( VALUE #( ( name = cs_row_column-row_kind  type = lo_string )
+                              ( name = cs_row_column-row_label type = lo_string ) ) ).
+    ASSIGN mr_data->* TO <lt_rows>.
+    IF <lt_rows> IS NOT ASSIGNED OR lines( <lt_rows> ) = 0.
+      RETURN.
+    ENDIF.
+
+    "the subtotals per value of the group field
+    IF lv_group IS NOT INITIAL AND lt_aggs IS NOT INITIAL.
+      lr_groups = read_aggregates( where           = where
+                                   it_aggregations = lt_aggs
+                                   group_by        = lv_group ).
+    ENDIF.
+    IF lr_groups IS BOUND.
+      ASSIGN lr_groups->* TO <lt_groups>.
+    ENDIF.
+    DATA(lv_group_label) = lv_group.
+    READ TABLE ms_entity-fields INTO DATA(ls_group_field) WITH KEY name = lv_group.
+    IF sy-subrc = 0 AND ls_group_field-label IS NOT INITIAL.
+      lv_group_label = ls_group_field-label.
+    ENDIF.
+
+    CREATE DATA lr_new LIKE <lt_rows>.
+    ASSIGN lr_new->* TO <lt_new>.
+    LOOP AT <lt_rows> ASSIGNING <ls_row>.
+      IF lv_group IS NOT INITIAL.
+        UNASSIGN <lv_value>.
+        ASSIGN COMPONENT lv_group OF STRUCTURE <ls_row> TO <lv_value>.
+        CLEAR lv_value.
+        IF <lv_value> IS ASSIGNED.
+          lv_value = |{ <lv_value> }|.
+        ENDIF.
+        IF lv_first = abap_true OR lv_value <> lv_prev.
+          APPEND INITIAL LINE TO <lt_new> ASSIGNING <ls_new>.
+          "the group's subtotals
+          IF <lt_groups> IS ASSIGNED.
+            LOOP AT <lt_groups> ASSIGNING <ls_group>.
+              UNASSIGN <lv_target>.
+              ASSIGN COMPONENT lv_group OF STRUCTURE <ls_group> TO <lv_target>.
+              IF <lv_target> IS ASSIGNED AND |{ <lv_target> }| = lv_value.
+                MOVE-CORRESPONDING <ls_group> TO <ls_new>.
+                EXIT.
+              ENDIF.
+            ENDLOOP.
+          ENDIF.
+          UNASSIGN <lv_target>.
+          ASSIGN COMPONENT lv_group OF STRUCTURE <ls_new> TO <lv_target>.
+          IF <lv_target> IS ASSIGNED AND <lv_value> IS ASSIGNED.
+            <lv_target> = <lv_value>.
+          ENDIF.
+          ASSIGN COMPONENT cs_row_column-row_kind OF STRUCTURE <ls_new> TO <lv_target>.
+          IF sy-subrc = 0.
+            <lv_target> = z2ui5_cl_rap_util=>cs_row_kind-group.
+          ENDIF.
+          ASSIGN COMPONENT cs_row_column-row_label OF STRUCTURE <ls_new> TO <lv_target>.
+          IF sy-subrc = 0.
+            <lv_target> = |{ lv_group_label }: { lv_value }|.
+          ENDIF.
+          lv_prev = lv_value.
+          lv_first = abap_false.
+        ENDIF.
+      ENDIF.
+      APPEND <ls_row> TO <lt_new>.
+    ENDLOOP.
+
+    "the grand total
+    IF lt_aggs IS NOT INITIAL.
+      lr_total = read_aggregates( where           = where
+                                  it_aggregations = lt_aggs ).
+      IF lr_total IS BOUND.
+        ASSIGN lr_total->* TO <lt_total>.
+        APPEND INITIAL LINE TO <lt_new> ASSIGNING <ls_new>.
+        IF <lt_total> IS ASSIGNED AND lines( <lt_total> ) > 0.
+          READ TABLE <lt_total> INDEX 1 ASSIGNING <ls_group>.
+          MOVE-CORRESPONDING <ls_group> TO <ls_new>.
+        ENDIF.
+        ASSIGN COMPONENT cs_row_column-row_kind OF STRUCTURE <ls_new> TO <lv_target>.
+        IF sy-subrc = 0.
+          <lv_target> = z2ui5_cl_rap_util=>cs_row_kind-total.
+        ENDIF.
+        ASSIGN COMPONENT cs_row_column-row_label OF STRUCTURE <ls_new> TO <lv_target>.
+        IF sy-subrc = 0.
+          <lv_target> = get_text( cs_text-total ).
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+    mr_data = lr_new.
+
+  ENDMETHOD.
+
+
+  METHOD read_aggregates.
+
+    FIELD-SYMBOLS <lt_result> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <ls_target> TYPE any.
+    FIELD-SYMBOLS <lv_target> TYPE any.
+    DATA lv_from_rows TYPE abap_bool.
+
+    result = create_entity_table( mv_cds_view ).
+    IF result IS NOT BOUND OR it_aggregations IS INITIAL.
+      RETURN.
+    ENDIF.
+    ASSIGN result->* TO <lt_result>.
+
+    "a custom entity or a virtual element: ABAP SQL cannot aggregate it
+    DATA(ls_read) = get_read_info( mv_cds_view ).
+    lv_from_rows = xsdbool( ls_read-query_class IS NOT INITIAL ).
+    LOOP AT it_aggregations INTO DATA(ls_agg).
+      IF line_exists( ls_read-virtual_elements[ name = ls_agg-field ] ).
+        lv_from_rows = abap_true.
+      ENDIF.
+    ENDLOOP.
+
+    IF lv_from_rows = abap_false.
+      DATA(lv_select) = z2ui5_cl_rap_util=>build_aggregate_select( it_aggregations = it_aggregations
+                                                                   group_by        = group_by ).
+      DATA(lv_where) = get_ext_where( entity_name = mv_cds_view
+                                      where       = where ).
+      TRY.
+          IF group_by IS INITIAL.
+            SELECT (lv_select) FROM (mv_cds_view)
+              WHERE (lv_where)
+              INTO CORRESPONDING FIELDS OF TABLE @<lt_result>.
+          ELSE.
+            SELECT (lv_select) FROM (mv_cds_view)
+              WHERE (lv_where)
+              GROUP BY (group_by)
+              INTO CORRESPONDING FIELDS OF TABLE @<lt_result>.
+          ENDIF.
+          RETURN.
+        "an aggregate the database refuses for its type (an AVG into an
+        "integer): computed from the rows below
+        CATCH cx_root.
+          CLEAR <lt_result>.
+      ENDTRY.
+    ENDIF.
+
+    "from the rows - at most cv_aggregate_max of them
+    DATA(lr_rows) = select_rows( entity_name = mv_cds_view
+                                 where       = where
+                                 max_rows    = cv_aggregate_max ).
+    LOOP AT it_aggregations INTO ls_agg.
+      LOOP AT z2ui5_cl_rap_util=>aggregate_rows( data     = lr_rows
+                                                 group_by = group_by
+                                                 measure  = ls_agg-field
+                                                 method   = ls_agg-method ) INTO DATA(ls_value).
+        UNASSIGN <ls_target>.
+        LOOP AT <lt_result> ASSIGNING <ls_target>.
+          IF group_by IS INITIAL.
+            EXIT.
+          ENDIF.
+          UNASSIGN <lv_target>.
+          ASSIGN COMPONENT group_by OF STRUCTURE <ls_target> TO <lv_target>.
+          IF <lv_target> IS ASSIGNED AND |{ <lv_target> }| = ls_value-group_key.
+            EXIT.
+          ENDIF.
+          UNASSIGN <ls_target>.
+        ENDLOOP.
+        IF <ls_target> IS NOT ASSIGNED.
+          APPEND INITIAL LINE TO <lt_result> ASSIGNING <ls_target>.
+          IF group_by IS NOT INITIAL.
+            ASSIGN COMPONENT group_by OF STRUCTURE <ls_target> TO <lv_target>.
+            IF sy-subrc = 0.
+              TRY.
+                  <lv_target> = ls_value-group_key.
+                CATCH cx_root ##NO_HANDLER.
+              ENDTRY.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+        ASSIGN COMPONENT ls_agg-field OF STRUCTURE <ls_target> TO <lv_target>.
+        IF sy-subrc = 0.
+          TRY.
+              <lv_target> = ls_value-value.
+            CATCH cx_root ##NO_HANDLER.
+          ENDTRY.
+        ENDIF.
+      ENDLOOP.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD add_row_columns.
+
+    DATA lt_comp TYPE cl_abap_structdescr=>component_table.
+    DATA lr_extended TYPE REF TO data.
+    FIELD-SYMBOLS <lt_old> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_new> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <ls_old> TYPE any.
+    FIELD-SYMBOLS <ls_new> TYPE any.
+
+    IF mr_data IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    TRY.
+        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( mr_data ) ).
+        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
+        lt_comp = lo_line->get_components( ).
+        DATA(lv_before) = lines( lt_comp ).
+        LOOP AT it_columns INTO DATA(ls_column).
+          IF NOT line_exists( lt_comp[ name = ls_column-name ] ).
+            APPEND ls_column TO lt_comp.
+          ENDIF.
+        ENDLOOP.
+        IF lines( lt_comp ) = lv_before.
+          RETURN.
+        ENDIF.
+        DATA(lo_new_table) = cl_abap_tabledescr=>create( cl_abap_structdescr=>create( lt_comp ) ).
+        CREATE DATA lr_extended TYPE HANDLE lo_new_table.
+        ASSIGN mr_data->* TO <lt_old>.
+        ASSIGN lr_extended->* TO <lt_new>.
+        "row by row - the transpiled runtime moves no generic tables
+        LOOP AT <lt_old> ASSIGNING <ls_old>.
+          APPEND INITIAL LINE TO <lt_new> ASSIGNING <ls_new>.
+          MOVE-CORRESPONDING <ls_old> TO <ls_new>.
+        ENDLOOP.
+        mr_data = lr_extended.
+      CATCH cx_root ##NO_HANDLER.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD get_selected_rows.
+
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <ls_row> TYPE any.
+    FIELD-SYMBOLS <lv_kind> TYPE any.
+    FIELD-SYMBOLS <lv_selected> TYPE any.
+
+    "a group or total row of the analytical list is no record
+    IF data IS BOUND.
+      ASSIGN data->* TO <lt_rows>.
+      IF <lt_rows> IS ASSIGNED.
+        LOOP AT <lt_rows> ASSIGNING <ls_row>.
+          UNASSIGN <lv_kind>.
+          ASSIGN COMPONENT cs_row_column-row_kind OF STRUCTURE <ls_row> TO <lv_kind>.
+          IF <lv_kind> IS NOT ASSIGNED.
+            EXIT.
+          ENDIF.
+          IF <lv_kind> IS INITIAL.
+            CONTINUE.
+          ENDIF.
+          UNASSIGN <lv_selected>.
+          ASSIGN COMPONENT cv_select_column OF STRUCTURE <ls_row> TO <lv_selected>.
+          IF <lv_selected> IS ASSIGNED.
+            CLEAR <lv_selected>.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+    ENDIF.
+
+    result = super->get_selected_rows( entity_name = entity_name
+                                       data        = data ).
 
   ENDMETHOD.
 

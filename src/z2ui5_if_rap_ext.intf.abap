@@ -181,4 +181,31 @@ INTERFACE z2ui5_if_rap_ext
       entity      TYPE string
       filter      TYPE z2ui5_cl_rap_util=>ty_t_name_value.
 
+  "! The WHERE condition (ABAP SQL) of a free-text search instead of the
+  "! LIKE over the searched text fields - empty keeps the LIKE (added
+  "! 2026-10, third round). The fuzzy search of HANA
+  "! (@Search.fuzzinessThreshold, threshold its highest value) is no ABAP
+  "! SQL: run z2ui5_cl_rap_util=>build_fuzzy_search through ADBC or an
+  "! AMDP and answer the keys it found, e.g. ( ID IN ( '1', '2' ) )
+  METHODS build_search_condition DEFAULT IGNORE
+    IMPORTING
+      floorplan   TYPE string
+      entity_name TYPE string
+      fields      TYPE z2ui5_cl_rap_util=>ty_t_field_info
+      search      TYPE string
+      threshold   TYPE string
+    CHANGING
+      condition   TYPE string.
+
+  "! The hierarchy of a tree (z2ui5_cl_rap_tree): the node and parent
+  "! fields, the order of the siblings and what a delete does to the
+  "! children (delete_mode, z2ui5_cl_rap_util=>cs_tree_delete) - added
+  "! 2026-10, third round
+  METHODS adjust_hierarchy DEFAULT IGNORE
+    IMPORTING
+      floorplan   TYPE string
+      entity_name TYPE string
+    CHANGING
+      hierarchy   TYPE z2ui5_cl_rap_util=>ty_s_hierarchy.
+
 ENDINTERFACE.

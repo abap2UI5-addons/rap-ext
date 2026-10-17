@@ -21,6 +21,10 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         value_help    TYPE string VALUE `VALUE_HELP`,
         action_dialog TYPE string VALUE `ACTION_DIALOG`,
         overview_page TYPE string VALUE `OVERVIEW_PAGE`,
+        "added 2026-10, third round: the tree and the flexible column
+        "layout (z2ui5_cl_rap_tree, z2ui5_cl_rap_fcl)
+        tree          TYPE string VALUE `TREE`,
+        fcl           TYPE string VALUE `FCL`,
       END OF cs_floorplan.
 
     " The keys of get_text( ) - z2ui5_if_rap_ext~get_text translates them
@@ -121,6 +125,17 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         "added 2026-10, third round (object page)
         change_info    TYPE string VALUE `CHANGE_INFO`,
         change_docs    TYPE string VALUE `CHANGE_DOCS`,
+        "added 2026-10, third round (tree, analytical list, column layout)
+        expand_all     TYPE string VALUE `EXPAND_ALL`,
+        collapse_all   TYPE string VALUE `COLLAPSE_ALL`,
+        create_child   TYPE string VALUE `CREATE_CHILD`,
+        total          TYPE string VALUE `TOTAL`,
+        full_screen    TYPE string VALUE `FULL_SCREEN`,
+        exit_full_screen TYPE string VALUE `EXIT_FULL_SCREEN`,
+        select_one     TYPE string VALUE `SELECT_ONE`,
+        has_children   TYPE string VALUE `HAS_CHILDREN`,
+        open           TYPE string VALUE `OPEN`,
+        toggle         TYPE string VALUE `TOGGLE`,
       END OF cs_text.
 
     " Where z2ui5_if_rap_ext~extend_view may add controls
@@ -432,10 +447,15 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
 
     "! the WHERE condition of a free-text search over the searchable text
     "! fields (@Search.defaultSearchElement, else every visible text field)
+    "! - a LIKE, or what z2ui5_if_rap_ext~build_search_condition answers
+    "! instead (a fuzzy search, added 2026-10, third round)
     METHODS build_search_condition
       IMPORTING
         it_fields     TYPE z2ui5_cl_rap_util=>ty_t_field_info
         search        TYPE string
+        "the entity searched - what z2ui5_if_rap_ext~build_search_condition
+        "is told (added 2026-10, third round)
+        entity_name   TYPE string OPTIONAL
       RETURNING
         VALUE(result) TYPE string.
 
@@ -1280,6 +1300,16 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-remove        THEN `Entfernen`
         WHEN cs_text-change_info   THEN `Änderungsinformationen`
         WHEN cs_text-change_docs   THEN `Änderungen`
+        WHEN cs_text-expand_all    THEN `Alle aufklappen`
+        WHEN cs_text-collapse_all  THEN `Alle zuklappen`
+        WHEN cs_text-create_child  THEN `Unterknoten anlegen`
+        WHEN cs_text-total         THEN `Gesamt`
+        WHEN cs_text-full_screen   THEN `Vollbild`
+        WHEN cs_text-exit_full_screen THEN `Vollbild beenden`
+        WHEN cs_text-select_one    THEN `Wählen Sie genau eine Zeile aus`
+        WHEN cs_text-has_children  THEN `Der Knoten hat Unterknoten`
+        WHEN cs_text-open          THEN `Öffnen`
+        WHEN cs_text-toggle        THEN `Auf- oder zuklappen`
         ELSE key ).
     ELSE.
       "the text pool of this class, original language English - translate
@@ -1373,6 +1403,16 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-remove         THEN 'Remove'(086)
         WHEN cs_text-change_info    THEN 'Change Information'(087)
         WHEN cs_text-change_docs    THEN 'Changes'(088)
+        WHEN cs_text-expand_all     THEN 'Expand all'(089)
+        WHEN cs_text-collapse_all   THEN 'Collapse all'(090)
+        WHEN cs_text-create_child   THEN 'Create child'(091)
+        WHEN cs_text-total          THEN 'Total'(092)
+        WHEN cs_text-full_screen    THEN 'Full screen'(093)
+        WHEN cs_text-exit_full_screen THEN 'Exit full screen'(094)
+        WHEN cs_text-select_one     THEN 'Select exactly one row'(095)
+        WHEN cs_text-has_children   THEN 'The node has children'(096)
+        WHEN cs_text-open           THEN 'Open'(097)
+        WHEN cs_text-toggle         THEN 'Expand or collapse'(098)
         ELSE key ).
     ENDIF.
 
@@ -1787,6 +1827,18 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
 
   METHOD build_search_condition.
+    IF mo_ext IS BOUND AND condense( search ) <> ``.
+      mo_ext->build_search_condition(
+        EXPORTING floorplan   = mv_floorplan
+                  entity_name = entity_name
+                  fields      = it_fields
+                  search      = search
+                  threshold   = z2ui5_cl_rap_util=>get_search_fuzziness( it_fields )
+        CHANGING  condition   = result ).
+      IF result IS NOT INITIAL.
+        RETURN.
+      ENDIF.
+    ENDIF.
     result = z2ui5_cl_rap_util=>build_search_condition( it_fields = it_fields
                                                         search    = search ).
   ENDMETHOD.
