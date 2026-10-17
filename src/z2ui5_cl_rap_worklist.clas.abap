@@ -111,8 +111,8 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     IF mv_segment_field IS INITIAL.
       READ TABLE ms_entity-selection_variants INTO DATA(ls_variant) WITH KEY qualifier = mv_segment.
       IF sy-subrc = 0.
-        DATA(lv_variant_where) = z2ui5_cl_rap_util=>selection_filter_to_where( filter    = ls_variant-filter
-                                                                              it_fields = ms_entity-fields ).
+        DATA(lv_variant_where) = z2ui5_cl_rap_util=>selection_variant_where( is_variant = ls_variant
+                                                                            it_fields  = ms_entity-fields ).
         IF lv_variant_where IS NOT INITIAL.
           result = COND #( WHEN result IS INITIAL THEN lv_variant_where ELSE |{ result } AND { lv_variant_where }| ).
         ENDIF.
@@ -157,8 +157,8 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     IF mv_segment_field IS INITIAL.
       DATA lt_variant_tab TYPE ty_t_segment.
       LOOP AT ms_entity-selection_variants INTO DATA(ls_variant) WHERE qualifier IS NOT INITIAL.
-        DATA(lv_variant_where) = z2ui5_cl_rap_util=>selection_filter_to_where( filter    = ls_variant-filter
-                                                                              it_fields = ms_entity-fields ).
+        DATA(lv_variant_where) = z2ui5_cl_rap_util=>selection_variant_where( is_variant = ls_variant
+                                                                            it_fields  = ms_entity-fields ).
         IF lv_variant_where IS INITIAL.
           CONTINUE.
         ENDIF.

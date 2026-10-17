@@ -48,7 +48,37 @@ CLASS z2ui5_cl_rap_util DEFINITION
         element            TYPE string,
         is_dropdown        TYPE abap_bool,
         additional_binding TYPE ty_t_additional_binding,
+        "added 2026-10, third round (display): the text element of the
+        "value help entity's element - the text of a dropdown entry - and
+        "the fixed values of the field's domain, the value help of a field
+        "without an annotated one (name the value, value its text)
+        text_element       TYPE string,
+        fixed_values       TYPE ty_t_name_value,
       END OF ty_s_value_help.
+
+    " one @UI.lineItem entry of a field that is no action (added 2026-10,
+    " third round) - the unqualified and the qualified ones; a qualified
+    " @UI.lineItem is the table of a presentation variant that names it
+    TYPES:
+      BEGIN OF ty_s_line_item,
+        qualifier           TYPE string,
+        position            TYPE i,
+        label               TYPE string,
+        importance          TYPE string,
+        criticality         TYPE string,
+        crit_representation TYPE string,
+        "STANDARD, AS_FIELDGROUP, WITH_URL, ...
+        type                TYPE string,
+        "#AS_FIELDGROUP: the field group the cell shows
+        value_qualifier     TYPE string,
+        "hidden: #(Field) - the field whose value hides the cell
+        hidden              TYPE string,
+        "cssDefault.width
+        width               TYPE string,
+        icon_url            TYPE string,
+      END OF ty_s_line_item.
+
+    TYPES ty_t_line_item TYPE STANDARD TABLE OF ty_s_line_item WITH EMPTY KEY.
 
     TYPES:
       BEGIN OF ty_s_field_group,
@@ -58,6 +88,14 @@ CLASS z2ui5_cl_rap_util DEFINITION
         label     TYPE string,
         "the group's title (@UI.fieldGroup.groupLabel) - added 2026-10
         group_label TYPE string,
+        "added 2026-10, third round (display): the entry's criticality (a
+        "field, upper case, or a number), criticalityRepresentation
+        "(WITH_ICON, WITHOUT_ICON), importance (HIGH, MEDIUM, LOW) and
+        "hidden (TRUE, or the field whose value hides it per record)
+        criticality         TYPE string,
+        crit_representation TYPE string,
+        importance          TYPE string,
+        hidden              TYPE string,
       END OF ty_s_field_group.
 
     TYPES ty_t_field_group TYPE STANDARD TABLE OF ty_s_field_group WITH DEFAULT KEY.
@@ -189,6 +227,43 @@ CLASS z2ui5_cl_rap_util DEFINITION
         lob_mime_types            TYPE string_table,
         lob_disposition           TYPE string,
         is_mime_type              TYPE abap_bool,
+        "added 2026-10, third round (filter bar, table, display): of the
+        "unqualified @UI.lineItem entry - cssDefault.width, the
+        "criticalityRepresentation (WITH_ICON, WITHOUT_ICON), the field
+        "group of an #AS_FIELDGROUP column (valueQualifier), hidden: #(Field)
+        "(the field that hides the cell per row) and iconUrl
+        line_item_width           TYPE string,
+        line_item_crit_repr       TYPE string,
+        line_item_value_qualifier TYPE string,
+        line_item_hidden          TYPE string,
+        line_item_icon_url        TYPE string,
+        "every @UI.lineItem entry that is no action, the qualified ones
+        "included (get_line_item_columns)
+        line_items                TYPE ty_t_line_item,
+        "@Semantics.imageUrl: the value is the URL of an image
+        is_image_url              TYPE abap_bool,
+        "@ObjectModel.text.association: the association whose target holds
+        "the text (@Semantics.text, in the logon language by
+        "@Semantics.language)
+        text_association          TYPE string,
+        is_semantic_text          TYPE abap_bool,
+        is_language               TYPE abap_bool,
+        "@Consumption.hidden: not offered anywhere - no column, no filter
+        is_consumption_hidden     TYPE abap_bool,
+        "@Consumption.semanticObject: the value navigates to that semantic
+        "object; the bindings of @Consumption.semanticObjectMapping and of a
+        "lineItem's semanticObjectBinding name the parameters (element) the
+        "fields (local_element) fill
+        semantic_object           TYPE string,
+        sem_object_bindings       TYPE ty_t_additional_binding,
+        "what the entry of a @UI.fieldGroup or @UI.identification the field
+        "is shown by says (set by the object page from field_groups or
+        "identifications): its criticality, its representation, its
+        "importance and its hidden
+        entry_criticality         TYPE string,
+        entry_crit_repr           TYPE string,
+        entry_importance          TYPE string,
+        entry_hidden              TYPE string,
       END OF ty_s_field_info.
 
     TYPES ty_t_field_info TYPE STANDARD TABLE OF ty_s_field_info WITH DEFAULT KEY.
@@ -275,6 +350,10 @@ CLASS z2ui5_cl_rap_util DEFINITION
         "ISOLATED (one request per row) or CHANGE_SET (one for all, the
         "default)
         invocation_grouping TYPE string,
+        "added 2026-10, third round (navigation): semanticObjectBinding of
+        "a #FOR_INTENT_BASED_NAVIGATION entry - the parameters (element)
+        "the selected rows' fields (local_element) fill
+        sem_object_bindings TYPE ty_t_additional_binding,
       END OF ty_s_action.
 
     TYPES ty_t_action TYPE STANDARD TABLE OF ty_s_action WITH DEFAULT KEY.
@@ -323,6 +402,9 @@ CLASS z2ui5_cl_rap_util DEFINITION
         "LINEITEM or CHART
         visualization_type      TYPE string,
         visualization_qualifier TYPE string,
+        "added 2026-10, third round: groupBy - the fields the table groups
+        "its rows by
+        group_by                TYPE string_table,
       END OF ty_s_presentation_variant.
 
     TYPES ty_t_presentation_variant TYPE STANDARD TABLE OF ty_s_presentation_variant WITH EMPTY KEY.
@@ -334,9 +416,65 @@ CLASS z2ui5_cl_rap_util DEFINITION
         qualifier TYPE string,
         text      TYPE string,
         filter    TYPE string,
+        "added 2026-10, third round: the selectOptions - per field (name)
+        "its ranges in the filter syntax (value, conditions_to_filter)
+        select_options TYPE ty_t_name_value,
       END OF ty_s_selection_variant.
 
     TYPES ty_t_selection_variant TYPE STANDARD TABLE OF ty_s_selection_variant WITH DEFAULT KEY.
+
+    " one @UI.selectionPresentationVariant (added 2026-10, third round):
+    " which presentation and which selection variant a list starts with
+    TYPES:
+      BEGIN OF ty_s_sel_pres_variant,
+        qualifier              TYPE string,
+        text                   TYPE string,
+        presentation_qualifier TYPE string,
+        selection_qualifier    TYPE string,
+      END OF ty_s_sel_pres_variant.
+
+    TYPES ty_t_sel_pres_variant TYPE STANDARD TABLE OF ty_s_sel_pres_variant WITH EMPTY KEY.
+
+    " one condition of the "define conditions" dialog (added 2026-10, third
+    " round): an operator of cs_condition_op, its values and whether it
+    " excludes - conditions_to_filter writes it in the filter syntax,
+    " filter_to_conditions reads it back
+    TYPES:
+      BEGIN OF ty_s_condition,
+        operator TYPE string,
+        low      TYPE string,
+        high     TYPE string,
+        exclude  TYPE abap_bool,
+      END OF ty_s_condition.
+
+    TYPES ty_t_condition TYPE STANDARD TABLE OF ty_s_condition WITH EMPTY KEY.
+
+    CONSTANTS:
+      BEGIN OF cs_condition_op,
+        eq          TYPE string VALUE `EQ`,
+        ne          TYPE string VALUE `NE`,
+        bt          TYPE string VALUE `BT`,
+        gt          TYPE string VALUE `GT`,
+        ge          TYPE string VALUE `GE`,
+        lt          TYPE string VALUE `LT`,
+        le          TYPE string VALUE `LE`,
+        contains    TYPE string VALUE `CONTAINS`,
+        starts_with TYPE string VALUE `STARTS_WITH`,
+        ends_with   TYPE string VALUE `ENDS_WITH`,
+        empty       TYPE string VALUE `EMPTY`,
+      END OF cs_condition_op.
+
+    " the control of a field in the filter bar (get_filter_control)
+    CONSTANTS:
+      BEGIN OF cs_filter_control,
+        input      TYPE string VALUE `INPUT`,
+        "a Select of fixed entries - a boolean, fixed values, a dropdown
+        list       TYPE string VALUE `LIST`,
+        date       TYPE string VALUE `DATE`,
+        date_range TYPE string VALUE `DATE_RANGE`,
+        "a MultiInput with a token per value - a field with a value help
+        multi      TYPE string VALUE `MULTI`,
+      END OF cs_filter_control.
 
     " one comparison of an association's ON condition: a field of the
     " entity that has the association equals a field of its target
@@ -420,6 +558,13 @@ CLASS z2ui5_cl_rap_util DEFINITION
         "added 2026-10, third round (reading): the query provider of a
         "custom entity (@ObjectModel.query.implementedBy, without ABAP:)
         query_class           TYPE string,
+        "added 2026-10, third round (table): the criticality of a row - the
+        "field of the entity-level @UI.lineItem's criticality - and the
+        "groupBy of the default @UI.presentationVariant
+        row_criticality       TYPE string,
+        group_by              TYPE string_table,
+        "every @UI.selectionPresentationVariant
+        sel_pres_variants TYPE ty_t_sel_pres_variant,
       END OF ty_s_entity_info.
 
     "======= READING TYPES (added 2026-10, third round) =======
@@ -1162,6 +1307,114 @@ CLASS z2ui5_cl_rap_util DEFINITION
         data      TYPE REF TO data
         it_fields TYPE ty_t_field_info.
 
+    "======= FILTER BAR, TABLE, DISPLAY (added 2026-10, third round) =======
+
+    "! the conditions of the "define conditions" dialog in the filter
+    "! syntax (build_filter_condition): EQ =a, NE !=a, BT a..b, GT >a, GE
+    "! >=a, LT &lt;a, LE &lt;=a, contains *a*, starts with a*, ends with *a,
+    "! empty =; an excluding condition is prefixed with ! - several are
+    "! separated by ;. A condition without a value is left out
+    CLASS-METHODS conditions_to_filter
+      IMPORTING
+        conditions    TYPE ty_t_condition
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! a filter value read back into conditions - the dialog shows what the
+    "! filter has; a value without an operator is "contains" for a text
+    "! field (is_field), "equals" for every other
+    CLASS-METHODS filter_to_conditions
+      IMPORTING
+        value         TYPE string
+        is_field      TYPE ty_s_field_info OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_t_condition.
+
+    "! the parts of a filter value (separated by ;), without blanks around
+    "! and without empty ones - the tokens of a MultiInput
+    CLASS-METHODS split_filter_value
+      IMPORTING
+        value         TYPE string
+      RETURNING
+        VALUE(result) TYPE string_table.
+
+    "! the control of is_field in the filter bar (cs_filter_control): a
+    "! list for a boolean, a field with fixed values or a dropdown value
+    "! help; a date picker for a date of a single value, else a date range;
+    "! a MultiInput with tokens for a field with a value help that takes
+    "! several values; an input with the filter syntax for every other
+    CLASS-METHODS get_filter_control
+      IMPORTING
+        is_field      TYPE ty_s_field_info
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the entries of a list filter (get_filter_control LIST): the empty
+    "! one (every row), then Yes (=X) and No (=) for a boolean or a filter
+    "! value per fixed value - name the filter value, value its text
+    CLASS-METHODS get_filter_list
+      IMPORTING
+        is_field      TYPE ty_s_field_info
+        yes           TYPE string
+        no            TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
+
+    "! a selection variant as filter values: its selectOptions, and of its
+    "! filter string every comparison of an AND of single comparisons - what
+    "! cannot be written as a filter value (an OR, parentheses) is where,
+    "! for the list to apply as it is
+    CLASS-METHODS selection_variant_filters
+      IMPORTING
+        is_variant TYPE ty_s_selection_variant
+        it_fields  TYPE ty_t_field_info
+      EXPORTING
+        filters    TYPE ty_t_name_value
+        where      TYPE string.
+
+    "! the WHERE of a selection variant: its filter string and its
+    "! selectOptions - a worklist tab
+    CLASS-METHODS selection_variant_where
+      IMPORTING
+        is_variant    TYPE ty_s_selection_variant
+        it_fields     TYPE ty_t_field_info
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the columns of the @UI.lineItem of qualifier, by position: every
+    "! field with an entry of it, line_item_pos, label, importance,
+    "! criticality and the rest taken from that entry. No qualifier: the
+    "! unqualified columns as they are
+    CLASS-METHODS get_line_item_columns
+      IMPORTING
+        it_fields     TYPE ty_t_field_info
+        qualifier     TYPE string OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_t_field_info.
+
+    "! the binding that maps a criticality field (0-3, 5) to what kind
+    "! needs: STATE a sap.ui.core.ValueState (5 Information), ICON the icon
+    "! of the criticality, HIGHLIGHT a row's highlight (a MessageType) - a
+    "! criticality given as a number is the literal itself
+    CLASS-METHODS criticality_binding
+      IMPORTING
+        criticality   TYPE string
+        kind          TYPE string DEFAULT `STATE`
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the parameters of a navigation to a semantic object from row: the
+    "! value of field under its own name, else of every binding
+    "! (local_element) under the binding's element - empty when row lacks
+    "! the field
+    CLASS-METHODS get_navigation_params
+      IMPORTING
+        row           TYPE data
+        bindings      TYPE ty_t_additional_binding
+        field         TYPE string OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
+
   PRIVATE SECTION.
 
     "! the MIME types of the file extensions get_file_extensions and
@@ -1302,6 +1555,49 @@ CLASS z2ui5_cl_rap_util DEFINITION
         val           TYPE string
       RETURNING
         VALUE(result) TYPE string.
+
+    "! entries as annotations again - prop the key - for a get_entries of
+    "! an array inside an entry (added 2026-10, third round)
+    CLASS-METHODS entries_to_annos
+      IMPORTING
+        it_entries    TYPE ty_t_entry
+      RETURNING
+        VALUE(result) TYPE ty_t_annotation.
+
+    "! the bindings (LOCALELEMENT, ELEMENT, USAGE) of the entries of an
+    "! array of bindings - additionalBinding, semanticObjectBinding
+    CLASS-METHODS get_entry_bindings
+      IMPORTING
+        it_entries    TYPE ty_t_entry
+      RETURNING
+        VALUE(result) TYPE ty_t_additional_binding.
+
+    "! the criticality, its representation, the importance and hidden of
+    "! the entry idx of a @UI.fieldGroup or @UI.identification
+    CLASS-METHODS set_entry_display
+      IMPORTING
+        it_entries TYPE ty_t_entry
+        idx        TYPE i
+      CHANGING
+        cs_entry   TYPE ty_s_field_group.
+
+    "! one range of a selectOptions entry as a condition
+    CLASS-METHODS range_to_condition
+      IMPORTING
+        sign          TYPE string
+        option        TYPE string
+        low           TYPE string
+        high          TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_s_condition.
+
+    "! the fixed values of the domain of a data element - empty where the
+    "! element has none or the system cannot say (RTTI, called dynamically)
+    CLASS-METHODS read_fixed_values
+      IMPORTING
+        io_elem       TYPE REF TO cl_abap_elemdescr
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
 
     " a token of a selection variant's filter: ( ) AND OR, or a condition
     " already turned into ABAP SQL
@@ -1542,6 +1838,11 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           ls_field-data_element = lv_abs+6.
         ENDIF.
         ls_field-abap_type = lo_elem->get_relative_name( ).
+        "the domain's fixed values - the value help of a field without an
+        "annotated one (added 2026-10, third round)
+        IF ls_field-data_element IS NOT INITIAL AND ls_field-is_boolean = abap_false.
+          ls_field-value_help-fixed_values = read_fixed_values( lo_elem ).
+        ENDIF.
       ENDIF.
 
       READ TABLE lt_ddic INTO DATA(ls_dfies) WITH KEY fieldname = ls_comp-name.
@@ -1577,6 +1878,16 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       "the value help entity's own annotation decides the dropdown
       IF <ls_field>-value_help-entity_name IS NOT INITIAL.
         <ls_field>-value_help-is_dropdown = is_size_category_xs( <ls_field>-value_help-entity_name ).
+      ENDIF.
+      "the domain's fixed values only where nothing else helps - then a
+      "dropdown of them, its key NAME and its text VALUE
+      IF <ls_field>-value_help-entity_name IS NOT INITIAL OR <ls_field>-is_boolean = abap_true
+        OR <ls_field>-is_hidden = abap_true.
+        CLEAR <ls_field>-value_help-fixed_values.
+      ELSEIF <ls_field>-value_help-fixed_values IS NOT INITIAL.
+        <ls_field>-value_help-is_dropdown = abap_true.
+        <ls_field>-value_help-element = `NAME`.
+        <ls_field>-value_help-text_element = `VALUE`.
       ENDIF.
     ENDLOOP.
 
@@ -1642,6 +1953,17 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
                   CHANGING  ct_chart = cs_entity-charts ).
     parse_variants( EXPORTING it_annos  = cs_entity-entity_annotations
                     CHANGING  cs_entity = cs_entity ).
+
+    "the entity's own @UI.lineItem: the criticality of its rows (the
+    "unqualified entry that names one)
+    DATA(lt_row_entries) = get_entries( it_annos = cs_entity-entity_annotations
+                                        prefix   = `UI.LINEITEM` ).
+    LOOP AT lt_row_entries INTO DATA(ls_row_entry) WHERE prop = `CRITICALITY`.
+      IF get_entry_value( it_entries = lt_row_entries idx = ls_row_entry-idx prop = `QUALIFIER` ) IS INITIAL.
+        cs_entity-row_criticality = to_upper( strip_quotes( ls_row_entry-value ) ).
+        EXIT.
+      ENDIF.
+    ENDLOOP.
 
     "======= ELEMENT LEVEL =======
     DATA(lt_elements) = it_elements.
@@ -1819,6 +2141,21 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           cs_field-lob_disposition = replace( val = strip_quotes( lv_val ) sub = `#` with = `` ).
         WHEN `SEMANTICS.MIMETYPE`.
           cs_field-is_mime_type = is_true( lv_val ).
+        WHEN `SEMANTICS.IMAGEURL`.
+          cs_field-is_image_url = is_true( lv_val ).
+        WHEN `OBJECTMODEL.TEXT.ASSOCIATION`.
+          cs_field-text_association = to_upper( strip_quotes( lv_val ) ).
+        WHEN `SEMANTICS.TEXT`.
+          cs_field-is_semantic_text = is_true( lv_val ).
+        WHEN `SEMANTICS.LANGUAGE`.
+          cs_field-is_language = is_true( lv_val ).
+        WHEN `CONSUMPTION.HIDDEN`.
+          IF is_true( lv_val ).
+            cs_field-is_consumption_hidden = abap_true.
+            cs_field-is_hidden = abap_true.
+          ENDIF.
+        WHEN `CONSUMPTION.SEMANTICOBJECT`.
+          cs_field-semantic_object = strip_quotes( lv_val ).
       ENDCASE.
 
       "@Semantics.largeObject.acceptableMimeTypes: ['image/png', ...] - an
@@ -1842,19 +2179,76 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    "======= @UI.lineItem - the unqualified entry that is not an action =======
+    "@Consumption.hidden wins over a later @UI.hidden: false
+    IF cs_field-is_consumption_hidden = abap_true.
+      cs_field-is_hidden = abap_true.
+    ENDIF.
+
+    "@Consumption.semanticObjectMapping.additionalBinding - the parameters
+    "of a navigation to the semantic object
+    DATA(lt_mapping) = get_entries( it_annos = it_annos
+                                    prefix   = `CONSUMPTION.SEMANTICOBJECTMAPPING.ADDITIONALBINDING` ).
+    APPEND LINES OF get_entry_bindings( lt_mapping ) TO cs_field-sem_object_bindings.
+
+    "======= @UI.lineItem - every entry that is no action; the columns are =======
+    "the unqualified one's (a qualified one is the table of a presentation
+    "variant, get_line_item_columns), an entry hidden: true is none
     DATA(lt_entries) = get_entries( it_annos = it_annos prefix = `UI.LINEITEM` ).
     DATA lv_idx TYPE i.
+    DATA lt_entry_parts TYPE ty_t_entry.
     LOOP AT lt_entries INTO DATA(ls_entry).
       IF ls_entry-idx = lv_idx.
         CONTINUE.
       ENDIF.
       lv_idx = ls_entry-idx.
       DATA(lv_type) = get_entry_value( it_entries = lt_entries idx = lv_idx prop = `TYPE` ).
-      IF lv_type CS `FOR_ACTION` OR lv_type CS `FOR_INTENT`
-        OR get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) IS NOT INITIAL.
+      IF lv_type CS `FOR_ACTION` OR lv_type CS `FOR_INTENT`.
         CONTINUE.
       ENDIF.
+      DATA(ls_line_item) = VALUE ty_s_line_item(
+        qualifier           = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) )
+        position            = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) )
+        label               = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) )
+        importance          = to_upper( replace( val  = strip_quotes( get_entry_value( it_entries = lt_entries
+                                                                                       idx        = lv_idx
+                                                                                       prop       = `IMPORTANCE` ) )
+                                                 sub  = `#`
+                                                 with = `` ) )
+        criticality         = to_upper( strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `CRITICALITY` ) ) )
+        crit_representation = to_upper( replace( val  = strip_quotes( get_entry_value( it_entries = lt_entries
+                                                                                       idx        = lv_idx
+                                                                                       prop       = `CRITICALITYREPRESENTATION` ) )
+                                                 sub  = `#`
+                                                 with = `` ) )
+        type                = to_upper( replace( val = strip_quotes( lv_type ) sub = `#` with = `` ) )
+        value_qualifier     = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `VALUEQUALIFIER` ) )
+        hidden              = hidden_value( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `HIDDEN` ) )
+        width               = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `CSSDEFAULT.WIDTH` ) )
+        icon_url            = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `ICONURL` ) ) ).
+      IF ls_line_item-hidden = `TRUE` OR line_exists( cs_field-line_items[ qualifier = ls_line_item-qualifier ] ).
+        CONTINUE.
+      ENDIF.
+      IF ls_line_item-position = 0.
+        "an entry without a position still makes a column - behind the others
+        ls_line_item-position = 9999.
+      ENDIF.
+      APPEND ls_line_item TO cs_field-line_items.
+      IF ls_line_item-qualifier IS NOT INITIAL OR cs_field-line_item_pos > 0.
+        CONTINUE.
+      ENDIF.
+      cs_field-line_item_width = ls_line_item-width.
+      cs_field-line_item_crit_repr = ls_line_item-crit_representation.
+      cs_field-line_item_value_qualifier = ls_line_item-value_qualifier.
+      cs_field-line_item_hidden = ls_line_item-hidden.
+      cs_field-line_item_icon_url = ls_line_item-icon_url.
+      "semanticObjectBinding of a #WITH_INTENT_BASED_NAVIGATION column
+      CLEAR lt_entry_parts.
+      LOOP AT lt_entries INTO DATA(ls_binding_part) WHERE idx = lv_idx AND prop CP `SEMANTICOBJECTBINDING*`.
+        APPEND ls_binding_part TO lt_entry_parts.
+      ENDLOOP.
+      APPEND LINES OF get_entry_bindings( get_entries( it_annos = entries_to_annos( lt_entry_parts )
+                                                       prefix   = `SEMANTICOBJECTBINDING` ) )
+        TO cs_field-sem_object_bindings.
       cs_field-line_item_pos = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) ).
       IF cs_field-line_item_pos = 0.
         "an entry without a position still makes a column - behind the others
@@ -1874,7 +2268,6 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           get_entry_value( it_entries = lt_entries idx = lv_idx prop = `SEMANTICOBJECT` ) ).
       cs_field-line_item_sem_action = strip_quotes(
           get_entry_value( it_entries = lt_entries idx = lv_idx prop = `SEMANTICOBJECTACTION` ) ).
-      EXIT.
     ENDLOOP.
 
     "======= @UI.selectionField =======
@@ -1905,7 +2298,10 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         qualifier = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) )
         position  = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) )
         label     = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) ) ).
-      IF line_exists( cs_field-identifications[ qualifier = ls_ident-qualifier ] ).
+      set_entry_display( EXPORTING it_entries = lt_entries
+                                   idx        = lv_idx
+                         CHANGING  cs_entry   = ls_ident ).
+      IF ls_ident-hidden = `TRUE` OR line_exists( cs_field-identifications[ qualifier = ls_ident-qualifier ] ).
         CONTINUE.
       ENDIF.
       APPEND ls_ident TO cs_field-identifications.
@@ -1933,7 +2329,11 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         position  = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) )
         label     = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) )
         group_label = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `GROUPLABEL` ) ) ).
-      IF ls_group-qualifier IS INITIAL OR line_exists( cs_field-field_groups[ qualifier = ls_group-qualifier ] ).
+      set_entry_display( EXPORTING it_entries = lt_entries
+                                   idx        = lv_idx
+                         CHANGING  cs_entry   = ls_group ).
+      IF ls_group-qualifier IS INITIAL OR ls_group-hidden = `TRUE`
+        OR line_exists( cs_field-field_groups[ qualifier = ls_group-qualifier ] ).
         CONTINUE.
       ENDIF.
       APPEND ls_group TO cs_field-field_groups.
@@ -2022,6 +2422,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
   METHOD parse_actions.
 
+    DATA lt_binding_parts TYPE ty_t_entry.
     DATA(lt_entries) = get_entries( it_annos = it_annos prefix = prefix ).
     DATA lv_idx TYPE i.
     LOOP AT lt_entries INTO DATA(ls_entry).
@@ -2083,6 +2484,13 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           CONTINUE.
         ENDIF.
         ls_action-name = to_upper( |INTENT~{ ls_action-semantic_object }~{ ls_action-semantic_action }| ).
+        "semanticObjectBinding: the parameters the selected rows fill
+        CLEAR lt_binding_parts.
+        LOOP AT lt_entries INTO DATA(ls_binding_part) WHERE idx = lv_idx AND prop CP `SEMANTICOBJECTBINDING*`.
+          APPEND ls_binding_part TO lt_binding_parts.
+        ENDLOOP.
+        ls_action-sem_object_bindings = get_entry_bindings( get_entries( it_annos = entries_to_annos( lt_binding_parts )
+                                                                         prefix   = `SEMANTICOBJECTBINDING` ) ).
       ENDIF.
       IF ls_action-name IS INITIAL
         OR line_exists( ct_action[ name = ls_action-name source = source qualifier = lv_qualifier ] ).
@@ -2151,6 +2559,13 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     DATA lv_sidx TYPE i.
     DATA lv_by TYPE string.
     DATA ls_sort TYPE ty_s_entry.
+    DATA lt_option_parts TYPE ty_t_entry.
+    DATA lt_options TYPE ty_t_entry.
+    DATA lt_range_parts TYPE ty_t_entry.
+    DATA lt_ranges TYPE ty_t_entry.
+    DATA lt_conditions TYPE ty_t_condition.
+    DATA lv_oidx TYPE i.
+    DATA lv_ridx TYPE i.
 
     "@UI.presentationVariant - the unqualified one, else the first
     DATA(lt_entries) = get_entries( it_annos = it_annos prefix = `UI.PRESENTATIONVARIANT` ).
@@ -2185,6 +2600,12 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           TO cs_entity-sort_order.
       ENDLOOP.
     ENDIF.
+    "its groupBy - the fields the list groups its rows by
+    IF lv_idx > 0 AND cs_entity-group_by IS INITIAL.
+      LOOP AT lt_entries INTO ls_entry WHERE idx = lv_idx AND prop CP `GROUPBY*`.
+        APPEND to_upper( strip_quotes( ls_entry-value ) ) TO cs_entity-group_by.
+      ENDLOOP.
+    ENDIF.
 
     "every @UI.presentationVariant - what a card of the overview page shows
     CLEAR lv_idx.
@@ -2207,6 +2628,8 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           APPEND VALUE #( key = ls_part-prop value = ls_part-value ) TO lt_sort_annos.
         ELSEIF ls_part-prop CP `VISUALIZATIONS*`.
           APPEND VALUE #( key = ls_part-prop value = ls_part-value ) TO lt_viz_annos.
+        ELSEIF ls_part-prop CP `GROUPBY*`.
+          APPEND to_upper( strip_quotes( ls_part-value ) ) TO ls_variant_pv-group_by.
         ENDIF.
       ENDLOOP.
       lt_sort = get_entries( it_annos = lt_sort_annos prefix = `SORTORDER` ).
@@ -2248,7 +2671,46 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         qualifier = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) )
         text      = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `TEXT` ) )
         filter    = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `FILTER` ) ) ).
-      IF ls_variant-filter IS INITIAL
+      "selectOptions: SELECTOPTIONS$n$.PROPERTYNAME and its RANGES$m$
+      CLEAR lt_option_parts.
+      LOOP AT lt_entries INTO DATA(ls_option_part) WHERE idx = lv_idx AND prop CP `SELECTOPTIONS*`.
+        APPEND ls_option_part TO lt_option_parts.
+      ENDLOOP.
+      lt_options = get_entries( it_annos = entries_to_annos( lt_option_parts )
+                                prefix   = `SELECTOPTIONS` ).
+      CLEAR lv_oidx.
+      LOOP AT lt_options INTO DATA(ls_option).
+        IF ls_option-idx = lv_oidx.
+          CONTINUE.
+        ENDIF.
+        lv_oidx = ls_option-idx.
+        DATA(lv_property) = to_upper( strip_quotes( get_entry_value( it_entries = lt_options
+                                                                      idx        = lv_oidx
+                                                                      prop       = `PROPERTYNAME` ) ) ).
+        CLEAR: lt_range_parts, lt_conditions, lv_ridx.
+        LOOP AT lt_options INTO DATA(ls_range_part) WHERE idx = lv_oidx AND prop CP `RANGES*`.
+          APPEND ls_range_part TO lt_range_parts.
+        ENDLOOP.
+        lt_ranges = get_entries( it_annos = entries_to_annos( lt_range_parts )
+                                 prefix   = `RANGES` ).
+        LOOP AT lt_ranges INTO DATA(ls_range).
+          IF ls_range-idx = lv_ridx.
+            CONTINUE.
+          ENDIF.
+          lv_ridx = ls_range-idx.
+          APPEND range_to_condition(
+            sign   = get_entry_value( it_entries = lt_ranges idx = lv_ridx prop = `SIGN` )
+            option = get_entry_value( it_entries = lt_ranges idx = lv_ridx prop = `OPTION` )
+            low    = strip_quotes( get_entry_value( it_entries = lt_ranges idx = lv_ridx prop = `LOW` ) )
+            high   = strip_quotes( get_entry_value( it_entries = lt_ranges idx = lv_ridx prop = `HIGH` ) ) )
+            TO lt_conditions.
+        ENDLOOP.
+        DATA(lv_option_value) = conditions_to_filter( lt_conditions ).
+        IF lv_property IS NOT INITIAL AND lv_option_value IS NOT INITIAL.
+          APPEND VALUE #( name = lv_property value = lv_option_value ) TO ls_variant-select_options.
+        ENDIF.
+      ENDLOOP.
+      IF ( ls_variant-filter IS INITIAL AND ls_variant-select_options IS INITIAL )
         OR line_exists( cs_entity-selection_variants[ qualifier = ls_variant-qualifier ] ).
         CONTINUE.
       ENDIF.
@@ -2257,6 +2719,30 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
                                   ELSE ls_variant-filter ).
       ENDIF.
       APPEND ls_variant TO cs_entity-selection_variants.
+    ENDLOOP.
+
+    "@UI.selectionPresentationVariant - which presentation and selection
+    "variant belong together
+    lt_entries = get_entries( it_annos = it_annos prefix = `UI.SELECTIONPRESENTATIONVARIANT` ).
+    CLEAR lv_idx.
+    LOOP AT lt_entries INTO ls_entry.
+      IF ls_entry-idx = lv_idx.
+        CONTINUE.
+      ENDIF.
+      lv_idx = ls_entry-idx.
+      DATA(ls_spv) = VALUE ty_s_sel_pres_variant(
+        qualifier              = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) )
+        text                   = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `TEXT` ) )
+        presentation_qualifier = strip_quotes( get_entry_value( it_entries = lt_entries
+                                                                idx        = lv_idx
+                                                                prop       = `PRESENTATIONVARIANTQUALIFIER` ) )
+        selection_qualifier    = strip_quotes( get_entry_value( it_entries = lt_entries
+                                                                idx        = lv_idx
+                                                                prop       = `SELECTIONVARIANTQUALIFIER` ) ) ).
+      IF line_exists( cs_entity-sel_pres_variants[ qualifier = ls_spv-qualifier ] ).
+        CONTINUE.
+      ENDIF.
+      APPEND ls_spv TO cs_entity-sel_pres_variants.
     ENDLOOP.
 
   ENDMETHOD.
@@ -2636,6 +3122,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
   METHOD build_filter_condition.
 
     DATA lt_or TYPE string_table.
+    DATA lt_not TYPE string_table.
     DATA(lv_name) = is_field-name.
     DATA(lv_text_field) = xsdbool( is_field-type_kind = `CHAR` ).
 
@@ -2656,8 +3143,14 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      IF lv_part CS `..`.
+      IF lv_part = `=`.
+        "= alone: the field is empty (a No of a boolean, the "empty"
+        "condition) - added 2026-10, third round
+        lv_cond = |{ lv_name } IS INITIAL|.
+      ELSEIF lv_part CS `..`.
         SPLIT lv_part AT `..` INTO DATA(lv_low) DATA(lv_high).
+        CONDENSE lv_low.
+        CONDENSE lv_high.
         lv_cond = |{ lv_name } BETWEEN { literal( is_field = is_field value = lv_low ) }| &&
                   | AND { literal( is_field = is_field value = lv_high ) }|.
       ELSEIF strlen( lv_part ) > 2 AND ( lv_part(2) = `>=` OR lv_part(2) = `<=` ).
@@ -2683,20 +3176,29 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         lv_cond = |{ lv_name } = { literal( is_field = is_field value = lv_part ) }|.
       ENDIF.
 
+      "an excluding part restricts what the others include - since
+      "2026-10, third round it is ANDed, as a condition that excludes is
+      "in a filter bar
       IF lv_not = abap_true.
-        lv_cond = |NOT ( { lv_cond } )|.
+        APPEND |NOT ( { lv_cond } )| TO lt_not.
+      ELSE.
+        APPEND lv_cond TO lt_or.
       ENDIF.
-      APPEND lv_cond TO lt_or.
     ENDLOOP.
 
-    IF lt_or IS INITIAL.
+    IF lines( lt_or ) > 1.
+      INSERT |( { concat_lines_of( table = lt_or sep = ` OR ` ) } )| INTO lt_not INDEX 1.
+    ELSEIF lines( lt_or ) = 1.
+      INSERT lt_or[ 1 ] INTO lt_not INDEX 1.
+    ENDIF.
+    IF lt_not IS INITIAL.
       RETURN.
     ENDIF.
-    IF lines( lt_or ) = 1.
-      result = lt_or[ 1 ].
+    IF lines( lt_not ) = 1.
+      result = lt_not[ 1 ].
       RETURN.
     ENDIF.
-    result = |( { concat_lines_of( table = lt_or sep = ` OR ` ) } )|.
+    result = |( { concat_lines_of( table = lt_not sep = ` AND ` ) } )|.
 
   ENDMETHOD.
 
@@ -4734,6 +5236,537 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           CLEAR <lv_file>.
         ENDIF.
       ENDLOOP.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD entries_to_annos.
+
+    LOOP AT it_entries INTO DATA(ls_entry).
+      APPEND VALUE #( key = ls_entry-prop value = ls_entry-value ) TO result.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_entry_bindings.
+
+    DATA lv_idx TYPE i.
+    LOOP AT it_entries INTO DATA(ls_entry).
+      IF ls_entry-idx = lv_idx.
+        CONTINUE.
+      ENDIF.
+      lv_idx = ls_entry-idx.
+      DATA(ls_binding) = VALUE ty_s_additional_binding(
+        element       = to_upper( strip_quotes( get_entry_value( it_entries = it_entries idx = lv_idx prop = `ELEMENT` ) ) )
+        local_element = to_upper( strip_quotes( get_entry_value( it_entries = it_entries idx = lv_idx prop = `LOCALELEMENT` ) ) )
+        usage         = strip_quotes( get_entry_value( it_entries = it_entries idx = lv_idx prop = `USAGE` ) ) ).
+      IF ls_binding-local_element IS NOT INITIAL OR ls_binding-element IS NOT INITIAL.
+        APPEND ls_binding TO result.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD set_entry_display.
+
+    cs_entry-criticality = to_upper( strip_quotes( get_entry_value( it_entries = it_entries
+                                                                     idx        = idx
+                                                                     prop       = `CRITICALITY` ) ) ).
+    cs_entry-crit_representation = to_upper( replace( val  = strip_quotes( get_entry_value( it_entries = it_entries
+                                                                                           idx        = idx
+                                                                                           prop       = `CRITICALITYREPRESENTATION` ) )
+                                                      sub  = `#`
+                                                      with = `` ) ).
+    cs_entry-importance = to_upper( replace( val  = strip_quotes( get_entry_value( it_entries = it_entries
+                                                                                  idx        = idx
+                                                                                  prop       = `IMPORTANCE` ) )
+                                             sub  = `#`
+                                             with = `` ) ).
+    cs_entry-hidden = hidden_value( get_entry_value( it_entries = it_entries
+                                                     idx        = idx
+                                                     prop       = `HIDDEN` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD range_to_condition.
+
+    DATA(lv_option) = to_upper( replace( val = strip_quotes( condense( option ) ) sub = `#` with = `` ) ).
+    DATA(lv_sign) = to_upper( replace( val = strip_quotes( condense( sign ) ) sub = `#` with = `` ) ).
+    DATA(lv_low) = strip_quotes( low ).
+    DATA(lv_len) = strlen( lv_low ).
+    result-exclude = xsdbool( lv_sign = `E` ).
+    result-low = lv_low.
+    result-high = strip_quotes( high ).
+    CASE lv_option.
+      WHEN `EQ` OR `NE` OR `GT` OR `GE` OR `LT` OR `LE` OR `BT`.
+        result-operator = lv_option.
+      WHEN `NB`.
+        result-operator = cs_condition_op-bt.
+        result-exclude = xsdbool( result-exclude = abap_false ).
+      WHEN `CP` OR `NP`.
+        IF lv_option = `NP`.
+          result-exclude = xsdbool( result-exclude = abap_false ).
+        ENDIF.
+        result-operator = cs_condition_op-contains.
+        IF lv_len > 2 AND lv_low(1) = `*` AND substring( val = lv_low off = lv_len - 1 ) = `*`.
+          result-low = substring( val = lv_low off = 1 len = lv_len - 2 ).
+        ELSEIF lv_len > 1 AND substring( val = lv_low off = lv_len - 1 ) = `*`.
+          result-operator = cs_condition_op-starts_with.
+          result-low = substring( val = lv_low len = lv_len - 1 ).
+        ELSEIF lv_len > 1 AND lv_low(1) = `*`.
+          result-operator = cs_condition_op-ends_with.
+          result-low = substring( val = lv_low off = 1 ).
+        ENDIF.
+      WHEN OTHERS.
+        result-operator = cs_condition_op-eq.
+    ENDCASE.
+
+  ENDMETHOD.
+
+
+  METHOD read_fixed_values.
+
+    DATA lr_values TYPE REF TO data.
+    FIELD-SYMBOLS <lt_values> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lv_low> TYPE any.
+    FIELD-SYMBOLS <lv_high> TYPE any.
+    FIELD-SYMBOLS <lv_text> TYPE any.
+
+    "CL_ABAP_ELEMDESCR->GET_DDIC_FIXED_VALUES reads DD07L / DD07T - on-premise
+    "RTTI, called dynamically like the other DDIC reads of this class, so a
+    "release without it only loses the automatic value help
+    TRY.
+        CREATE DATA lr_values TYPE (`DDFIXVALUES`).
+        ASSIGN lr_values->* TO <lt_values>.
+        CALL METHOD io_elem->(`GET_DDIC_FIXED_VALUES`)
+          EXPORTING
+            p_langu        = sy-langu
+          RECEIVING
+            p_fixed_values = <lt_values>
+          EXCEPTIONS
+            not_found      = 1
+            no_ddic_type   = 2
+            OTHERS         = 3.
+        IF sy-subrc <> 0.
+          RETURN.
+        ENDIF.
+        LOOP AT <lt_values> ASSIGNING FIELD-SYMBOL(<ls_value>).
+          UNASSIGN: <lv_low>, <lv_high>, <lv_text>.
+          ASSIGN COMPONENT `LOW` OF STRUCTURE <ls_value> TO <lv_low>.
+          ASSIGN COMPONENT `HIGH` OF STRUCTURE <ls_value> TO <lv_high>.
+          ASSIGN COMPONENT `DDTEXT` OF STRUCTURE <ls_value> TO <lv_text>.
+          "an interval of the domain is no entry of a list
+          IF <lv_low> IS NOT ASSIGNED OR ( <lv_high> IS ASSIGNED AND <lv_high> IS NOT INITIAL ).
+            CONTINUE.
+          ENDIF.
+          APPEND VALUE #( name  = condense( |{ <lv_low> }| )
+                          value = COND #( WHEN <lv_text> IS ASSIGNED THEN condense( |{ <lv_text> }| ) ) ) TO result.
+        ENDLOOP.
+      CATCH cx_root.
+        CLEAR result.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD conditions_to_filter.
+
+    DATA lt_parts TYPE string_table.
+    DATA lv_part TYPE string.
+    DATA lv_op TYPE string.
+    DATA lv_exclude TYPE abap_bool.
+    DATA lv_low TYPE string.
+    DATA lv_high TYPE string.
+
+    LOOP AT conditions INTO DATA(ls_condition).
+      lv_op = to_upper( condense( ls_condition-operator ) ).
+      lv_exclude = ls_condition-exclude.
+      "the separator of the filter syntax cannot be part of a value
+      lv_low = condense( replace( val = ls_condition-low sub = `;` with = `` occ = 0 ) ).
+      lv_high = condense( replace( val = ls_condition-high sub = `;` with = `` occ = 0 ) ).
+      IF lv_op = cs_condition_op-ne.
+        lv_op = cs_condition_op-eq.
+        lv_exclude = xsdbool( lv_exclude = abap_false ).
+      ENDIF.
+      IF lv_low IS INITIAL AND lv_op <> cs_condition_op-empty.
+        CONTINUE.
+      ENDIF.
+      CLEAR lv_part.
+      CASE lv_op.
+        WHEN cs_condition_op-eq.
+          lv_part = |={ lv_low }|.
+        WHEN cs_condition_op-bt.
+          IF lv_high IS INITIAL.
+            CONTINUE.
+          ENDIF.
+          lv_part = |{ lv_low }..{ lv_high }|.
+        WHEN cs_condition_op-gt.
+          lv_part = |>{ lv_low }|.
+        WHEN cs_condition_op-ge.
+          lv_part = |>={ lv_low }|.
+        WHEN cs_condition_op-lt.
+          lv_part = |<{ lv_low }|.
+        WHEN cs_condition_op-le.
+          lv_part = |<={ lv_low }|.
+        WHEN cs_condition_op-contains.
+          lv_part = |*{ lv_low }*|.
+        WHEN cs_condition_op-starts_with.
+          lv_part = |{ lv_low }*|.
+        WHEN cs_condition_op-ends_with.
+          lv_part = |*{ lv_low }|.
+        WHEN cs_condition_op-empty.
+          lv_part = `=`.
+        WHEN OTHERS.
+          CONTINUE.
+      ENDCASE.
+      IF lv_exclude = abap_true.
+        lv_part = |!{ lv_part }|.
+      ENDIF.
+      APPEND lv_part TO lt_parts.
+    ENDLOOP.
+
+    result = concat_lines_of( table = lt_parts sep = `;` ).
+
+  ENDMETHOD.
+
+
+  METHOD filter_to_conditions.
+
+    DATA ls_condition TYPE ty_s_condition.
+    DATA lv_part TYPE string.
+    DATA lv_len TYPE i.
+
+    LOOP AT split_filter_value( value ) INTO lv_part.
+      CLEAR ls_condition.
+      IF lv_part(1) = `!`.
+        ls_condition-exclude = abap_true.
+        lv_part = substring( val = lv_part off = 1 ).
+        IF lv_part IS INITIAL.
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+      lv_len = strlen( lv_part ).
+      IF lv_part = `=`.
+        ls_condition-operator = cs_condition_op-empty.
+      ELSEIF lv_part CS `..`.
+        ls_condition-operator = cs_condition_op-bt.
+        SPLIT lv_part AT `..` INTO ls_condition-low ls_condition-high.
+        CONDENSE ls_condition-low.
+        CONDENSE ls_condition-high.
+      ELSEIF lv_len > 2 AND lv_part(2) = `>=`.
+        ls_condition-operator = cs_condition_op-ge.
+        ls_condition-low = substring( val = lv_part off = 2 ).
+      ELSEIF lv_len > 2 AND lv_part(2) = `<=`.
+        ls_condition-operator = cs_condition_op-le.
+        ls_condition-low = substring( val = lv_part off = 2 ).
+      ELSEIF lv_len > 1 AND lv_part(1) = `>`.
+        ls_condition-operator = cs_condition_op-gt.
+        ls_condition-low = substring( val = lv_part off = 1 ).
+      ELSEIF lv_len > 1 AND lv_part(1) = `<`.
+        ls_condition-operator = cs_condition_op-lt.
+        ls_condition-low = substring( val = lv_part off = 1 ).
+      ELSEIF lv_len > 1 AND lv_part(1) = `=`.
+        ls_condition-operator = cs_condition_op-eq.
+        ls_condition-low = substring( val = lv_part off = 1 ).
+      ELSEIF lv_len > 2 AND lv_part(1) = `*` AND substring( val = lv_part off = lv_len - 1 ) = `*`.
+        ls_condition-operator = cs_condition_op-contains.
+        ls_condition-low = substring( val = lv_part off = 1 len = lv_len - 2 ).
+      ELSEIF lv_len > 1 AND substring( val = lv_part off = lv_len - 1 ) = `*`.
+        ls_condition-operator = cs_condition_op-starts_with.
+        ls_condition-low = substring( val = lv_part len = lv_len - 1 ).
+      ELSEIF lv_len > 1 AND lv_part(1) = `*`.
+        ls_condition-operator = cs_condition_op-ends_with.
+        ls_condition-low = substring( val = lv_part off = 1 ).
+      ELSE.
+        "no operator: contains for text, equals for the rest
+        ls_condition-operator = COND #( WHEN is_field-type_kind = `CHAR` OR is_field-type_kind = `STRING`
+                                        THEN cs_condition_op-contains
+                                        ELSE cs_condition_op-eq ).
+        ls_condition-low = lv_part.
+      ENDIF.
+      APPEND ls_condition TO result.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD split_filter_value.
+
+    DATA lv_part TYPE string.
+    SPLIT value AT `;` INTO TABLE DATA(lt_parts).
+    LOOP AT lt_parts INTO lv_part.
+      CONDENSE lv_part.
+      IF lv_part IS NOT INITIAL.
+        APPEND lv_part TO result.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_filter_control.
+
+    IF is_field-is_boolean = abap_true OR is_field-value_help-fixed_values IS NOT INITIAL
+      OR ( is_field-value_help-is_dropdown = abap_true AND is_field-value_help-entity_name IS NOT INITIAL ).
+      result = cs_filter_control-list.
+    ELSEIF is_field-type_kind = `DATS`.
+      result = COND #( WHEN is_field-filter_single = abap_true THEN cs_filter_control-date
+                       ELSE cs_filter_control-date_range ).
+    ELSEIF is_field-value_help-entity_name IS NOT INITIAL AND is_field-filter_single = abap_false.
+      result = cs_filter_control-multi.
+    ELSE.
+      result = cs_filter_control-input.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD get_filter_list.
+
+    "the empty entry first - every row
+    APPEND VALUE #( ) TO result.
+    IF is_field-is_boolean = abap_true.
+      APPEND VALUE #( name = `=X` value = yes ) TO result.
+      APPEND VALUE #( name = `=`  value = no ) TO result.
+      RETURN.
+    ENDIF.
+    LOOP AT is_field-value_help-fixed_values INTO DATA(ls_value).
+      APPEND VALUE #( name  = |={ ls_value-name }|
+                      value = COND #( WHEN ls_value-value IS INITIAL THEN ls_value-name
+                                      ELSE |{ ls_value-value } ({ ls_value-name })| ) ) TO result.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD selection_variant_filters.
+
+    DATA lt_words TYPE string_table.
+    DATA lt_found TYPE ty_t_name_value.
+    DATA lv_failed TYPE abap_bool.
+    DATA lv_value TYPE string.
+    DATA lv_index TYPE i.
+    DATA lv_field TYPE string.
+    DATA lv_op TYPE string.
+
+    CLEAR: filters, where.
+    LOOP AT is_variant-select_options INTO DATA(ls_option).
+      IF line_exists( it_fields[ name = ls_option-name ] ).
+        APPEND ls_option TO filters.
+      ENDIF.
+    ENDLOOP.
+    IF is_variant-filter IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    "an AND of single comparisons (Field OP Value) becomes filter values,
+    "anything else is applied as it is
+    DATA(lv_filter) = condense( is_variant-filter ).
+    IF lv_filter CA `()` OR to_upper( lv_filter ) CS ` OR `.
+      lv_failed = abap_true.
+    ELSE.
+      SPLIT lv_filter AT ` ` INTO TABLE lt_words.
+      DELETE lt_words WHERE table_line IS INITIAL.
+      lv_index = 1.
+      WHILE lv_index <= lines( lt_words ) AND lv_failed = abap_false.
+        IF lv_index + 2 > lines( lt_words ).
+          lv_failed = abap_true.
+          EXIT.
+        ENDIF.
+        lv_field = to_upper( lt_words[ lv_index ] ).
+        lv_op = to_upper( lt_words[ lv_index + 1 ] ).
+        lv_value = strip_quotes( lt_words[ lv_index + 2 ] ).
+        lv_value = SWITCH #( lv_op
+          WHEN `EQ` OR `=`         THEN |={ lv_value }|
+          WHEN `NE` OR `<>` OR `!=` THEN |!={ lv_value }|
+          WHEN `GT` OR `>`         THEN |>{ lv_value }|
+          WHEN `GE` OR `>=`        THEN |>={ lv_value }|
+          WHEN `LT` OR `<`         THEN |<{ lv_value }|
+          WHEN `LE` OR `<=`        THEN |<={ lv_value }|
+          ELSE `` ).
+        IF lv_value IS INITIAL OR NOT line_exists( it_fields[ name = lv_field ] )
+          OR line_exists( filters[ name = lv_field ] ) OR line_exists( lt_found[ name = lv_field ] ).
+          lv_failed = abap_true.
+          EXIT.
+        ENDIF.
+        APPEND VALUE #( name = lv_field value = lv_value ) TO lt_found.
+        lv_index = lv_index + 3.
+        IF lv_index <= lines( lt_words ).
+          IF to_upper( lt_words[ lv_index ] ) <> `AND`.
+            lv_failed = abap_true.
+            EXIT.
+          ENDIF.
+          lv_index = lv_index + 1.
+          IF lv_index > lines( lt_words ).
+            lv_failed = abap_true.
+          ENDIF.
+        ENDIF.
+      ENDWHILE.
+    ENDIF.
+
+    IF lv_failed = abap_true.
+      where = selection_filter_to_where( filter    = is_variant-filter
+                                         it_fields = it_fields ).
+      RETURN.
+    ENDIF.
+    APPEND LINES OF lt_found TO filters.
+
+  ENDMETHOD.
+
+
+  METHOD selection_variant_where.
+
+    DATA lt_and TYPE string_table.
+
+    IF is_variant-filter IS NOT INITIAL.
+      DATA(lv_filter_where) = selection_filter_to_where( filter    = is_variant-filter
+                                                         it_fields = it_fields ).
+      IF lv_filter_where IS NOT INITIAL.
+        APPEND lv_filter_where TO lt_and.
+      ENDIF.
+    ENDIF.
+    LOOP AT is_variant-select_options INTO DATA(ls_option).
+      READ TABLE it_fields INTO DATA(ls_field) WITH KEY name = ls_option-name.
+      IF sy-subrc <> 0 OR ls_field-is_virtual = abap_true.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_cond) = build_filter_condition( is_field = ls_field
+                                              value    = ls_option-value ).
+      IF lv_cond IS NOT INITIAL.
+        APPEND lv_cond TO lt_and.
+      ENDIF.
+    ENDLOOP.
+    result = concat_lines_of( table = lt_and sep = ` AND ` ).
+
+  ENDMETHOD.
+
+
+  METHOD get_line_item_columns.
+
+    DATA ls_column TYPE ty_s_field_info.
+
+    IF qualifier IS INITIAL.
+      LOOP AT it_fields INTO ls_column WHERE line_item_pos > 0 AND is_hidden = abap_false.
+        APPEND ls_column TO result.
+      ENDLOOP.
+      SORT result STABLE BY line_item_pos.
+      RETURN.
+    ENDIF.
+
+    LOOP AT it_fields INTO ls_column WHERE is_hidden = abap_false.
+      READ TABLE ls_column-line_items INTO DATA(ls_entry) WITH KEY qualifier = qualifier.
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
+      ls_column-line_item_pos = ls_entry-position.
+      ls_column-line_item_label = ls_entry-label.
+      ls_column-line_item_importance = ls_entry-importance.
+      ls_column-is_high_importance = xsdbool( ls_entry-importance CS `HIGH` ).
+      ls_column-line_item_crit_field = ls_entry-criticality.
+      ls_column-line_item_crit_repr = ls_entry-crit_representation.
+      ls_column-line_item_value_qualifier = ls_entry-value_qualifier.
+      ls_column-line_item_hidden = ls_entry-hidden.
+      ls_column-line_item_width = ls_entry-width.
+      ls_column-line_item_icon_url = ls_entry-icon_url.
+      "a link type keeps the unqualified entry's target - the qualified one
+      "is a plain column unless it says otherwise
+      IF ls_entry-type <> ls_column-line_item_type.
+        ls_column-line_item_type = ls_entry-type.
+      ENDIF.
+      APPEND ls_column TO result.
+    ENDLOOP.
+    SORT result STABLE BY line_item_pos.
+
+  ENDMETHOD.
+
+
+  METHOD criticality_binding.
+
+    DATA(lv_crit) = to_upper( condense( criticality ) ).
+    lv_crit = replace( val = lv_crit sub = `#` with = `` ).
+    IF lv_crit IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    "a literal: the state (or icon) itself
+    IF lv_crit CO `0123456789` OR lv_crit = `POSITIVE` OR lv_crit = `NEGATIVE` OR lv_crit = `CRITICAL`
+      OR lv_crit = `NEUTRAL` OR lv_crit = `INFORMATION`.
+      DATA(lv_level) = SWITCH string( lv_crit
+        WHEN `1` OR `NEGATIVE`    THEN `1`
+        WHEN `2` OR `CRITICAL`    THEN `2`
+        WHEN `3` OR `POSITIVE`    THEN `3`
+        WHEN `5` OR `INFORMATION` THEN `5`
+        ELSE `0` ).
+      IF kind = `ICON`.
+        result = SWITCH #( lv_level
+          WHEN `1` THEN `sap-icon://error`
+          WHEN `2` THEN `sap-icon://alert`
+          WHEN `3` THEN `sap-icon://sys-enter-2`
+          WHEN `5` THEN `sap-icon://message-information`
+          ELSE `` ).
+      ELSE.
+        result = SWITCH #( lv_level
+          WHEN `1` THEN `Error`
+          WHEN `2` THEN `Warning`
+          WHEN `3` THEN `Success`
+          WHEN `5` THEN `Information`
+          ELSE `None` ).
+      ENDIF.
+      RETURN.
+    ENDIF.
+
+    "a field: 1 negative, 2 critical, 3 positive, 5 information, 0 and
+    "every other value neutral
+    DATA(lv_path) = `${` && lv_crit && `}`.
+    IF kind = `ICON`.
+      result = `{= ` && lv_path && ` === 3 ? 'sap-icon://sys-enter-2' : (` &&
+               lv_path && ` === 1 ? 'sap-icon://error' : (` &&
+               lv_path && ` === 2 ? 'sap-icon://alert' : (` &&
+               lv_path && ` === 5 ? 'sap-icon://message-information' : ''))) }`.
+      RETURN.
+    ENDIF.
+    result = `{= ` && lv_path && ` === 3 ? 'Success' : (` &&
+             lv_path && ` === 1 ? 'Error' : (` &&
+             lv_path && ` === 2 ? 'Warning' : (` &&
+             lv_path && ` === 5 ? 'Information' : 'None'))) }`.
+
+  ENDMETHOD.
+
+
+  METHOD get_navigation_params.
+
+    FIELD-SYMBOLS <lv_value> TYPE any.
+
+    IF field IS NOT INITIAL.
+      UNASSIGN <lv_value>.
+      ASSIGN COMPONENT field OF STRUCTURE row TO <lv_value>.
+      IF <lv_value> IS NOT ASSIGNED.
+        RETURN.
+      ENDIF.
+      READ TABLE bindings INTO DATA(ls_own) WITH KEY local_element = to_upper( field ).
+      APPEND VALUE #( name  = COND #( WHEN sy-subrc = 0 AND ls_own-element IS NOT INITIAL THEN ls_own-element
+                                      ELSE to_upper( field ) )
+                      value = condense( |{ <lv_value> }| ) ) TO result.
+    ENDIF.
+    LOOP AT bindings INTO DATA(ls_binding) WHERE local_element IS NOT INITIAL.
+      IF field IS NOT INITIAL AND ls_binding-local_element = to_upper( field ).
+        CONTINUE.
+      ENDIF.
+      UNASSIGN <lv_value>.
+      ASSIGN COMPONENT ls_binding-local_element OF STRUCTURE row TO <lv_value>.
+      IF <lv_value> IS NOT ASSIGNED.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_name) = COND string( WHEN ls_binding-element IS NOT INITIAL THEN ls_binding-element
+                                   ELSE ls_binding-local_element ).
+      IF line_exists( result[ name = lv_name ] ).
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( name = lv_name value = condense( |{ <lv_value> }| ) ) TO result.
     ENDLOOP.
 
   ENDMETHOD.

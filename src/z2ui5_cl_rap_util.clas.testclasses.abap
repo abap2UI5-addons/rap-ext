@@ -2141,3 +2141,486 @@ CLASS ltcl_messages_files IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+" The filter bar, the table and the display of the 2026-10 third round:
+" the conditions of the "define conditions" dialog, the control of a
+" filter, selection variants as filter values, qualified line items,
+" criticality and the display annotations - plain data, no system.
+CLASS ltcl_filter_bar DEFINITION FINAL
+  FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+
+  PRIVATE SECTION.
+    DATA ms_entity TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
+
+    METHODS setup.
+    METHODS apply
+      IMPORTING
+        it_entity   TYPE z2ui5_cl_rap_util=>ty_t_annotation OPTIONAL
+        it_elements TYPE z2ui5_cl_rap_util=>ty_t_element_annotation OPTIONAL.
+    METHODS field
+      IMPORTING
+        name          TYPE string
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_s_field_info.
+
+    METHODS conditions_to_filter     FOR TESTING RAISING cx_static_check.
+    METHODS filter_to_conditions     FOR TESTING RAISING cx_static_check.
+    METHODS excluding_parts_are_and  FOR TESTING RAISING cx_static_check.
+    METHODS empty_is_initial         FOR TESTING RAISING cx_static_check.
+    METHODS filter_controls          FOR TESTING RAISING cx_static_check.
+    METHODS filter_lists             FOR TESTING RAISING cx_static_check.
+    METHODS select_options           FOR TESTING RAISING cx_static_check.
+    METHODS variant_as_filters       FOR TESTING RAISING cx_static_check.
+    METHODS variant_where            FOR TESTING RAISING cx_static_check.
+    METHODS line_item_entries        FOR TESTING RAISING cx_static_check.
+    METHODS qualified_line_item      FOR TESTING RAISING cx_static_check.
+    METHODS criticality_bindings     FOR TESTING RAISING cx_static_check.
+    METHODS display_annotations      FOR TESTING RAISING cx_static_check.
+    METHODS entry_display            FOR TESTING RAISING cx_static_check.
+    METHODS entity_variants          FOR TESTING RAISING cx_static_check.
+    METHODS navigation_params        FOR TESTING RAISING cx_static_check.
+    METHODS intent_bindings          FOR TESTING RAISING cx_static_check.
+
+ENDCLASS.
+
+
+CLASS ltcl_filter_bar IMPLEMENTATION.
+
+  METHOD setup.
+    ms_entity = VALUE #(
+      name   = `Z_TRAVEL`
+      fields = VALUE #( ( name = `TRAVELID`   type_kind = `CHAR` )
+                        ( name = `STATUS`     type_kind = `CHAR` )
+                        ( name = `STATUSCRIT` type_kind = `INT` )
+                        ( name = `PRICE`      type_kind = `DEC` )
+                        ( name = `BEGINDATE`  type_kind = `DATS` )
+                        ( name = `AGENCYID`   type_kind = `CHAR` )
+                        ( name = `IMAGE`      type_kind = `STRING` ) ) ).
+  ENDMETHOD.
+
+
+  METHOD apply.
+    z2ui5_cl_rap_util=>apply_annotations( EXPORTING it_entity   = it_entity
+                                                    it_elements = it_elements
+                                          CHANGING  cs_entity   = ms_entity ).
+  ENDMETHOD.
+
+
+  METHOD field.
+    READ TABLE ms_entity-fields INTO result WITH KEY name = name.
+    cl_abap_unit_assert=>assert_subrc( msg = |field { name }| ).
+  ENDMETHOD.
+
+
+  METHOD conditions_to_filter.
+    DATA(lv_filter) = z2ui5_cl_rap_util=>conditions_to_filter( VALUE #(
+      ( operator = `EQ` low = `A` )
+      ( operator = `NE` low = `B` )
+      ( operator = `BT` low = `1` high = `9` )
+      ( operator = `GT` low = `5` )
+      ( operator = `LE` low = `7` exclude = abap_true )
+      ( operator = `CONTAINS` low = `x` )
+      ( operator = `STARTS_WITH` low = `y` )
+      ( operator = `ENDS_WITH` low = `z` )
+      ( operator = `EMPTY` )
+      "no value, no condition - and a ; cannot split a value
+      ( operator = `EQ` )
+      ( operator = `BT` low = `1` )
+      ( operator = `EQ` low = `a;b` ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `=A;!=B;1..9;>5;!<=7;*x*;y*;*z;=;=ab`
+                                        act = lv_filter ).
+    "NE excluded is EQ included
+    cl_abap_unit_assert=>assert_equals(
+      exp = `=C`
+      act = z2ui5_cl_rap_util=>conditions_to_filter( VALUE #( ( operator = `NE` low = `C` exclude = abap_true ) ) ) ).
+  ENDMETHOD.
+
+
+  METHOD filter_to_conditions.
+    DATA(lt_conditions) = z2ui5_cl_rap_util=>filter_to_conditions(
+      value    = `=A; !=B ;1 .. 9;>=5;<3;*x*;y*;*z;=;abc`
+      is_field = VALUE #( name = `F` type_kind = `CHAR` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_condition(
+        ( operator = `EQ` low = `A` )
+        ( operator = `EQ` low = `B` exclude = abap_true )
+        ( operator = `BT` low = `1` high = `9` )
+        ( operator = `GE` low = `5` )
+        ( operator = `LT` low = `3` )
+        ( operator = `CONTAINS` low = `x` )
+        ( operator = `STARTS_WITH` low = `y` )
+        ( operator = `ENDS_WITH` low = `z` )
+        ( operator = `EMPTY` )
+        ( operator = `CONTAINS` low = `abc` ) )
+      act = lt_conditions ).
+    "a number without an operator equals
+    lt_conditions = z2ui5_cl_rap_util=>filter_to_conditions( value    = `12`
+                                                             is_field = VALUE #( type_kind = `DEC` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `EQ`
+                                        act = lt_conditions[ 1 ]-operator ).
+    "and back
+    cl_abap_unit_assert=>assert_equals(
+      exp = `=A;!=B;1..9;>=5;<3;*x*;y*;*z;=;*abc*`
+      act = z2ui5_cl_rap_util=>conditions_to_filter( z2ui5_cl_rap_util=>filter_to_conditions(
+        value    = `=A;!=B;1..9;>=5;<3;*x*;y*;*z;=;abc`
+        is_field = VALUE #( type_kind = `CHAR` ) ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 2
+                                        act = lines( z2ui5_cl_rap_util=>split_filter_value( ` a ;; b ;` ) ) ).
+  ENDMETHOD.
+
+
+  METHOD excluding_parts_are_and.
+    DATA(ls_field) = VALUE z2ui5_cl_rap_util=>ty_s_field_info( name = `F` type_kind = `CHAR` ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `( ( F = 'A' OR F = 'B' ) AND NOT ( F = 'C' ) )`
+      act = z2ui5_cl_rap_util=>build_filter_condition( is_field = ls_field
+                                                       value    = `=A;=B;!=C` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `( NOT ( F = 'C' ) AND NOT ( F = 'D' ) )`
+      act = z2ui5_cl_rap_util=>build_filter_condition( is_field = ls_field
+                                                       value    = `!=C;!=D` ) ).
+    "a date range from a DateRangeSelection, blanks around its delimiter
+    cl_abap_unit_assert=>assert_equals(
+      exp = `F BETWEEN '20240101' AND '20240131'`
+      act = z2ui5_cl_rap_util=>build_filter_condition( is_field = VALUE #( name = `F` type_kind = `DATS` )
+                                                       value    = `2024-01-01 .. 2024-01-31` ) ).
+  ENDMETHOD.
+
+
+  METHOD empty_is_initial.
+    DATA(ls_field) = VALUE z2ui5_cl_rap_util=>ty_s_field_info( name = `F` type_kind = `CHAR` ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `F IS INITIAL`
+      act = z2ui5_cl_rap_util=>build_filter_condition( is_field = ls_field
+                                                       value    = `=` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `NOT ( F IS INITIAL )`
+      act = z2ui5_cl_rap_util=>build_filter_condition( is_field = ls_field
+                                                       value    = `!=` ) ).
+  ENDMETHOD.
+
+
+  METHOD filter_controls.
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_filter_control-list
+      act = z2ui5_cl_rap_util=>get_filter_control( VALUE #( type_kind = `CHAR` is_boolean = abap_true ) ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_filter_control-list
+      act = z2ui5_cl_rap_util=>get_filter_control( VALUE #( type_kind  = `CHAR`
+                                                             value_help = VALUE #( fixed_values = VALUE #( ( name = `A` ) ) ) ) ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_filter_control-date_range
+      act = z2ui5_cl_rap_util=>get_filter_control( VALUE #( type_kind = `DATS` ) ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_filter_control-date
+      act = z2ui5_cl_rap_util=>get_filter_control( VALUE #( type_kind = `DATS` filter_single = abap_true ) ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_filter_control-multi
+      act = z2ui5_cl_rap_util=>get_filter_control( VALUE #( type_kind  = `CHAR`
+                                                             value_help = VALUE #( entity_name = `I_COUNTRY` ) ) ) ).
+    "one value only: the input with its value help
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_filter_control-input
+      act = z2ui5_cl_rap_util=>get_filter_control( VALUE #( type_kind     = `CHAR`
+                                                             filter_single = abap_true
+                                                             value_help    = VALUE #( entity_name = `I_COUNTRY` ) ) ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = z2ui5_cl_rap_util=>cs_filter_control-input
+      act = z2ui5_cl_rap_util=>get_filter_control( VALUE #( type_kind = `DEC` ) ) ).
+  ENDMETHOD.
+
+
+  METHOD filter_lists.
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_name_value( ( )
+                                                       ( name = `=X` value = `Yes` )
+                                                       ( name = `=`  value = `No` ) )
+      act = z2ui5_cl_rap_util=>get_filter_list( is_field = VALUE #( is_boolean = abap_true )
+                                                yes      = `Yes`
+                                                no       = `No` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_name_value( ( )
+                                                       ( name = `=O` value = `Open (O)` )
+                                                       ( name = `=X` value = `X` ) )
+      act = z2ui5_cl_rap_util=>get_filter_list(
+        is_field = VALUE #( value_help = VALUE #( fixed_values = VALUE #( ( name = `O` value = `Open` )
+                                                                          ( name = `X` ) ) ) )
+        yes      = `Yes`
+        no       = `No` ) ).
+  ENDMETHOD.
+
+
+  METHOD select_options.
+    apply( it_entity = VALUE #(
+      ( key = `UI.SELECTIONVARIANT$1$.QUALIFIER`                        value = `'Open'` )
+      ( key = `UI.SELECTIONVARIANT$1$.SELECTOPTIONS$1$.PROPERTYNAME`    value = `'Status'` )
+      ( key = `UI.SELECTIONVARIANT$1$.SELECTOPTIONS$1$.RANGES$1$.SIGN`  value = `#I` )
+      ( key = `UI.SELECTIONVARIANT$1$.SELECTOPTIONS$1$.RANGES$1$.OPTION` value = `#EQ` )
+      ( key = `UI.SELECTIONVARIANT$1$.SELECTOPTIONS$1$.RANGES$1$.LOW`   value = `'O'` )
+      ( key = `UI.SELECTIONVARIANT$1$.SELECTOPTIONS$1$.RANGES$2$.SIGN`  value = `#E` )
+      ( key = `UI.SELECTIONVARIANT$1$.SELECTOPTIONS$1$.RANGES$2$.OPTION` value = `#CP` )
+      ( key = `UI.SELECTIONVARIANT$1$.SELECTOPTIONS$1$.RANGES$2$.LOW`   value = `'X*'` )
+      ( key = `UI.SELECTIONVARIANT$1$.SELECTOPTIONS$2$.PROPERTYNAME`    value = `'Price'` )
+      ( key = `UI.SELECTIONVARIANT$1$.SELECTOPTIONS$2$.RANGES$1$.SIGN`  value = `#I` )
+      ( key = `UI.SELECTIONVARIANT$1$.SELECTOPTIONS$2$.RANGES$1$.OPTION` value = `#BT` )
+      ( key = `UI.SELECTIONVARIANT$1$.SELECTOPTIONS$2$.RANGES$1$.LOW`   value = `'10'` )
+      ( key = `UI.SELECTIONVARIANT$1$.SELECTOPTIONS$2$.RANGES$1$.HIGH`  value = `'20'` ) ) ).
+    "a variant of selectOptions only is a variant too
+    cl_abap_unit_assert=>assert_equals( exp = 1
+                                        act = lines( ms_entity-selection_variants ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_name_value( ( name = `STATUS` value = `=O;!X*` )
+                                                       ( name = `PRICE`  value = `10..20` ) )
+      act = ms_entity-selection_variants[ 1 ]-select_options ).
+  ENDMETHOD.
+
+
+  METHOD variant_as_filters.
+    DATA lt_filters TYPE z2ui5_cl_rap_util=>ty_t_name_value.
+    DATA lv_where TYPE string.
+
+    z2ui5_cl_rap_util=>selection_variant_filters(
+      EXPORTING is_variant = VALUE #( filter         = `Status EQ 'O' and Price ge 10`
+                                      select_options = VALUE #( ( name = `AGENCYID` value = `=070001` )
+                                                                ( name = `UNKNOWN`  value = `=1` ) ) )
+                it_fields  = ms_entity-fields
+      IMPORTING filters    = lt_filters
+                where      = lv_where ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_name_value( ( name = `AGENCYID` value = `=070001` )
+                                                       ( name = `STATUS`   value = `=O` )
+                                                       ( name = `PRICE`    value = `>=10` ) )
+      act = lt_filters ).
+    cl_abap_unit_assert=>assert_initial( lv_where ).
+
+    "an OR is applied as it is
+    z2ui5_cl_rap_util=>selection_variant_filters(
+      EXPORTING is_variant = VALUE #( filter = `Status EQ O OR Status EQ A` )
+                it_fields  = ms_entity-fields
+      IMPORTING filters    = lt_filters
+                where      = lv_where ).
+    cl_abap_unit_assert=>assert_initial( lt_filters ).
+    cl_abap_unit_assert=>assert_not_initial( lv_where ).
+  ENDMETHOD.
+
+
+  METHOD variant_where.
+    cl_abap_unit_assert=>assert_equals(
+      exp = `STATUS = 'O' AND PRICE BETWEEN '10' AND '20'`
+      act = z2ui5_cl_rap_util=>selection_variant_where(
+        is_variant = VALUE #( filter         = `Status EQ O`
+                              select_options = VALUE #( ( name = `PRICE` value = `10..20` ) ) )
+        it_fields  = ms_entity-fields ) ).
+  ENDMETHOD.
+
+
+  METHOD line_item_entries.
+    apply( it_elements = VALUE #(
+      ( element = `Status` key = `UI.LINEITEM$1$.POSITION`                  value = `20` )
+      ( element = `Status` key = `UI.LINEITEM$1$.CRITICALITY`               value = `'StatusCrit'` )
+      ( element = `Status` key = `UI.LINEITEM$1$.CRITICALITYREPRESENTATION` value = `#WITHOUT_ICON` )
+      ( element = `Status` key = `UI.LINEITEM$1$.CSSDEFAULT.WIDTH`          value = `'8rem'` )
+      ( element = `Status` key = `UI.LINEITEM$1$.HIDDEN`                    value = `#(IsArchived)` )
+      ( element = `Status` key = `UI.LINEITEM$1$.ICONURL`                   value = `'sap-icon://flag'` )
+      ( element = `Status` key = `UI.LINEITEM$2$.QUALIFIER`                 value = `'Short'` )
+      ( element = `Status` key = `UI.LINEITEM$2$.POSITION`                  value = `5` )
+      ( element = `Price`  key = `UI.LINEITEM$1$.TYPE`                      value = `#AS_FIELDGROUP` )
+      ( element = `Price`  key = `UI.LINEITEM$1$.VALUEQUALIFIER`            value = `'Prices'` )
+      ( element = `Price`  key = `UI.LINEITEM$1$.POSITION`                  value = `30` )
+      "hidden: true is no column at all
+      ( element = `AgencyId` key = `UI.LINEITEM$1$.POSITION`                value = `40` )
+      ( element = `AgencyId` key = `UI.LINEITEM$1$.HIDDEN`                  value = `true` ) ) ).
+
+    DATA(ls_status) = field( `STATUS` ).
+    cl_abap_unit_assert=>assert_equals( exp = 20             act = ls_status-line_item_pos ).
+    cl_abap_unit_assert=>assert_equals( exp = `STATUSCRIT`   act = ls_status-line_item_crit_field ).
+    cl_abap_unit_assert=>assert_equals( exp = `WITHOUT_ICON` act = ls_status-line_item_crit_repr ).
+    cl_abap_unit_assert=>assert_equals( exp = `8rem`         act = ls_status-line_item_width ).
+    cl_abap_unit_assert=>assert_equals( exp = `ISARCHIVED`   act = ls_status-line_item_hidden ).
+    cl_abap_unit_assert=>assert_equals( exp = `sap-icon://flag` act = ls_status-line_item_icon_url ).
+    cl_abap_unit_assert=>assert_equals( exp = 2              act = lines( ls_status-line_items ) ).
+
+    DATA(ls_price) = field( `PRICE` ).
+    cl_abap_unit_assert=>assert_equals( exp = `AS_FIELDGROUP` act = ls_price-line_item_type ).
+    cl_abap_unit_assert=>assert_equals( exp = `Prices`        act = ls_price-line_item_value_qualifier ).
+
+    cl_abap_unit_assert=>assert_equals( exp = 0 act = field( `AGENCYID` )-line_item_pos ).
+  ENDMETHOD.
+
+
+  METHOD qualified_line_item.
+    apply( it_elements = VALUE #(
+      ( element = `TravelId` key = `UI.LINEITEM$1$.POSITION`   value = `10` )
+      ( element = `Status`   key = `UI.LINEITEM$1$.POSITION`   value = `20` )
+      ( element = `Status`   key = `UI.LINEITEM$2$.QUALIFIER`  value = `'Short'` )
+      ( element = `Status`   key = `UI.LINEITEM$2$.POSITION`   value = `5` )
+      ( element = `Status`   key = `UI.LINEITEM$2$.LABEL`      value = `'State'` )
+      ( element = `Price`    key = `UI.LINEITEM$1$.QUALIFIER`  value = `'Short'` )
+      ( element = `Price`    key = `UI.LINEITEM$1$.POSITION`   value = `1` )
+      ( element = `Price`    key = `UI.LINEITEM$1$.IMPORTANCE` value = `#HIGH` ) ) ).
+
+    DATA(lt_default) = z2ui5_cl_rap_util=>get_line_item_columns( ms_entity-fields ).
+    cl_abap_unit_assert=>assert_equals( exp = 2          act = lines( lt_default ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `TRAVELID` act = lt_default[ 1 ]-name ).
+
+    DATA(lt_short) = z2ui5_cl_rap_util=>get_line_item_columns( it_fields = ms_entity-fields
+                                                               qualifier = `Short` ).
+    cl_abap_unit_assert=>assert_equals( exp = 2       act = lines( lt_short ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `PRICE` act = lt_short[ 1 ]-name ).
+    cl_abap_unit_assert=>assert_true( lt_short[ 1 ]-is_high_importance ).
+    cl_abap_unit_assert=>assert_equals( exp = `State` act = lt_short[ 2 ]-line_item_label ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>get_line_item_columns( it_fields = ms_entity-fields
+                                                                                   qualifier = `None` ) ).
+  ENDMETHOD.
+
+
+  METHOD criticality_bindings.
+    cl_abap_unit_assert=>assert_equals( exp = `Information`
+                                        act = z2ui5_cl_rap_util=>criticality_binding( `5` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `None`
+                                        act = z2ui5_cl_rap_util=>criticality_binding( `0` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `Success`
+                                        act = z2ui5_cl_rap_util=>criticality_binding( `#POSITIVE` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `sap-icon://alert`
+                                        act = z2ui5_cl_rap_util=>criticality_binding( criticality = `2`
+                                                                                      kind        = `ICON` ) ).
+    DATA(lv_state) = z2ui5_cl_rap_util=>criticality_binding( `Crit` ).
+    cl_abap_unit_assert=>assert_char_cp( act = lv_state
+                                         exp = `{= ${CRIT} === 3 ? 'Success'*=== 5 ? 'Information' : 'None'*` ).
+    DATA(lv_icon) = z2ui5_cl_rap_util=>criticality_binding( criticality = `Crit`
+                                                             kind        = `ICON` ).
+    cl_abap_unit_assert=>assert_char_cp( act = lv_icon
+                                         exp = `*'sap-icon://message-information' : ''*` ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>criticality_binding( `` ) ).
+  ENDMETHOD.
+
+
+  METHOD display_annotations.
+    apply( it_elements = VALUE #(
+      ( element = `Image`    key = `SEMANTICS.IMAGEURL`                 value = `true` )
+      ( element = `Status`   key = `OBJECTMODEL.TEXT.ASSOCIATION`       value = `'_StatusText'` )
+      ( element = `Status`   key = `UI.HIDDEN`                          value = `false` )
+      ( element = `StatusCrit` key = `CONSUMPTION.HIDDEN`               value = `true` )
+      ( element = `StatusCrit` key = `UI.HIDDEN`                        value = `false` )
+      ( element = `AgencyId` key = `CONSUMPTION.SEMANTICOBJECT`         value = `'TravelAgency'` )
+      ( element = `AgencyId` key = `CONSUMPTION.SEMANTICOBJECTMAPPING.ADDITIONALBINDING$1$.LOCALELEMENT` value = `'AgencyId'` )
+      ( element = `AgencyId` key = `CONSUMPTION.SEMANTICOBJECTMAPPING.ADDITIONALBINDING$1$.ELEMENT`      value = `'Agency'` ) ) ).
+
+    cl_abap_unit_assert=>assert_true( field( `IMAGE` )-is_image_url ).
+    cl_abap_unit_assert=>assert_equals( exp = `_STATUSTEXT` act = field( `STATUS` )-text_association ).
+    "@Consumption.hidden wins over a later @UI.hidden: false
+    cl_abap_unit_assert=>assert_true( field( `STATUSCRIT` )-is_consumption_hidden ).
+    cl_abap_unit_assert=>assert_true( field( `STATUSCRIT` )-is_hidden ).
+    DATA(ls_agency) = field( `AGENCYID` ).
+    cl_abap_unit_assert=>assert_equals( exp = `TravelAgency` act = ls_agency-semantic_object ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_additional_binding( ( local_element = `AGENCYID` element = `AGENCY` ) )
+      act = ls_agency-sem_object_bindings ).
+  ENDMETHOD.
+
+
+  METHOD entry_display.
+    apply( it_elements = VALUE #(
+      ( element = `Status` key = `UI.FIELDGROUP$1$.QUALIFIER`                 value = `'General'` )
+      ( element = `Status` key = `UI.FIELDGROUP$1$.CRITICALITY`               value = `'StatusCrit'` )
+      ( element = `Status` key = `UI.FIELDGROUP$1$.CRITICALITYREPRESENTATION` value = `#WITH_ICON` )
+      ( element = `Status` key = `UI.FIELDGROUP$1$.IMPORTANCE`                value = `#LOW` )
+      ( element = `Status` key = `UI.FIELDGROUP$1$.HIDDEN`                    value = `#(IsArchived)` )
+      ( element = `Status` key = `UI.FIELDGROUP$2$.QUALIFIER`                 value = `'Gone'` )
+      ( element = `Status` key = `UI.FIELDGROUP$2$.HIDDEN`                    value = `true` )
+      ( element = `Status` key = `UI.IDENTIFICATION$1$.CRITICALITY`           value = `'StatusCrit'` )
+      ( element = `Status` key = `UI.IDENTIFICATION$1$.IMPORTANCE`            value = `#HIGH` ) ) ).
+
+    DATA(ls_status) = field( `STATUS` ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = lines( ls_status-field_groups ) ).
+    DATA(ls_group) = ls_status-field_groups[ 1 ].
+    cl_abap_unit_assert=>assert_equals( exp = `STATUSCRIT` act = ls_group-criticality ).
+    cl_abap_unit_assert=>assert_equals( exp = `WITH_ICON`  act = ls_group-crit_representation ).
+    cl_abap_unit_assert=>assert_equals( exp = `LOW`        act = ls_group-importance ).
+    cl_abap_unit_assert=>assert_equals( exp = `ISARCHIVED` act = ls_group-hidden ).
+    cl_abap_unit_assert=>assert_equals( exp = `STATUSCRIT` act = ls_status-identifications[ 1 ]-criticality ).
+    cl_abap_unit_assert=>assert_equals( exp = `HIGH`       act = ls_status-identifications[ 1 ]-importance ).
+  ENDMETHOD.
+
+
+  METHOD entity_variants.
+    apply( it_entity = VALUE #(
+      ( key = `UI.LINEITEM$1$.CRITICALITY`                                     value = `'StatusCrit'` )
+      ( key = `UI.PRESENTATIONVARIANT$1$.GROUPBY$1$`                           value = `'Status'` )
+      ( key = `UI.PRESENTATIONVARIANT$1$.SORTORDER$1$.BY`                      value = `'Price'` )
+      ( key = `UI.PRESENTATIONVARIANT$2$.QUALIFIER`                            value = `'ByAgency'` )
+      ( key = `UI.PRESENTATIONVARIANT$2$.GROUPBY$1$`                           value = `'AgencyId'` )
+      ( key = `UI.PRESENTATIONVARIANT$2$.VISUALIZATIONS$1$.TYPE`               value = `#AS_LINEITEM` )
+      ( key = `UI.PRESENTATIONVARIANT$2$.VISUALIZATIONS$1$.QUALIFIER`          value = `'Short'` )
+      ( key = `UI.SELECTIONPRESENTATIONVARIANT$1$.QUALIFIER`                   value = `'Open'` )
+      ( key = `UI.SELECTIONPRESENTATIONVARIANT$1$.TEXT`                        value = `'Open travels'` )
+      ( key = `UI.SELECTIONPRESENTATIONVARIANT$1$.PRESENTATIONVARIANTQUALIFIER` value = `'ByAgency'` )
+      ( key = `UI.SELECTIONPRESENTATIONVARIANT$1$.SELECTIONVARIANTQUALIFIER`   value = `'Open'` ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( exp = `STATUSCRIT` act = ms_entity-row_criticality ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `STATUS` ) )
+                                        act = ms_entity-group_by ).
+    READ TABLE ms_entity-presentation_variants INTO DATA(ls_pv) WITH KEY qualifier = `ByAgency`.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `AGENCYID` ) )
+                                        act = ls_pv-group_by ).
+    cl_abap_unit_assert=>assert_equals( exp = `Short` act = ls_pv-visualization_qualifier ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_sel_pres_variant( ( qualifier              = `Open`
+                                                               text                   = `Open travels`
+                                                               presentation_qualifier = `ByAgency`
+                                                               selection_qualifier    = `Open` ) )
+      act = ms_entity-sel_pres_variants ).
+  ENDMETHOD.
+
+
+  METHOD navigation_params.
+    TYPES:
+      BEGIN OF ty_s_row,
+        agencyid TYPE string,
+        travelid TYPE string,
+      END OF ty_s_row.
+    DATA(ls_row) = VALUE ty_s_row( agencyid = `070001` travelid = `42` ).
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_name_value( ( name = `AGENCY`   value = `070001` )
+                                                       ( name = `TravelID` value = `42` ) )
+      act = z2ui5_cl_rap_util=>get_navigation_params(
+        row      = ls_row
+        field    = `AgencyId`
+        bindings = VALUE #( ( local_element = `AGENCYID` element = `AGENCY` )
+                            ( local_element = `TRAVELID` element = `TravelID` )
+                            ( local_element = `UNKNOWN`  element = `X` ) ) ) ).
+    "no binding: the field's own name
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_name_value( ( name = `TRAVELID` value = `42` ) )
+      act = z2ui5_cl_rap_util=>get_navigation_params( row      = ls_row
+                                                      field    = `TravelId`
+                                                      bindings = VALUE #( ) ) ).
+  ENDMETHOD.
+
+
+  METHOD intent_bindings.
+    apply( it_elements = VALUE #(
+      ( element = `TravelId` key = `UI.LINEITEM$1$.TYPE`                                value = `#FOR_INTENT_BASED_NAVIGATION` )
+      ( element = `TravelId` key = `UI.LINEITEM$1$.SEMANTICOBJECT`                      value = `'Travel'` )
+      ( element = `TravelId` key = `UI.LINEITEM$1$.SEMANTICOBJECTACTION`                value = `'manage'` )
+      ( element = `TravelId` key = `UI.LINEITEM$1$.SEMANTICOBJECTBINDING$1$.LOCALELEMENT` value = `'TravelId'` )
+      ( element = `TravelId` key = `UI.LINEITEM$1$.SEMANTICOBJECTBINDING$1$.ELEMENT`    value = `'Travel'` )
+      ( element = `Status`   key = `UI.LINEITEM$1$.TYPE`                                value = `#WITH_INTENT_BASED_NAVIGATION` )
+      ( element = `Status`   key = `UI.LINEITEM$1$.SEMANTICOBJECT`                      value = `'Status'` )
+      ( element = `Status`   key = `UI.LINEITEM$1$.SEMANTICOBJECTBINDING$1$.LOCALELEMENT` value = `'Status'` )
+      ( element = `Status`   key = `UI.LINEITEM$1$.SEMANTICOBJECTBINDING$1$.ELEMENT`    value = `'StatusCode'` ) ) ).
+
+    READ TABLE ms_entity-actions INTO DATA(ls_intent) WITH KEY semantic_object = `Travel`.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_additional_binding( ( local_element = `TRAVELID` element = `TRAVEL` ) )
+      act = ls_intent-sem_object_bindings ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_additional_binding( ( local_element = `STATUS` element = `STATUSCODE` ) )
+      act = field( `STATUS` )-sem_object_bindings ).
+  ENDMETHOD.
+
+ENDCLASS.
