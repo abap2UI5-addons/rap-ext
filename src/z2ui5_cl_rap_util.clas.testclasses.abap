@@ -3131,3 +3131,303 @@ CLASS ltcl_tree_layout IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+" The pure half of the XCO annotation reader (z2ui5_cl_rap_anno_xco): the
+" walk of an annotation value as the XCO visitor reports it, flattened
+" into the keys GET_ANNOS returns, and the merge of the annotation layers -
+" metadata extensions by layer over the entity's own over the propagated
+" ones. The events and layers are written by hand, so no system is needed.
+CLASS ltcl_xco_annotations DEFINITION FINAL
+  FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS value
+      IMPORTING
+        it_annos      TYPE z2ui5_cl_rap_util=>ty_t_annotation
+        key           TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    METHODS flatten_array_of_records  FOR TESTING RAISING cx_static_check.
+    METHODS flatten_record_primitives FOR TESTING RAISING cx_static_check.
+    METHODS flatten_nested_arrays     FOR TESTING RAISING cx_static_check.
+    METHODS merge_by_layer            FOR TESTING RAISING cx_static_check.
+    METHODS merge_elements            FOR TESTING RAISING cx_static_check.
+    METHODS merge_unbracketed_record  FOR TESTING RAISING cx_static_check.
+    METHODS layer_priorities          FOR TESTING RAISING cx_static_check.
+    METHODS flattened_keys_apply      FOR TESTING RAISING cx_static_check.
+    METHODS reader_setting            FOR TESTING RAISING cx_static_check.
+
+ENDCLASS.
+
+
+CLASS ltcl_xco_annotations IMPLEMENTATION.
+
+  METHOD value.
+    READ TABLE it_annos INTO DATA(ls_anno) WITH KEY key = key.
+    cl_abap_unit_assert=>assert_subrc( msg = |key { key }| ).
+    result = ls_anno-value.
+  ENDMETHOD.
+
+
+  METHOD flatten_array_of_records.
+
+    "@UI.lineItem: [ { position: 10, label: 'Travel' },
+    "                { type: #FOR_ACTION, dataAction: 'accept' } ]
+    DATA(lt_flat) = z2ui5_cl_rap_util=>flatten_annotation(
+      property  = `UI.lineItem`
+      it_events = VALUE #( ( kind = z2ui5_cl_rap_util=>cs_anno_event-array )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-record )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name   text = `position` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-number text = `10` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name   text = `label` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-string text = `Travel` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-record_end )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-record )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name   text = `type` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-enum   text = `FOR_ACTION` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name   text = `dataAction` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-string text = `accept` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-record_end )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-array_end ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( exp = 4 act = lines( lt_flat ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `10`          act = value( it_annos = lt_flat key = `UI.LINEITEM$1$.POSITION` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `'Travel'`    act = value( it_annos = lt_flat key = `UI.LINEITEM$1$.LABEL` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `#FOR_ACTION` act = value( it_annos = lt_flat key = `UI.LINEITEM$2$.TYPE` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `'accept'`    act = value( it_annos = lt_flat key = `UI.LINEITEM$2$.DATAACTION` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD flatten_record_primitives.
+
+    "@UI: { headerInfo: { typeName: 'Travel' }, hidden: true,
+    "       textArrangement: #TEXT_LAST, defaultValue: null }
+    DATA(lt_flat) = z2ui5_cl_rap_util=>flatten_annotation(
+      property  = `UI`
+      it_events = VALUE #( ( kind = z2ui5_cl_rap_util=>cs_anno_event-record )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name    text = `headerInfo` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-record )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name    text = `typeName` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-string  text = `Travel` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-record_end )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name    text = `hidden` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-boolean text = `true` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name    text = `textArrangement` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-enum    text = `#TEXT_LAST` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name    text = `defaultValue` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-null )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-record_end ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( exp = `'Travel'`   act = value( it_annos = lt_flat key = `UI.HEADERINFO.TYPENAME` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `true`       act = value( it_annos = lt_flat key = `UI.HIDDEN` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `#TEXT_LAST` act = value( it_annos = lt_flat key = `UI.TEXTARRANGEMENT` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `null`       act = value( it_annos = lt_flat key = `UI.DEFAULTVALUE` ) ).
+
+    "a primitive annotation is its own key
+    lt_flat = z2ui5_cl_rap_util=>flatten_annotation(
+      property  = `Search.searchable`
+      it_events = VALUE #( ( kind = z2ui5_cl_rap_util=>cs_anno_event-boolean text = abap_true ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `true` act = value( it_annos = lt_flat key = `SEARCH.SEARCHABLE` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD flatten_nested_arrays.
+
+    "@ObjectModel.semanticKey: [ 'TravelID', 'AgencyID' ] and an array
+    "inside an array entry: @UI.selectionVariant: [ { selectOptions:
+    "[ { propertyName: 'Status' } ] } ]
+    DATA(lt_flat) = z2ui5_cl_rap_util=>flatten_annotation(
+      property  = `ObjectModel.semanticKey`
+      it_events = VALUE #( ( kind = z2ui5_cl_rap_util=>cs_anno_event-array )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-string text = `TravelID` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-string text = `AgencyID` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-array_end ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `'TravelID'` act = value( it_annos = lt_flat key = `OBJECTMODEL.SEMANTICKEY$1$` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `'AgencyID'` act = value( it_annos = lt_flat key = `OBJECTMODEL.SEMANTICKEY$2$` ) ).
+
+    lt_flat = z2ui5_cl_rap_util=>flatten_annotation(
+      property  = `UI.selectionVariant`
+      it_events = VALUE #( ( kind = z2ui5_cl_rap_util=>cs_anno_event-array )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-record )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name   text = `qualifier` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-string text = `Open` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name   text = `selectOptions` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-array )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-record )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name   text = `propertyName` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-string text = `Status` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-record_end )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-array_end )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name   text = `text` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-string text = `Open travels` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-record_end )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-array_end ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `'Open'`
+                                        act = value( it_annos = lt_flat key = `UI.SELECTIONVARIANT$1$.QUALIFIER` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `'Status'`
+      act = value( it_annos = lt_flat key = `UI.SELECTIONVARIANT$1$.SELECTOPTIONS$1$.PROPERTYNAME` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `'Open travels'`
+                                        act = value( it_annos = lt_flat key = `UI.SELECTIONVARIANT$1$.TEXT` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD merge_by_layer.
+
+    "given in no particular order - the priority decides
+    DATA(ls_raw) = z2ui5_cl_rap_util=>merge_annotation_layers( VALUE #(
+      ( layer  = z2ui5_cl_rap_util=>cs_anno_layer-direct
+        entity = VALUE #( ( key = `UI.HEADERINFO.TYPENAME`       value = `'Own'` )
+                          ( key = `UI.HEADERINFO.TYPENAMEPLURAL` value = `'Owns'` )
+                          ( key = `UI.LINEITEM$1$.POSITION`      value = `10` )
+                          ( key = `UI.LINEITEM$2$.POSITION`      value = `20` ) ) )
+      ( layer  = z2ui5_cl_rap_util=>cs_anno_layer-customer
+        entity = VALUE #( ( key = `UI.HEADERINFO.TYPENAME` value = `'Customer'` ) ) )
+      ( layer  = z2ui5_cl_rap_util=>cs_anno_layer-core
+        entity = VALUE #( ( key = `UI.HEADERINFO.TYPENAME` value = `'Core'` )
+                          ( key = `UI.LINEITEM$1$.POSITION` value = `99` ) ) ) ) ).
+
+    "a single value: the highest layer that has it
+    cl_abap_unit_assert=>assert_equals( exp = `'Customer'` act = value( it_annos = ls_raw-entity key = `UI.HEADERINFO.TYPENAME` ) ).
+    "a value no layer above has stays
+    cl_abap_unit_assert=>assert_equals( exp = `'Owns'` act = value( it_annos = ls_raw-entity key = `UI.HEADERINFO.TYPENAMEPLURAL` ) ).
+    "an array is replaced as a whole - the entity's second entry is gone
+    cl_abap_unit_assert=>assert_equals( exp = `99` act = value( it_annos = ls_raw-entity key = `UI.LINEITEM$1$.POSITION` ) ).
+    cl_abap_unit_assert=>assert_false( xsdbool( line_exists( ls_raw-entity[ key = `UI.LINEITEM$2$.POSITION` ] ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 3 act = lines( ls_raw-entity ) ).
+    cl_abap_unit_assert=>assert_true( ls_raw-with_metadata_extensions ).
+
+  ENDMETHOD.
+
+
+  METHOD merge_elements.
+
+    DATA(ls_raw) = z2ui5_cl_rap_util=>merge_annotation_layers( VALUE #(
+      ( layer    = z2ui5_cl_rap_util=>cs_anno_layer-propagated
+        elements = VALUE #( ( element = `AgencyID` key = `EndUserText.label` value = `'Agency'` )
+                            ( element = `Status`   key = `UI.HIDDEN`         value = `false` ) ) )
+      ( layer    = z2ui5_cl_rap_util=>cs_anno_layer-direct
+        elements = VALUE #( ( element = `Status`   key = `UI.HIDDEN`               value = `true` )
+                            ( element = `Status`   key = `UI.LINEITEM$1$.POSITION` value = `10` ) ) )
+      ( layer    = z2ui5_cl_rap_util=>cs_anno_layer-metadata_extension
+        elements = VALUE #( ( element = `TravelID` key = `UI.LINEITEM$1$.POSITION` value = `5` ) ) ) ) ).
+
+    "the same annotation of two elements is two annotations
+    READ TABLE ls_raw-elements INTO DATA(ls_el) WITH KEY element = `TRAVELID` key = `UI.LINEITEM$1$.POSITION`.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_equals( exp = `5` act = ls_el-value ).
+    READ TABLE ls_raw-elements INTO ls_el WITH KEY element = `STATUS` key = `UI.LINEITEM$1$.POSITION`.
+    cl_abap_unit_assert=>assert_subrc( ).
+    "the entity's own over the propagated one
+    READ TABLE ls_raw-elements INTO ls_el WITH KEY element = `STATUS` key = `UI.HIDDEN`.
+    cl_abap_unit_assert=>assert_equals( exp = `true` act = ls_el-value ).
+    "what only the data source has is propagated - names upper case
+    READ TABLE ls_raw-elements INTO ls_el WITH KEY element = `AGENCYID` key = `ENDUSERTEXT.LABEL`.
+    cl_abap_unit_assert=>assert_equals( exp = `'Agency'` act = ls_el-value ).
+    cl_abap_unit_assert=>assert_equals( exp = 4 act = lines( ls_raw-elements ) ).
+
+  ENDMETHOD.
+
+
+  METHOD merge_unbracketed_record.
+
+    "the entry written without brackets is the same annotation as the array
+    DATA(ls_raw) = z2ui5_cl_rap_util=>merge_annotation_layers( VALUE #(
+      ( layer  = z2ui5_cl_rap_util=>cs_anno_layer-direct
+        entity = VALUE #( ( key = `UI.LINEITEM.POSITION` value = `10` ) ) )
+      ( layer  = z2ui5_cl_rap_util=>cs_anno_layer-partner
+        entity = VALUE #( ( key = `UI.LINEITEM$1$.POSITION` value = `20` ) ) ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = lines( ls_raw-entity ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `20` act = value( it_annos = ls_raw-entity key = `UI.LINEITEM$1$.POSITION` ) ).
+
+    ls_raw = z2ui5_cl_rap_util=>merge_annotation_layers( VALUE #(
+      ( layer  = z2ui5_cl_rap_util=>cs_anno_layer-direct
+        entity = VALUE #( ( key = `UI.LINEITEM$1$.POSITION` value = `10` )
+                          ( key = `UI.LINEITEM$2$.POSITION` value = `30` ) ) )
+      ( layer  = z2ui5_cl_rap_util=>cs_anno_layer-industry
+        entity = VALUE #( ( key = `UI.LINEITEM.POSITION` value = `20` ) ) ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = lines( ls_raw-entity ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `20` act = value( it_annos = ls_raw-entity key = `UI.LINEITEM.POSITION` ) ).
+
+    "only the entity's own and propagated ones - no metadata extension
+    ls_raw = z2ui5_cl_rap_util=>merge_annotation_layers( VALUE #(
+      ( layer  = z2ui5_cl_rap_util=>cs_anno_layer-direct
+        entity = VALUE #( ( key = `UI.HIDDEN` value = `true` ) ) ) ) ).
+    cl_abap_unit_assert=>assert_false( ls_raw-with_metadata_extensions ).
+
+  ENDMETHOD.
+
+
+  METHOD layer_priorities.
+
+    DATA(lv_customer) = z2ui5_cl_rap_util=>get_layer_priority( `customer` ).
+    DATA(lv_partner) = z2ui5_cl_rap_util=>get_layer_priority( z2ui5_cl_rap_util=>cs_anno_layer-partner ).
+    DATA(lv_industry) = z2ui5_cl_rap_util=>get_layer_priority( z2ui5_cl_rap_util=>cs_anno_layer-industry ).
+    DATA(lv_localization) = z2ui5_cl_rap_util=>get_layer_priority( z2ui5_cl_rap_util=>cs_anno_layer-localization ).
+    DATA(lv_core) = z2ui5_cl_rap_util=>get_layer_priority( z2ui5_cl_rap_util=>cs_anno_layer-core ).
+    DATA(lv_extension) = z2ui5_cl_rap_util=>get_layer_priority( z2ui5_cl_rap_util=>cs_anno_layer-metadata_extension ).
+    DATA(lv_direct) = z2ui5_cl_rap_util=>get_layer_priority( z2ui5_cl_rap_util=>cs_anno_layer-direct ).
+    DATA(lv_propagated) = z2ui5_cl_rap_util=>get_layer_priority( z2ui5_cl_rap_util=>cs_anno_layer-propagated ).
+
+    cl_abap_unit_assert=>assert_true( xsdbool( lv_customer > lv_partner AND lv_partner > lv_industry
+                                           AND lv_industry > lv_localization AND lv_localization > lv_core
+                                           AND lv_core > lv_extension AND lv_extension > lv_direct
+                                           AND lv_direct > lv_propagated ) ).
+
+  ENDMETHOD.
+
+
+  METHOD flattened_keys_apply.
+
+    "what the XCO reader hands over is what apply_annotations reads
+    DATA(lt_flat) = z2ui5_cl_rap_util=>flatten_annotation(
+      property  = `UI.lineItem`
+      it_events = VALUE #( ( kind = z2ui5_cl_rap_util=>cs_anno_event-array )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-record )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name   text = `position` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-number text = `40` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-name   text = `importance` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-enum   text = `HIGH` )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-record_end )
+                           ( kind = z2ui5_cl_rap_util=>cs_anno_event-array_end ) ) ).
+    DATA lt_elements TYPE z2ui5_cl_rap_util=>ty_t_element_annotation.
+    LOOP AT lt_flat INTO DATA(ls_flat).
+      APPEND VALUE #( element = `Status` key = ls_flat-key value = ls_flat-value ) TO lt_elements.
+    ENDLOOP.
+    DATA(ls_raw) = z2ui5_cl_rap_util=>merge_annotation_layers( VALUE #(
+      ( layer = z2ui5_cl_rap_util=>cs_anno_layer-metadata_extension elements = lt_elements ) ) ).
+
+    DATA(ls_entity) = VALUE z2ui5_cl_rap_util=>ty_s_entity_info(
+      name   = `Z_TRAVEL`
+      fields = VALUE #( ( name = `STATUS` is_visible = abap_true type_kind = `CHAR` ) ) ).
+    z2ui5_cl_rap_util=>apply_annotations( EXPORTING it_entity   = ls_raw-entity
+                                                    it_elements = ls_raw-elements
+                                          CHANGING  cs_entity   = ls_entity ).
+    cl_abap_unit_assert=>assert_equals( exp = 40      act = ls_entity-fields[ 1 ]-line_item_pos ).
+    cl_abap_unit_assert=>assert_equals( exp = `#HIGH` act = ls_entity-fields[ 1 ]-line_item_importance ).
+
+  ENDMETHOD.
+
+
+  METHOD reader_setting.
+
+    z2ui5_cl_rap_util=>set_annotation_reader( z2ui5_cl_rap_util=>cs_anno_reader-xco ).
+    cl_abap_unit_assert=>assert_equals( exp = `XCO` act = z2ui5_cl_rap_util=>get_annotation_reader( ) ).
+    z2ui5_cl_rap_util=>set_annotation_reader( `ddic` ).
+    cl_abap_unit_assert=>assert_equals( exp = `DDIC` act = z2ui5_cl_rap_util=>get_annotation_reader( ) ).
+    "AUTO: the service where the environment has it, XCO in ABAP Cloud
+    z2ui5_cl_rap_util=>set_annotation_reader( z2ui5_cl_rap_util=>cs_anno_reader-auto ).
+    DATA(lv_expected) = COND string(
+      WHEN z2ui5_cl_rap_util=>get_environment( ) = z2ui5_cl_rap_util=>cs_environment-on_premise
+      THEN z2ui5_cl_rap_util=>cs_anno_reader-ddic
+      ELSE z2ui5_cl_rap_util=>cs_anno_reader-xco ).
+    cl_abap_unit_assert=>assert_equals( exp = lv_expected act = z2ui5_cl_rap_util=>get_annotation_reader( ) ).
+
+  ENDMETHOD.
+
+ENDCLASS.

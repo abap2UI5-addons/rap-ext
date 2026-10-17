@@ -318,13 +318,113 @@ CLASS z2ui5_cl_rap_util DEFINITION
     TYPES ty_t_element_annotation TYPE STANDARD TABLE OF ty_s_element_annotation WITH DEFAULT KEY.
 
     TYPES:
+      "! one field of a structure as the dictionary describes it - the
+      "! components of DDFIELDS this addon reads, in a type of its own so
+      "! that no signature names DDFIELDS, which ABAP Cloud does not release
+      "! (added 2026-10, third round): get_ddic_fields fills it from
+      "! GET_DDIC_FIELD_LIST, the XCO reader from the CDS field and its data
+      "! element (keyflag, scrtext_m)
+      BEGIN OF ty_s_ddic_field,
+        fieldname TYPE string,
+        keyflag   TYPE abap_bool,
+        datatype  TYPE string,
+        inttype   TYPE string,
+        leng      TYPE i,
+        scrtext_m TYPE string,
+        fieldtext TYPE string,
+      END OF ty_s_ddic_field.
+
+    TYPES ty_t_ddic_field TYPE STANDARD TABLE OF ty_s_ddic_field WITH EMPTY KEY.
+
+    TYPES:
       BEGIN OF ty_s_raw_annotations,
         entity   TYPE ty_t_annotation,
         elements TYPE ty_t_element_annotation,
         "abap_true when GET_ANNOS answered (metadata extensions included),
         "abap_false when only the direct annotations could be read
         with_metadata_extensions TYPE abap_bool,
+        "who read them: cs_anno_reader-ddic or -xco (added 2026-10, third
+        "round)
+        reader                   TYPE string,
+        "the fields as the XCO reader found them - key flags and data
+        "element labels where GET_DDIC_FIELD_LIST cannot be called (ABAP
+        "Cloud); empty from the DDIC reader
+        ddic_fields              TYPE ty_t_ddic_field,
       END OF ty_s_raw_annotations.
+
+    CONSTANTS:
+      "! the environment the addon runs in (get_environment): on premise the
+      "! annotation service and the dictionary tables can be read, in ABAP
+      "! Cloud only the released APIs (added 2026-10, third round)
+      BEGIN OF cs_environment,
+        on_premise TYPE string VALUE `ON_PREMISE`,
+        cloud      TYPE string VALUE `CLOUD`,
+      END OF cs_environment.
+
+    CONSTANTS:
+      "! who reads the annotations (set_annotation_reader): AUTO - the
+      "! annotation service where it can be called, else XCO; DDIC -
+      "! CL_DD_DDL_ANNOTATION_SERVICE; XCO - z2ui5_cl_rap_anno_xco, the
+      "! released XCO_CP_CDS API (added 2026-10, third round)
+      BEGIN OF cs_anno_reader,
+        auto TYPE string VALUE `AUTO`,
+        ddic TYPE string VALUE `DDIC`,
+        xco  TYPE string VALUE `XCO`,
+      END OF cs_anno_reader.
+
+    TYPES:
+      "! one step of an annotation value as the XCO visitor
+      "! (IF_XCO_CDS_ANN_VT_VISITOR) walks it - kind is one of
+      "! cs_anno_event, text the member name or the primitive value
+      "! (flatten_annotation turns them into the keys of GET_ANNOS)
+      BEGIN OF ty_s_anno_event,
+        kind TYPE string,
+        text TYPE string,
+      END OF ty_s_anno_event.
+
+    TYPES ty_t_anno_event TYPE STANDARD TABLE OF ty_s_anno_event WITH EMPTY KEY.
+
+    CONSTANTS:
+      BEGIN OF cs_anno_event,
+        record     TYPE string VALUE `RECORD`,
+        record_end TYPE string VALUE `RECORD_END`,
+        array      TYPE string VALUE `ARRAY`,
+        array_end  TYPE string VALUE `ARRAY_END`,
+        name       TYPE string VALUE `NAME`,
+        string     TYPE string VALUE `STRING`,
+        enum       TYPE string VALUE `ENUM`,
+        number     TYPE string VALUE `NUMBER`,
+        boolean    TYPE string VALUE `BOOLEAN`,
+        null       TYPE string VALUE `NULL`,
+      END OF cs_anno_event.
+
+    TYPES:
+      "! the annotations of one source of an entity - a layer of its metadata
+      "! extensions, its own (DIRECT) or what it takes over from its data
+      "! source (PROPAGATED); merge_annotation_layers puts them together by
+      "! get_layer_priority
+      BEGIN OF ty_s_anno_layer,
+        layer    TYPE string,
+        entity   TYPE ty_t_annotation,
+        elements TYPE ty_t_element_annotation,
+      END OF ty_s_anno_layer.
+
+    TYPES ty_t_anno_layer TYPE STANDARD TABLE OF ty_s_anno_layer WITH EMPTY KEY.
+
+    CONSTANTS:
+      "! the layers of a metadata extension (@Metadata.layer) and the two
+      "! sources below them; METADATA_EXTENSION is the set XCO returns, all
+      "! layers already merged by the system
+      BEGIN OF cs_anno_layer,
+        customer           TYPE string VALUE `CUSTOMER`,
+        partner            TYPE string VALUE `PARTNER`,
+        industry           TYPE string VALUE `INDUSTRY`,
+        localization       TYPE string VALUE `LOCALIZATION`,
+        core               TYPE string VALUE `CORE`,
+        metadata_extension TYPE string VALUE `METADATA_EXTENSION`,
+        direct             TYPE string VALUE `DIRECT`,
+        propagated         TYPE string VALUE `PROPAGATED`,
+      END OF cs_anno_layer.
 
     " An action a @UI.lineItem or @UI.identification entry of type
     " #FOR_ACTION offers - name is the action of the behavior definition
@@ -1793,7 +1893,127 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string_table.
 
+    "! ON_PREMISE or CLOUD (cs_environment), decided once per session:
+    "! on premise the annotation service CL_DD_DDL_ANNOTATION_SERVICE is
+    "! known to RTTI - ABAP Cloud does not release it, so its RTTI
+    "! answers "not found" there (added 2026-10, third round)
+    CLASS-METHODS get_environment
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! choose who reads the annotations for the rest of the session -
+    "! cs_anno_reader-auto (the default), -ddic or -xco; forgets what was
+    "! read so far
+    CLASS-METHODS set_annotation_reader
+      IMPORTING
+        reader TYPE string.
+
+    "! the reader read_raw_annotations uses: DDIC or XCO - AUTO is DDIC on
+    "! premise and XCO in ABAP Cloud
+    CLASS-METHODS get_annotation_reader
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! The flat keys of one annotation, the form GET_ANNOS returns:
+    "! property and member names upper case and joined by dots, the n-th
+    "! entry of an array as $n$ (UI.LINEITEM$2$.POSITION), a string in
+    "! quotes, an enum with #, a boolean true or false, a number as
+    "! written. it_events is the walk of its value (cs_anno_event). Needs
+    "! no system - the unit tests drive it
+    CLASS-METHODS flatten_annotation
+      IMPORTING
+        property      TYPE clike
+        it_events     TYPE ty_t_anno_event
+      RETURNING
+        VALUE(result) TYPE ty_t_annotation.
+
+    "! the rank of an annotation source: CUSTOMER 50, PARTNER 40, INDUSTRY
+    "! 30, LOCALIZATION 20, CORE 10, METADATA_EXTENSION 5, DIRECT 2,
+    "! PROPAGATED 1 - the higher one wins
+    CLASS-METHODS get_layer_priority
+      IMPORTING
+        layer         TYPE clike
+      RETURNING
+        VALUE(result) TYPE i.
+
+    "! Annotation sources merged as the system merges metadata extensions:
+    "! an annotation of a higher layer replaces the same annotation of a
+    "! lower one - a whole array (UI.LINEITEM with all its entries) or a
+    "! single value (UI.HEADERINFO.TYPENAME) -, per entity and per
+    "! element; an element of a lower layer the higher ones do not
+    "! annotate keeps its annotations. Needs no system
+    CLASS-METHODS merge_annotation_layers
+      IMPORTING
+        it_layers     TYPE ty_t_anno_layer
+      RETURNING
+        VALUE(result) TYPE ty_s_raw_annotations.
+
+    "! the dictionary fields of a structure (key flags, types, data
+    "! element texts) - GET_DDIC_FIELD_LIST, called dynamically: ABAP
+    "! Cloud does not release it, and there the result is empty
+    CLASS-METHODS get_ddic_fields
+      IMPORTING
+        io_struct     TYPE REF TO cl_abap_structdescr
+      RETURNING
+        VALUE(result) TYPE ty_t_ddic_field.
+
   PRIVATE SECTION.
+
+    "! the class of the XCO reader - named by a literal and called
+    "! dynamically: a system without the XCO API only loses that reader
+    CONSTANTS gc_xco_class TYPE string VALUE `Z2UI5_CL_RAP_ANNO_XCO`.
+
+    "! cs_environment, once per session
+    CLASS-DATA gv_environment TYPE string.
+
+    "! the reader set_annotation_reader chose, empty is AUTO
+    CLASS-DATA gv_anno_reader TYPE string.
+
+    "! the annotations through the XCO reader - empty when it cannot be
+    "! called
+    CLASS-METHODS read_annos_xco
+      IMPORTING
+        entity_name   TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_s_raw_annotations.
+
+    "! the part of a flat key that is one annotation for the merge: up to
+    "! the first array index (UI.LINEITEM of UI.LINEITEM$1$.POSITION),
+    "! else the whole key
+    CLASS-METHODS merge_key
+      IMPORTING
+        key           TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! whether a key is taken by a higher layer: its merge key is, or a
+    "! taken array is a prefix of it (UI.LINEITEM.POSITION, the entry
+    "! written without brackets, under a taken UI.LINEITEM)
+    CLASS-METHODS is_merge_key_taken
+      IMPORTING
+        key           TYPE string
+        it_taken      TYPE string_table
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! one parameter of a method of the annotation service, typed as RTTI
+    "! describes it - nothing here names the service's types
+    CLASS-METHODS create_service_param
+      IMPORTING
+        io_class      TYPE REF TO cl_abap_objectdescr
+        method        TYPE string
+        param         TYPE string
+      RETURNING
+        VALUE(result) TYPE REF TO data
+      RAISING
+        cx_root.
+
+    "! the rows of a table of the annotation service (ANNONAME, VALUE)
+    CLASS-METHODS annos_from_service
+      IMPORTING
+        it_annos      TYPE ANY TABLE
+      RETURNING
+        VALUE(result) TYPE ty_t_annotation.
 
     "! the MIME types of the file extensions get_file_extensions and
     "! mime_from_file_name know - name the extension, value the type
@@ -2059,12 +2279,6 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE ty_s_raw_annotations.
 
-    CLASS-METHODS get_ddic_fields
-      IMPORTING
-        io_struct     TYPE REF TO cl_abap_structdescr
-      RETURNING
-        VALUE(result) TYPE ddfields.
-
     TYPES ty_t_token_groups TYPE STANDARD TABLE OF string_table WITH EMPTY KEY.
 
     "! a class named by an annotation: 'ABAP:ZCL_X' as ZCL_X
@@ -2172,8 +2386,12 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       result-entity_type = `VIEW`.
     ENDIF.
 
-    "DDIC view of the components: key flags and the data element texts
+    "DDIC view of the components: key flags and the data element texts -
+    "in ABAP Cloud what the XCO reader found for them
     DATA(lt_ddic) = get_ddic_fields( lo_descr ).
+    IF lt_ddic IS INITIAL.
+      lt_ddic = ls_raw-ddic_fields.
+    ENDIF.
 
     LOOP AT lo_descr->get_components( ) INTO DATA(ls_comp).
       DATA(ls_field) = VALUE ty_s_field_info(
@@ -3266,12 +3484,25 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "XCO where it is chosen or where the annotation service cannot be
+    "called (ABAP Cloud); on premise a failed XCO read still has the
+    "service to fall back to
+    IF get_annotation_reader( ) = cs_anno_reader-xco.
+      result = read_annos_xco( lv_name ).
+      IF result-entity IS NOT INITIAL OR result-elements IS NOT INITIAL
+        OR get_environment( ) = cs_environment-cloud.
+        APPEND VALUE #( name = lv_name raw = result ) TO gt_cache.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
     TRY.
         result = read_annos_effective( lv_name ).
         result-with_metadata_extensions = abap_true.
       CATCH cx_root.
         result = read_annos_direct( lv_name ).
     ENDTRY.
+    result-reader = cs_anno_reader-ddic.
     APPEND VALUE #( name = lv_name raw = result ) TO gt_cache.
 
   ENDMETHOD.
@@ -3282,54 +3513,36 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     "GET_ANNOS( entityname, metadata_extension, IMPORTING entity_annos,
     "element_annos ) - called dynamically with the parameter types read from
     "RTTI, so nothing here depends on the type names of the service
-    DATA lo_type TYPE REF TO cl_abap_datadescr.
     DATA lr_entity TYPE REF TO data.
     DATA lr_element TYPE REF TO data.
-    DATA lv_entity TYPE ddstrucobjname.
     DATA lv_mde TYPE abap_bool VALUE abap_true.
     FIELD-SYMBOLS <lt_annos> TYPE ANY TABLE.
     FIELD-SYMBOLS <lv_any> TYPE any.
+    FIELD-SYMBOLS <lv_entity> TYPE any.
 
     CONSTANTS lc_service TYPE string VALUE `CL_DD_DDL_ANNOTATION_SERVICE`.
     CONSTANTS lc_method  TYPE string VALUE `GET_ANNOS`.
 
-    lv_entity = entity_name.
     DATA(lo_class) = CAST cl_abap_objectdescr( cl_abap_typedescr=>describe_by_name( lc_service ) ).
+    "the entity name in the type of the parameter (DDSTRUCOBJNAME) - not
+    "named here, ABAP Cloud does not release it
+    DATA(lr_entity_name) = create_service_param( io_class = lo_class
+                                                 method   = lc_method
+                                                 param    = `ENTITYNAME` ).
+    ASSIGN lr_entity_name->* TO <lv_entity>.
+    <lv_entity> = entity_name.
 
-    lo_class->get_method_parameter_type(
-      EXPORTING
-        p_method_name       = lc_method
-        p_parameter_name    = `ENTITY_ANNOS`
-      RECEIVING
-        p_descr_ref         = lo_type
-      EXCEPTIONS
-        parameter_not_found = 1
-        method_not_found    = 2
-        OTHERS              = 3 ).
-    IF sy-subrc <> 0.
-      RAISE EXCEPTION TYPE cx_sy_dyn_call_param_not_found.
-    ENDIF.
-    CREATE DATA lr_entity TYPE HANDLE lo_type.
-
-    lo_class->get_method_parameter_type(
-      EXPORTING
-        p_method_name       = lc_method
-        p_parameter_name    = `ELEMENT_ANNOS`
-      RECEIVING
-        p_descr_ref         = lo_type
-      EXCEPTIONS
-        parameter_not_found = 1
-        method_not_found    = 2
-        OTHERS              = 3 ).
-    IF sy-subrc <> 0.
-      RAISE EXCEPTION TYPE cx_sy_dyn_call_param_not_found.
-    ENDIF.
-    CREATE DATA lr_element TYPE HANDLE lo_type.
+    lr_entity = create_service_param( io_class = lo_class
+                                      method   = lc_method
+                                      param    = `ENTITY_ANNOS` ).
+    lr_element = create_service_param( io_class = lo_class
+                                       method   = lc_method
+                                       param    = `ELEMENT_ANNOS` ).
 
     DATA(lt_param) = VALUE abap_parmbind_tab(
       ( name  = `ENTITYNAME`
         kind  = cl_abap_objectdescr=>exporting
-        value = REF #( lv_entity ) )
+        value = lr_entity_name )
       ( name  = `METADATA_EXTENSION`
         kind  = cl_abap_objectdescr=>exporting
         value = REF #( lv_mde ) )
@@ -3344,22 +3557,10 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       PARAMETER-TABLE lt_param.
 
     ASSIGN lr_entity->* TO <lt_annos>.
-    LOOP AT <lt_annos> ASSIGNING FIELD-SYMBOL(<ls_anno>).
-      DATA(ls_annotation) = VALUE ty_s_annotation( ).
-      ASSIGN COMPONENT `ANNONAME` OF STRUCTURE <ls_anno> TO <lv_any>.
-      IF sy-subrc <> 0.
-        CONTINUE.
-      ENDIF.
-      ls_annotation-key = <lv_any>.
-      ASSIGN COMPONENT `VALUE` OF STRUCTURE <ls_anno> TO <lv_any>.
-      IF sy-subrc = 0.
-        ls_annotation-value = <lv_any>.
-      ENDIF.
-      APPEND ls_annotation TO result-entity.
-    ENDLOOP.
+    result-entity = annos_from_service( <lt_annos> ).
 
     ASSIGN lr_element->* TO <lt_annos>.
-    LOOP AT <lt_annos> ASSIGNING <ls_anno>.
+    LOOP AT <lt_annos> ASSIGNING FIELD-SYMBOL(<ls_anno>).
       DATA(ls_el_anno) = VALUE ty_s_element_annotation( ).
       ASSIGN COMPONENT `ELEMENTNAME` OF STRUCTURE <ls_anno> TO <lv_any>.
       IF sy-subrc <> 0.
@@ -3383,32 +3584,68 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
   METHOD read_annos_direct.
 
-    DATA(lv_entity) = CONV ddstrucobjname( entity_name ).
+    "GET_DIRECT_ANNOS_4_ENTITY and _4_ELEMENT, called dynamically like
+    "GET_ANNOS: a static call would keep the class from activating where the
+    "service is not released (ABAP Cloud)
+    CONSTANTS lc_service TYPE string VALUE `CL_DD_DDL_ANNOTATION_SERVICE`.
+    FIELD-SYMBOLS <lv_entity> TYPE any.
+    FIELD-SYMBOLS <lv_element> TYPE any.
+    FIELD-SYMBOLS <lt_annos> TYPE ANY TABLE.
+
+    DATA lo_class TYPE REF TO cl_abap_objectdescr.
+    TRY.
+        lo_class = CAST cl_abap_objectdescr( cl_abap_typedescr=>describe_by_name( lc_service ) ).
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
 
     TRY.
-        cl_dd_ddl_annotation_service=>get_direct_annos_4_entity(
-          EXPORTING entityname = lv_entity
-          IMPORTING annos      = DATA(lt_entity_annos) ).
-        LOOP AT lt_entity_annos INTO DATA(ls_ea).
-          APPEND VALUE ty_s_annotation( key   = CONV string( ls_ea-annoname )
-                                        value = CONV string( ls_ea-value ) ) TO result-entity.
-        ENDLOOP.
+        DATA(lr_entity) = create_service_param( io_class = lo_class
+                                                method   = `GET_DIRECT_ANNOS_4_ENTITY`
+                                                param    = `ENTITYNAME` ).
+        ASSIGN lr_entity->* TO <lv_entity>.
+        <lv_entity> = entity_name.
+        DATA(lr_annos) = create_service_param( io_class = lo_class
+                                               method   = `GET_DIRECT_ANNOS_4_ENTITY`
+                                               param    = `ANNOS` ).
+        ASSIGN lr_annos->* TO <lt_annos>.
+        DATA(lt_param) = VALUE abap_parmbind_tab(
+          ( name = `ENTITYNAME` kind = cl_abap_objectdescr=>exporting value = lr_entity )
+          ( name = `ANNOS`      kind = cl_abap_objectdescr=>importing value = lr_annos ) ).
+        CALL METHOD (lc_service)=>(`GET_DIRECT_ANNOS_4_ENTITY`)
+          PARAMETER-TABLE lt_param.
+        result-entity = annos_from_service( <lt_annos> ).
       CATCH cx_root ##NO_HANDLER.
     ENDTRY.
 
     TRY.
         DATA(lo_descr) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( entity_name ) ).
+        lr_entity = create_service_param( io_class = lo_class
+                                          method   = `GET_DIRECT_ANNOS_4_ELEMENT`
+                                          param    = `ENTITYNAME` ).
+        ASSIGN lr_entity->* TO <lv_entity>.
+        <lv_entity> = entity_name.
+        DATA(lr_element) = create_service_param( io_class = lo_class
+                                                 method   = `GET_DIRECT_ANNOS_4_ELEMENT`
+                                                 param    = `ELEMENTNAME` ).
+        ASSIGN lr_element->* TO <lv_element>.
+        lr_annos = create_service_param( io_class = lo_class
+                                         method   = `GET_DIRECT_ANNOS_4_ELEMENT`
+                                         param    = `ANNOS` ).
+        ASSIGN lr_annos->* TO <lt_annos>.
+        lt_param = VALUE abap_parmbind_tab(
+          ( name = `ENTITYNAME`  kind = cl_abap_objectdescr=>exporting value = lr_entity )
+          ( name = `ELEMENTNAME` kind = cl_abap_objectdescr=>exporting value = lr_element )
+          ( name = `ANNOS`       kind = cl_abap_objectdescr=>importing value = lr_annos ) ).
         LOOP AT lo_descr->get_components( ) INTO DATA(ls_comp).
-          cl_dd_ddl_annotation_service=>get_direct_annos_4_element(
-            EXPORTING
-              entityname  = lv_entity
-              elementname = CONV ddfieldname_l( ls_comp-name )
-            IMPORTING
-              annos       = DATA(lt_annos) ).
-          LOOP AT lt_annos INTO DATA(ls_anno).
+          <lv_element> = ls_comp-name.
+          CLEAR <lt_annos>.
+          CALL METHOD (lc_service)=>(`GET_DIRECT_ANNOS_4_ELEMENT`)
+            PARAMETER-TABLE lt_param.
+          LOOP AT annos_from_service( <lt_annos> ) INTO DATA(ls_anno).
             APPEND VALUE ty_s_element_annotation( element = ls_comp-name
-                                                  key     = CONV string( ls_anno-annoname )
-                                                  value   = CONV string( ls_anno-value ) ) TO result-elements.
+                                                  key     = ls_anno-key
+                                                  value   = ls_anno-value ) TO result-elements.
           ENDLOOP.
         ENDLOOP.
       CATCH cx_root ##NO_HANDLER.
@@ -3417,27 +3654,384 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD create_service_param.
+
+    DATA lo_type TYPE REF TO cl_abap_datadescr.
+    io_class->get_method_parameter_type(
+      EXPORTING
+        p_method_name       = method
+        p_parameter_name    = param
+      RECEIVING
+        p_descr_ref         = lo_type
+      EXCEPTIONS
+        parameter_not_found = 1
+        method_not_found    = 2
+        OTHERS              = 3 ).
+    IF sy-subrc <> 0.
+      RAISE EXCEPTION TYPE cx_sy_dyn_call_param_not_found.
+    ENDIF.
+    CREATE DATA result TYPE HANDLE lo_type.
+
+  ENDMETHOD.
+
+
+  METHOD annos_from_service.
+
+    FIELD-SYMBOLS <lv_any> TYPE any.
+    LOOP AT it_annos ASSIGNING FIELD-SYMBOL(<ls_anno>).
+      DATA(ls_annotation) = VALUE ty_s_annotation( ).
+      ASSIGN COMPONENT `ANNONAME` OF STRUCTURE <ls_anno> TO <lv_any>.
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
+      ls_annotation-key = <lv_any>.
+      ASSIGN COMPONENT `VALUE` OF STRUCTURE <ls_anno> TO <lv_any>.
+      IF sy-subrc = 0.
+        ls_annotation-value = <lv_any>.
+      ENDIF.
+      APPEND ls_annotation TO result.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
   METHOD get_ddic_fields.
 
     "the DDIC field list carries the key flags and the data element texts;
     "a type that is not a DDIC type (abstract entities in some releases,
-    "local types) has none, and then keys come from the semantic key
+    "local types) has none, and then keys come from the semantic key.
+    "GET_DDIC_FIELD_LIST and DDFIELDS are not released for ABAP Cloud -
+    "both named dynamically, so the class activates there and reads nothing
+    DATA lr_list TYPE REF TO data.
+    FIELD-SYMBOLS <lt_list> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lv_any> TYPE any.
+
+    IF get_environment( ) = cs_environment-cloud.
+      RETURN.
+    ENDIF.
     TRY.
-        IF io_struct->is_ddic_type( ) = abap_true.
-          io_struct->get_ddic_field_list(
-            RECEIVING
-              p_field_list = result
-            EXCEPTIONS
-              not_found    = 1
-              no_ddic_type = 2
-              OTHERS       = 3 ).
-          IF sy-subrc <> 0.
-            CLEAR result.
-          ENDIF.
+        IF io_struct->is_ddic_type( ) = abap_false.
+          RETURN.
         ENDIF.
+        CREATE DATA lr_list TYPE (`DDFIELDS`).
+        ASSIGN lr_list->* TO <lt_list>.
+        CALL METHOD io_struct->(`GET_DDIC_FIELD_LIST`)
+          RECEIVING
+            p_field_list = <lt_list>
+          EXCEPTIONS
+            not_found    = 1
+            no_ddic_type = 2
+            OTHERS       = 3.
+        IF sy-subrc <> 0.
+          RETURN.
+        ENDIF.
+        LOOP AT <lt_list> ASSIGNING FIELD-SYMBOL(<ls_dfies>).
+          DATA(ls_field) = VALUE ty_s_ddic_field( ).
+          ASSIGN COMPONENT `FIELDNAME` OF STRUCTURE <ls_dfies> TO <lv_any>.
+          IF sy-subrc = 0.
+            ls_field-fieldname = <lv_any>.
+          ENDIF.
+          ASSIGN COMPONENT `KEYFLAG` OF STRUCTURE <ls_dfies> TO <lv_any>.
+          IF sy-subrc = 0.
+            ls_field-keyflag = <lv_any>.
+          ENDIF.
+          ASSIGN COMPONENT `DATATYPE` OF STRUCTURE <ls_dfies> TO <lv_any>.
+          IF sy-subrc = 0.
+            ls_field-datatype = <lv_any>.
+          ENDIF.
+          ASSIGN COMPONENT `INTTYPE` OF STRUCTURE <ls_dfies> TO <lv_any>.
+          IF sy-subrc = 0.
+            ls_field-inttype = <lv_any>.
+          ENDIF.
+          ASSIGN COMPONENT `LENG` OF STRUCTURE <ls_dfies> TO <lv_any>.
+          IF sy-subrc = 0.
+            ls_field-leng = <lv_any>.
+          ENDIF.
+          ASSIGN COMPONENT `SCRTEXT_M` OF STRUCTURE <ls_dfies> TO <lv_any>.
+          IF sy-subrc = 0.
+            ls_field-scrtext_m = <lv_any>.
+          ENDIF.
+          ASSIGN COMPONENT `FIELDTEXT` OF STRUCTURE <ls_dfies> TO <lv_any>.
+          IF sy-subrc = 0.
+            ls_field-fieldtext = <lv_any>.
+          ENDIF.
+          APPEND ls_field TO result.
+        ENDLOOP.
       CATCH cx_root.
         CLEAR result.
     ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD get_environment.
+
+    DATA lo_type TYPE REF TO cl_abap_typedescr.
+    IF gv_environment IS NOT INITIAL.
+      result = gv_environment.
+      RETURN.
+    ENDIF.
+    "the annotation service is known to RTTI on premise only - ABAP Cloud
+    "does not release it, so there it is "not found"
+    TRY.
+        cl_abap_typedescr=>describe_by_name(
+          EXPORTING
+            p_name         = `CL_DD_DDL_ANNOTATION_SERVICE`
+          RECEIVING
+            p_descr_ref    = lo_type
+          EXCEPTIONS
+            type_not_found = 1
+            OTHERS         = 2 ).
+        gv_environment = COND #( WHEN sy-subrc = 0 THEN cs_environment-on_premise
+                                 ELSE cs_environment-cloud ).
+      CATCH cx_root.
+        gv_environment = cs_environment-cloud.
+    ENDTRY.
+    result = gv_environment.
+
+  ENDMETHOD.
+
+
+  METHOD set_annotation_reader.
+
+    gv_anno_reader = to_upper( reader ).
+    "what was read with the other reader is read again
+    CLEAR: gt_cache, gt_assoc_cache.
+
+  ENDMETHOD.
+
+
+  METHOD get_annotation_reader.
+
+    CASE gv_anno_reader.
+      WHEN cs_anno_reader-ddic OR cs_anno_reader-xco.
+        result = gv_anno_reader.
+      WHEN OTHERS.
+        result = COND #( WHEN get_environment( ) = cs_environment-on_premise THEN cs_anno_reader-ddic
+                         ELSE cs_anno_reader-xco ).
+    ENDCASE.
+
+  ENDMETHOD.
+
+
+  METHOD read_annos_xco.
+
+    TRY.
+        CALL METHOD (gc_xco_class)=>(`READ_ANNOTATIONS`)
+          EXPORTING
+            entity_name = entity_name
+          RECEIVING
+            result      = result.
+        result-reader = cs_anno_reader-xco.
+      CATCH cx_root.
+        CLEAR result.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD flatten_annotation.
+
+    TYPES:
+      BEGIN OF ty_s_frame,
+        kind   TYPE string,
+        prefix TYPE string,
+        count  TYPE i,
+        name   TYPE string,
+      END OF ty_s_frame.
+    DATA lt_stack TYPE STANDARD TABLE OF ty_s_frame WITH EMPTY KEY.
+    DATA lv_key TYPE string.
+    DATA lv_value TYPE string.
+    DATA lv_depth TYPE i.
+    FIELD-SYMBOLS <ls_top> TYPE ty_s_frame.
+
+    "ROOT: the property itself; RECORD: its members by name; ARRAY: its
+    "entries by position, from 1
+    APPEND VALUE #( kind   = `ROOT`
+                    prefix = to_upper( condense( property ) ) ) TO lt_stack.
+
+    LOOP AT it_events INTO DATA(ls_event).
+      lv_depth = lines( lt_stack ).
+      ASSIGN lt_stack[ lv_depth ] TO <ls_top>.
+
+      IF ls_event-kind = cs_anno_event-name.
+        <ls_top>-name = to_upper( ls_event-text ).
+        CONTINUE.
+      ENDIF.
+      IF ls_event-kind = cs_anno_event-record_end OR ls_event-kind = cs_anno_event-array_end.
+        IF lv_depth > 1.
+          DELETE lt_stack INDEX lv_depth.
+        ENDIF.
+        CONTINUE.
+      ENDIF.
+
+      "a value, a record or an array - its key in the frame it stands in
+      CASE <ls_top>-kind.
+        WHEN `RECORD`.
+          lv_key = |{ <ls_top>-prefix }.{ <ls_top>-name }|.
+        WHEN `ARRAY`.
+          <ls_top>-count = <ls_top>-count + 1.
+          lv_key = |{ <ls_top>-prefix }${ <ls_top>-count }$|.
+        WHEN OTHERS.
+          lv_key = <ls_top>-prefix.
+      ENDCASE.
+
+      CASE ls_event-kind.
+        WHEN cs_anno_event-record.
+          APPEND VALUE #( kind = `RECORD` prefix = lv_key ) TO lt_stack.
+          CONTINUE.
+        WHEN cs_anno_event-array.
+          APPEND VALUE #( kind = `ARRAY` prefix = lv_key ) TO lt_stack.
+          CONTINUE.
+        WHEN cs_anno_event-string.
+          lv_value = |'{ ls_event-text }'|.
+        WHEN cs_anno_event-enum.
+          lv_value = condense( ls_event-text ).
+          IF lv_value IS INITIAL OR lv_value(1) <> `#`.
+            lv_value = |#{ lv_value }|.
+          ENDIF.
+        WHEN cs_anno_event-boolean.
+          lv_value = COND #( WHEN ls_event-text = abap_true OR to_lower( condense( ls_event-text ) ) = `true`
+                             THEN `true`
+                             ELSE `false` ).
+        WHEN cs_anno_event-null.
+          lv_value = `null`.
+        WHEN OTHERS.
+          lv_value = condense( ls_event-text ).
+      ENDCASE.
+      APPEND VALUE #( key = lv_key value = lv_value ) TO result.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_layer_priority.
+
+    CASE to_upper( layer ).
+      WHEN cs_anno_layer-customer.
+        result = 50.
+      WHEN cs_anno_layer-partner.
+        result = 40.
+      WHEN cs_anno_layer-industry.
+        result = 30.
+      WHEN cs_anno_layer-localization.
+        result = 20.
+      WHEN cs_anno_layer-core.
+        result = 10.
+      WHEN cs_anno_layer-metadata_extension.
+        result = 5.
+      WHEN cs_anno_layer-direct.
+        result = 2.
+      WHEN OTHERS.
+        result = 1.
+    ENDCASE.
+
+  ENDMETHOD.
+
+
+  METHOD merge_annotation_layers.
+
+    TYPES:
+      BEGIN OF ty_s_order,
+        priority TYPE i,
+        index    TYPE i,
+      END OF ty_s_order.
+    DATA lt_order TYPE STANDARD TABLE OF ty_s_order WITH EMPTY KEY.
+    DATA lt_taken TYPE string_table.
+    DATA lt_el_taken TYPE string_table.
+    DATA lt_layer_keys TYPE string_table.
+    DATA lt_layer_el_keys TYPE string_table.
+    DATA lv_key TYPE string.
+    DATA lv_element TYPE string.
+    DATA lv_composite TYPE string.
+    DATA lv_merge TYPE string.
+
+    LOOP AT it_layers INTO DATA(ls_layer).
+      APPEND VALUE #( priority = get_layer_priority( ls_layer-layer )
+                      index    = sy-tabix ) TO lt_order.
+    ENDLOOP.
+    SORT lt_order BY priority DESCENDING index ASCENDING.
+
+    LOOP AT lt_order INTO DATA(ls_order).
+      ls_layer = it_layers[ ls_order-index ].
+      CLEAR: lt_layer_keys, lt_layer_el_keys.
+
+      LOOP AT ls_layer-entity INTO DATA(ls_anno).
+        lv_key = to_upper( condense( ls_anno-key ) ).
+        IF is_merge_key_taken( key      = lv_key
+                               it_taken = lt_taken ) = abap_true.
+          CONTINUE.
+        ENDIF.
+        APPEND VALUE #( key = lv_key value = ls_anno-value ) TO result-entity.
+        lv_merge = merge_key( lv_key ).
+        IF NOT line_exists( lt_layer_keys[ table_line = lv_merge ] ).
+          APPEND lv_merge TO lt_layer_keys.
+        ENDIF.
+      ENDLOOP.
+
+      "an element's annotations under ELEMENT~KEY, so that the same
+      "annotation of two elements stays two
+      LOOP AT ls_layer-elements INTO DATA(ls_el).
+        lv_element = to_upper( condense( ls_el-element ) ).
+        lv_key = to_upper( condense( ls_el-key ) ).
+        lv_composite = |{ lv_element }~{ lv_key }|.
+        IF is_merge_key_taken( key      = lv_composite
+                               it_taken = lt_el_taken ) = abap_true.
+          CONTINUE.
+        ENDIF.
+        APPEND VALUE #( element = lv_element key = lv_key value = ls_el-value ) TO result-elements.
+        lv_merge = merge_key( lv_composite ).
+        IF NOT line_exists( lt_layer_el_keys[ table_line = lv_merge ] ).
+          APPEND lv_merge TO lt_layer_el_keys.
+        ENDIF.
+      ENDLOOP.
+
+      "taken only after the layer: its own entries do not replace each other
+      APPEND LINES OF lt_layer_keys TO lt_taken.
+      APPEND LINES OF lt_layer_el_keys TO lt_el_taken.
+      IF ls_layer-layer <> cs_anno_layer-direct AND ls_layer-layer <> cs_anno_layer-propagated
+        AND ( ls_layer-entity IS NOT INITIAL OR ls_layer-elements IS NOT INITIAL ).
+        result-with_metadata_extensions = abap_true.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD merge_key.
+
+    DATA(lv_pos) = find( val = key sub = `$` ).
+    result = COND #( WHEN lv_pos > 0 THEN substring( val = key len = lv_pos )
+                     ELSE key ).
+
+  ENDMETHOD.
+
+
+  METHOD is_merge_key_taken.
+
+    DATA(lv_merge) = merge_key( key ).
+    IF line_exists( it_taken[ table_line = lv_merge ] ).
+      result = abap_true.
+      RETURN.
+    ENDIF.
+    "an array and the same annotation written as one record without
+    "brackets (UI.LINEITEM$1$.POSITION and UI.LINEITEM.POSITION) are one
+    "annotation, whichever of the two the higher layer has
+    DATA(lv_is_array) = xsdbool( lv_merge <> key ).
+    LOOP AT it_taken INTO DATA(lv_taken).
+      DATA(lv_taken_dot) = |{ lv_taken }.|.
+      IF strlen( key ) > strlen( lv_taken_dot )
+        AND substring( val = key len = strlen( lv_taken_dot ) ) = lv_taken_dot.
+        result = abap_true.
+        RETURN.
+      ENDIF.
+      DATA(lv_merge_dot) = |{ lv_merge }.|.
+      IF lv_is_array = abap_true AND strlen( lv_taken ) > strlen( lv_merge_dot )
+        AND substring( val = lv_taken len = strlen( lv_merge_dot ) ) = lv_merge_dot.
+        result = abap_true.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
 
   ENDMETHOD.
 
@@ -3972,7 +4566,22 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(ls_parsed) = parse_ddl_associations( read_ddl_source( entity_name ) ).
+    DATA(lv_source) = read_ddl_source( entity_name ).
+    "no DDL source to read (ABAP Cloud, or the XCO reader chosen): the
+    "declarations XCO describes, written as DDL for the same parser
+    IF lv_source IS INITIAL
+      AND ( get_environment( ) = cs_environment-cloud OR get_annotation_reader( ) = cs_anno_reader-xco ).
+      TRY.
+          CALL METHOD (gc_xco_class)=>(`READ_DDL_SOURCE`)
+            EXPORTING
+              entity_name = entity_name
+            RECEIVING
+              result      = lv_source.
+        CATCH cx_root.
+          CLEAR lv_source.
+      ENDTRY.
+    ENDIF.
+    DATA(ls_parsed) = parse_ddl_associations( lv_source ).
     result = ls_parsed-associations.
 
     "a projection: what it does not redirect it exposes as the base has it
@@ -4006,8 +4615,12 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
   METHOD read_ddl_source.
 
     "dynamic on purpose: the tables are not in every release, and a static
-    "SELECT on one that is missing would keep the class from activating
+    "SELECT on one that is missing would keep the class from activating -
+    "ABAP Cloud releases neither, so it is not even tried there
     DATA lv_ddlname TYPE string.
+    IF get_environment( ) = cs_environment-cloud.
+      RETURN.
+    ENDIF.
     DATA(lv_table) = `DDDDLSRC`.
     DATA(lv_where) = |DDLNAME = @ENTITY_NAME AND AS4LOCAL = 'A'|.
     TRY.
@@ -5768,6 +6381,25 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     FIELD-SYMBOLS <lv_low> TYPE any.
     FIELD-SYMBOLS <lv_high> TYPE any.
     FIELD-SYMBOLS <lv_text> TYPE any.
+
+    "ABAP Cloud: the domain's fixed values through XCO_CP_ABAP_DICTIONARY
+    "(z2ui5_cl_rap_anno_xco) - DDFIXVALUES is not released there
+    IF get_environment( ) = cs_environment-cloud.
+      DATA(lv_absolute) = io_elem->absolute_name.
+      IF lv_absolute CS `\TYPE=`.
+        DATA(lv_data_element) = substring( val = lv_absolute off = 6 ).
+        TRY.
+            CALL METHOD (gc_xco_class)=>(`READ_FIXED_VALUES`)
+              EXPORTING
+                data_element = lv_data_element
+              RECEIVING
+                result       = result.
+          CATCH cx_root.
+            CLEAR result.
+        ENDTRY.
+      ENDIF.
+      RETURN.
+    ENDIF.
 
     "CL_ABAP_ELEMDESCR->GET_DDIC_FIXED_VALUES reads DD07L / DD07T - on-premise
     "RTTI, called dynamically like the other DDIC reads of this class, so a

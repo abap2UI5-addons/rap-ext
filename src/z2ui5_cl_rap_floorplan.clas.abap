@@ -1077,7 +1077,7 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     METHODS get_table_varkey
       IMPORTING
         row           TYPE data
-        key_fields    TYPE ddfields
+        key_fields    TYPE z2ui5_cl_rap_util=>ty_t_ddic_field
       RETURNING
         VALUE(result) TYPE string.
 
@@ -1157,12 +1157,19 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     "a transparent table - what the object page wrote before RAP support.
     "A CDS view is never writable with ABAP SQL, so it ends here read-only,
-    "and so does a table until get_entity_capabilities( ) is told otherwise
+    "and so does a table until get_entity_capabilities( ) is told otherwise.
+    "DD02L is named dynamically and not read in ABAP Cloud, which releases
+    "neither it nor the write path of write_table_row (S_TABU_NAM,
+    "ENQUEUE_E_TABLE) - a table is read-only there
+    IF z2ui5_cl_rap_util=>get_environment( ) = z2ui5_cl_rap_util=>cs_environment-cloud.
+      RETURN.
+    ENDIF.
     TRY.
         DATA lv_tabclass TYPE c LENGTH 8.
-        SELECT SINGLE tabclass FROM dd02l
-          WHERE tabname  = @lv_entity
-            AND as4local = 'A'
+        DATA(lv_dd02l) = `DD02L`.
+        DATA(lv_dd02l_where) = |TABNAME = @LV_ENTITY AND AS4LOCAL = 'A'|.
+        SELECT SINGLE ('TABCLASS') FROM (lv_dd02l)
+          WHERE (lv_dd02l_where)
           INTO @lv_tabclass.
         "read-only until the extension allows the writes
         result-is_table = xsdbool( sy-subrc = 0 AND lv_tabclass = `TRANSP` ).
@@ -2742,7 +2749,12 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     DATA lv_tabname TYPE c LENGTH 30.
     DATA lv_varkey TYPE c LENGTH 120.
-    DATA lt_ddic TYPE ddfields.
+    DATA lt_ddic TYPE z2ui5_cl_rap_util=>ty_t_ddic_field.
+    "the authorization object and the lock function modules by name - none
+    "of them is released for ABAP Cloud, where this path is off
+    DATA lv_auth_object TYPE c LENGTH 10 VALUE 'S_TABU_NAM'.
+    DATA lv_enqueue TYPE c LENGTH 30 VALUE 'ENQUEUE_E_TABLE'.
+    DATA lv_dequeue TYPE c LENGTH 30 VALUE 'DEQUEUE_E_TABLE'.
     DATA lt_keys TYPE string_table.
     DATA lr_current TYPE REF TO data.
     DATA lr_seen TYPE REF TO data.
@@ -2755,9 +2767,14 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     lv_tabname = to_upper( entity_name ).
 
+    IF z2ui5_cl_rap_util=>get_environment( ) = z2ui5_cl_rap_util=>cs_environment-cloud.
+      APPEND |{ get_text( cs_text-read_only ) }: { lv_tabname }| TO result-messages.
+      RETURN.
+    ENDIF.
+
     "the authorization of table maintenance by table name - what SM30 and
     "SE16 ask before a change
-    AUTHORITY-CHECK OBJECT 'S_TABU_NAM'
+    AUTHORITY-CHECK OBJECT lv_auth_object
       ID 'ACTVT' FIELD '02'
       ID 'TABLE' FIELD lv_tabname.
     IF sy-subrc <> 0.
@@ -2767,22 +2784,13 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     TRY.
         DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( lv_tabname ) ).
-        lo_struct->get_ddic_field_list(
-          RECEIVING
-            p_field_list = lt_ddic
-          EXCEPTIONS
-            not_found    = 1
-            no_ddic_type = 2
-            OTHERS       = 3 ).
-        IF sy-subrc <> 0.
-          CLEAR lt_ddic.
-        ENDIF.
+        lt_ddic = z2ui5_cl_rap_util=>get_ddic_fields( lo_struct ).
       CATCH cx_root.
         CLEAR lt_ddic.
     ENDTRY.
     "the key without the client - ABAP SQL adds the client by itself
     LOOP AT lt_ddic INTO DATA(ls_ddic) WHERE keyflag = abap_true AND datatype <> `CLNT`.
-      APPEND CONV string( ls_ddic-fieldname ) TO lt_keys.
+      APPEND ls_ddic-fieldname TO lt_keys.
     ENDLOOP.
     IF lt_keys IS INITIAL.
       APPEND |{ get_text( cs_text-read_only ) }: { lv_tabname }| TO result-messages.
@@ -2791,7 +2799,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     lv_varkey = get_table_varkey( row        = row
                                   key_fields = lt_ddic ).
-    CALL FUNCTION 'ENQUEUE_E_TABLE'
+    CALL FUNCTION lv_enqueue
       EXPORTING
         mode_rstable   = 'E'
         tabname        = lv_tabname
@@ -2869,7 +2877,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         APPEND lx->get_text( ) TO result-messages.
     ENDTRY.
 
-    CALL FUNCTION 'DEQUEUE_E_TABLE'
+    CALL FUNCTION lv_dequeue
       EXPORTING
         mode_rstable = 'E'
         tabname      = lv_tabname
@@ -2885,7 +2893,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     FIELD-SYMBOLS <lv_value> TYPE any.
 
     LOOP AT key_fields INTO DATA(ls_field) WHERE keyflag = abap_true.
-      DATA(lv_length) = CONV i( ls_field-leng ).
+      DATA(lv_length) = ls_field-leng.
       "only character-like keys have an internal form that is their text
       IF ls_field-inttype NA `CNDT` OR lv_offset + lv_length > 120.
         RETURN.
