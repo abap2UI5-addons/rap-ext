@@ -167,6 +167,17 @@ CLASS z2ui5_cl_rap_util DEFINITION
         "position and label - is_identification and identification_pos
         "stay the unqualified entry's
         identifications           TYPE ty_t_field_group,
+        "added 2026-10, third round (reading): a virtual element
+        "(@ObjectModel.virtualElementCalculatedBy, the class without its
+        "ABAP: prefix) - no database column, calculated after each read -
+        "and the classes that let it be sorted or filtered
+        "(@ObjectModel.sort.transformedBy, .filter.transformedBy)
+        is_virtual                TYPE abap_bool,
+        virtual_calc_class        TYPE string,
+        sort_transform_class      TYPE string,
+        filter_transform_class    TYPE string,
+        "@Search.fuzzinessThreshold - read, the search stays a LIKE
+        search_fuzziness          TYPE string,
       END OF ty_s_field_info.
 
     TYPES ty_t_field_info TYPE STANDARD TABLE OF ty_s_field_info WITH DEFAULT KEY.
@@ -395,7 +406,74 @@ CLASS z2ui5_cl_rap_util DEFINITION
         create_hidden         TYPE string,
         update_hidden         TYPE string,
         delete_hidden         TYPE string,
+        "added 2026-10, third round (reading): the query provider of a
+        "custom entity (@ObjectModel.query.implementedBy, without ABAP:)
+        query_class           TYPE string,
       END OF ty_s_entity_info.
+
+    "======= READING TYPES (added 2026-10, third round) =======
+
+    " one line of a range - the shape of IF_RAP_QUERY_FILTER's ranges
+    TYPES:
+      BEGIN OF ty_s_range_option,
+        sign   TYPE c LENGTH 1,
+        option TYPE c LENGTH 2,
+        low    TYPE string,
+        high   TYPE string,
+      END OF ty_s_range_option.
+
+    TYPES ty_t_range_option TYPE STANDARD TABLE OF ty_s_range_option WITH EMPTY KEY.
+
+    TYPES:
+      BEGIN OF ty_s_name_range,
+        name  TYPE string,
+        range TYPE ty_t_range_option,
+      END OF ty_s_name_range.
+
+    TYPES ty_t_name_range TYPE STANDARD TABLE OF ty_s_name_range WITH EMPTY KEY.
+
+    " what a query provider is asked for (build_query_filter): the filter
+    " as ABAP SQL and as ranges, and the free-text search apart from it
+    TYPES:
+      BEGIN OF ty_s_query_filter,
+        "the WHERE without the search, host variables as literals
+        sql       TYPE string,
+        ranges    TYPE ty_t_name_range,
+        "the filter is no AND of one range per field - get_as_ranges raises
+        no_ranges TYPE abap_bool,
+        "the search term (* as wildcard), from build_search_condition's part
+        search    TYPE string,
+      END OF ty_s_query_filter.
+
+    " a virtual element and the classes of its SADL exits
+    TYPES:
+      BEGIN OF ty_s_virtual_element,
+        name         TYPE string,
+        calc_class   TYPE string,
+        sort_class   TYPE string,
+        filter_class TYPE string,
+      END OF ty_s_virtual_element.
+
+    TYPES ty_t_virtual_element TYPE STANDARD TABLE OF ty_s_virtual_element WITH EMPTY KEY.
+
+    " how the rows of an entity are read (get_read_info): through a query
+    " provider (a custom entity), or by ABAP SQL with the virtual elements
+    " calculated afterwards
+    TYPES:
+      BEGIN OF ty_s_read_info,
+        query_class      TYPE string,
+        virtual_elements TYPE ty_t_virtual_element,
+      END OF ty_s_read_info.
+
+    " one group of aggregate_rows
+    TYPES:
+      BEGIN OF ty_s_aggregate,
+        group_key TYPE string,
+        value     TYPE decfloat34,
+        row_count TYPE int8,
+      END OF ty_s_aggregate.
+
+    TYPES ty_t_aggregate TYPE STANDARD TABLE OF ty_s_aggregate WITH EMPTY KEY.
 
     "======= PUBLIC METHODS =======
 
@@ -637,6 +715,90 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! How the rows of an entity are read: the query provider of a custom
+    "! entity and the virtual elements with their SADL exit classes - from
+    "! the annotations, which are cached for the session
+    CLASS-METHODS get_read_info
+      IMPORTING
+        entity_name   TYPE clike
+      RETURNING
+        VALUE(result) TYPE ty_s_read_info.
+
+    "! get_read_info on raw annotations - needs no system
+    CLASS-METHODS parse_read_info
+      IMPORTING
+        it_entity     TYPE ty_t_annotation
+        it_elements   TYPE ty_t_element_annotation
+      RETURNING
+        VALUE(result) TYPE ty_s_read_info.
+
+    "! A WHERE condition (ABAP SQL, as the floorplans build it) as a query
+    "! provider is asked for it: the free-text search part
+    "! (build_search_condition) apart, the rest as one ABAP SQL string with
+    "! the host variables (@&lt;LS_HOST&gt;-name, see host_values) as
+    "! literals, and - where the rest is an AND of conditions on one field
+    "! each - as ranges (EQ NE LT LE GT GE BT, CP for a LIKE, E for a NOT).
+    "! A condition no range can hold (an OR over two fields, a function, a
+    "! field twice) sets no_ranges
+    CLASS-METHODS build_query_filter
+      IMPORTING
+        where         TYPE string
+        host_values   TYPE ty_t_name_value OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_s_query_filter.
+
+    "! an ABAP SQL ORDER BY list (`A DESCENDING, B`) as sort criteria
+    CLASS-METHODS parse_order_by
+      IMPORTING
+        order_by      TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_t_sort.
+
+    "! sort criteria as an ABAP SQL ORDER BY list
+    CLASS-METHODS order_by_to_string
+      IMPORTING
+        it_sort       TYPE ty_t_sort
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! where without its AND-ed conditions that name one of fields - what
+    "! ABAP SQL cannot evaluate for a virtual element
+    CLASS-METHODS remove_where_fields
+      IMPORTING
+        where         TYPE string
+        fields        TYPE string_table
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! a field the user may sort by: no STRING or RAW, and a virtual
+    "! element only with @ObjectModel.sort.transformedBy
+    CLASS-METHODS is_sortable
+      IMPORTING
+        is_field      TYPE ty_s_field_info
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! a field the user may filter by: no virtual element - a filter
+    "! transformation (@ObjectModel.filter.transformedBy) is not called
+    CLASS-METHODS is_filterable
+      IMPORTING
+        is_field      TYPE ty_s_field_info
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! The rows of data (a table) grouped by the component group_by (none:
+    "! one group), with method (SUM AVG MIN MAX COUNT) over the component
+    "! measure - sorted by the group's key. What a custom entity's
+    "! aggregates are computed with, as ABAP SQL cannot read it
+    CLASS-METHODS aggregate_rows
+      IMPORTING
+        data          TYPE REF TO data
+        group_by      TYPE string OPTIONAL
+        measure       TYPE string OPTIONAL
+        method        TYPE string DEFAULT `SUM`
+      RETURNING
+        VALUE(result) TYPE ty_t_aggregate.
+
     "! Remove one pair of enclosing single quotes and surrounding blanks
     CLASS-METHODS strip_quotes
       IMPORTING
@@ -867,6 +1029,82 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE ddfields.
 
+    TYPES ty_t_token_groups TYPE STANDARD TABLE OF string_table WITH EMPTY KEY.
+
+    "! a class named by an annotation: 'ABAP:ZCL_X' as ZCL_X
+    CLASS-METHODS annotation_class
+      IMPORTING
+        val           TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the tokens of an ABAP SQL condition: a quoted literal (its quotes
+    "! kept), a host variable (@...), a parenthesis, a comma, an operator
+    "! (= &lt;&gt; ...), a word
+    CLASS-METHODS tokenize_where
+      IMPORTING
+        where         TYPE string
+      RETURNING
+        VALUE(result) TYPE string_table.
+
+    "! the tokens split at the keyword separator (AND, OR) outside of
+    "! parentheses - the AND of a BETWEEN stays where it is
+    CLASS-METHODS split_tokens
+      IMPORTING
+        it_tokens     TYPE string_table
+        separator     TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_t_token_groups.
+
+    "! the tokens without the parentheses that enclose all of them
+    CLASS-METHODS strip_parentheses
+      CHANGING
+        ct_tokens TYPE string_table.
+
+    "! the tokens as ABAP SQL again - host variables as literals of their
+    "! value where host_values has it
+    CLASS-METHODS tokens_to_sql
+      IMPORTING
+        it_tokens     TYPE string_table
+        host_values   TYPE ty_t_name_value OPTIONAL
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the search term of a condition build_search_condition built - empty
+    "! when the tokens are no such condition
+    CLASS-METHODS search_term
+      IMPORTING
+        it_tokens     TYPE string_table
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! one condition on one field as a range line - failed when it is none
+    CLASS-METHODS condition_to_range
+      IMPORTING
+        it_tokens   TYPE string_table
+        host_values TYPE ty_t_name_value OPTIONAL
+      EXPORTING
+        name        TYPE string
+        range       TYPE ty_s_range_option
+        failed      TYPE abap_bool.
+
+    "! the value of a literal token ('a''b' as a'b) or a host variable
+    CLASS-METHODS token_value
+      IMPORTING
+        token       TYPE string
+        host_values TYPE ty_t_name_value OPTIONAL
+      EXPORTING
+        value       TYPE string
+        failed      TYPE abap_bool.
+
+    "! a LIKE pattern (% _, escaped by escape) as a CP pattern (* +, #)
+    CLASS-METHODS like_to_pattern
+      IMPORTING
+        pattern       TYPE string
+        escape        TYPE string OPTIONAL
+      RETURNING
+        VALUE(result) TYPE string.
+
 ENDCLASS.
 
 
@@ -1026,6 +1264,8 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           cs_entity-update_hidden = hidden_value( lv_val ).
         WHEN `UI.DELETEHIDDEN`.
           cs_entity-delete_hidden = hidden_value( lv_val ).
+        WHEN `OBJECTMODEL.QUERY.IMPLEMENTEDBY`.
+          cs_entity-query_class = annotation_class( lv_val ).
       ENDCASE.
       IF lv_key CP `OBJECTMODEL.SEMANTICKEY*`.
         APPEND to_upper( strip_quotes( lv_val ) ) TO cs_entity-semantic_key.
@@ -1193,6 +1433,19 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           cs_field-filter_mandatory = is_true( lv_val ).
         WHEN `CONSUMPTION.FILTER.HIDDEN`.
           cs_field-filter_hidden = is_true( lv_val ).
+        WHEN `OBJECTMODEL.VIRTUALELEMENTCALCULATEDBY`.
+          cs_field-virtual_calc_class = annotation_class( lv_val ).
+          cs_field-is_virtual = xsdbool( cs_field-virtual_calc_class IS NOT INITIAL ).
+        WHEN `OBJECTMODEL.VIRTUALELEMENT`.
+          IF is_true( lv_val ).
+            cs_field-is_virtual = abap_true.
+          ENDIF.
+        WHEN `OBJECTMODEL.SORT.TRANSFORMEDBY`.
+          cs_field-sort_transform_class = annotation_class( lv_val ).
+        WHEN `OBJECTMODEL.FILTER.TRANSFORMEDBY`.
+          cs_field-filter_transform_class = annotation_class( lv_val ).
+        WHEN `SEARCH.FUZZINESSTHRESHOLD`.
+          cs_field-search_fuzziness = strip_quotes( lv_val ).
       ENDCASE.
 
       "@ObjectModel.text.element: ['Name'] - an array of one
@@ -2078,10 +2331,17 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     lv_search = replace( val = lv_search sub = `'` with = `''` occ = 0 ).
     lv_search = replace( val = lv_search sub = `*` with = `%` occ = 0 ).
 
-    DATA(lv_only_searchable) = xsdbool( line_exists( it_fields[ is_searchable = abap_true ] ) ).
+    "a text or string field - a virtual element is no column. A
+    "@Search.defaultSearchElement is searched also when it is @UI.hidden
+    "(added 2026-10, third round: STRING fields and hidden search
+    "elements; @Search.fuzzinessThreshold is read, the search stays a LIKE)
+    DATA(lv_only_searchable) = xsdbool( line_exists( it_fields[ is_searchable = abap_true is_virtual = abap_false ] ) ).
     LOOP AT it_fields INTO DATA(ls_field)
-      WHERE type_kind = `CHAR` AND is_hidden = abap_false.
+      WHERE ( type_kind = `CHAR` OR type_kind = `STRING` ) AND is_virtual = abap_false.
       IF lv_only_searchable = abap_true AND ls_field-is_searchable = abap_false.
+        CONTINUE.
+      ENDIF.
+      IF lv_only_searchable = abap_false AND ls_field-is_hidden = abap_true.
         CONTINUE.
       ENDIF.
       APPEND |UPPER( { ls_field-name } ) LIKE '%{ lv_search }%' ESCAPE '#'| TO lt_or.
@@ -2937,6 +3197,699 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       APPEND VALUE #( name  = url_decode( lv_name )
                       value = url_decode( lv_value ) ) TO result.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_read_info.
+    DATA(ls_raw) = read_raw_annotations( entity_name ).
+    result = parse_read_info( it_entity   = ls_raw-entity
+                              it_elements = ls_raw-elements ).
+  ENDMETHOD.
+
+
+  METHOD parse_read_info.
+
+    DATA lt_names TYPE string_table.
+    DATA lt_annos TYPE ty_t_annotation.
+    DATA lv_name TYPE string.
+    DATA ls_field TYPE ty_s_field_info.
+
+    LOOP AT it_entity INTO DATA(ls_anno).
+      IF to_upper( ls_anno-key ) = `OBJECTMODEL.QUERY.IMPLEMENTEDBY`.
+        result-query_class = annotation_class( ls_anno-value ).
+      ENDIF.
+    ENDLOOP.
+
+    "the elements in the order of their annotations, each read like a field
+    LOOP AT it_elements INTO DATA(ls_element).
+      lv_name = to_upper( ls_element-element ).
+      IF NOT line_exists( lt_names[ table_line = lv_name ] ).
+        APPEND lv_name TO lt_names.
+      ENDIF.
+    ENDLOOP.
+    LOOP AT lt_names INTO lv_name.
+      CLEAR lt_annos.
+      LOOP AT it_elements INTO ls_element.
+        IF to_upper( ls_element-element ) = lv_name.
+          APPEND VALUE #( key = ls_element-key value = ls_element-value ) TO lt_annos.
+        ENDIF.
+      ENDLOOP.
+      ls_field = VALUE #( name = lv_name ).
+      parse_field_annotations( EXPORTING it_annos = lt_annos
+                               CHANGING  cs_field = ls_field ).
+      IF ls_field-is_virtual = abap_true.
+        APPEND VALUE #( name         = lv_name
+                        calc_class   = ls_field-virtual_calc_class
+                        sort_class   = ls_field-sort_transform_class
+                        filter_class = ls_field-filter_transform_class ) TO result-virtual_elements.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD annotation_class.
+    result = to_upper( condense( strip_quotes( val ) ) ).
+    IF strlen( result ) > 5 AND substring( val = result len = 5 ) = `ABAP:`.
+      result = condense( substring( val = result off = 5 ) ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD tokenize_where.
+
+    DATA lv_token TYPE string.
+    DATA lv_char TYPE string.
+    DATA lv_pos TYPE i.
+    DATA lv_end TYPE i.
+    DATA(lv_len) = strlen( where ).
+
+    WHILE lv_pos < lv_len.
+      lv_char = substring( val = where off = lv_pos len = 1 ).
+
+      "a blank ends a word
+      IF lv_char = ` ` OR lv_char = cl_abap_char_utilities=>horizontal_tab
+        OR lv_char = cl_abap_char_utilities=>newline OR lv_char = cl_abap_char_utilities=>cr_lf(1).
+        IF lv_token IS NOT INITIAL.
+          APPEND lv_token TO result.
+          CLEAR lv_token.
+        ENDIF.
+        lv_pos = lv_pos + 1.
+        CONTINUE.
+      ENDIF.
+
+      "a host variable is one word, its < > and - included
+      IF lv_token IS NOT INITIAL AND lv_token(1) = `@` AND lv_char <> `(` AND lv_char <> `)` AND lv_char <> `,`.
+        lv_token = lv_token && lv_char.
+        lv_pos = lv_pos + 1.
+        CONTINUE.
+      ENDIF.
+
+      CASE lv_char.
+        WHEN `'`.
+          IF lv_token IS NOT INITIAL.
+            APPEND lv_token TO result.
+            CLEAR lv_token.
+          ENDIF.
+          "up to the closing quote - a doubled quote is part of the literal
+          lv_end = lv_pos + 1.
+          WHILE lv_end < lv_len.
+            IF substring( val = where off = lv_end len = 1 ) = `'`.
+              IF lv_end + 1 < lv_len AND substring( val = where off = lv_end + 1 len = 1 ) = `'`.
+                lv_end = lv_end + 2.
+                CONTINUE.
+              ENDIF.
+              EXIT.
+            ENDIF.
+            lv_end = lv_end + 1.
+          ENDWHILE.
+          IF lv_end >= lv_len.
+            lv_end = lv_len - 1.
+          ENDIF.
+          APPEND substring( val = where off = lv_pos len = lv_end - lv_pos + 1 ) TO result.
+          lv_pos = lv_end + 1.
+        WHEN `(` OR `)` OR `,`.
+          IF lv_token IS NOT INITIAL.
+            APPEND lv_token TO result.
+            CLEAR lv_token.
+          ENDIF.
+          APPEND lv_char TO result.
+          lv_pos = lv_pos + 1.
+        WHEN `<` OR `>` OR `=` OR `!`.
+          IF lv_token IS NOT INITIAL.
+            APPEND lv_token TO result.
+            CLEAR lv_token.
+          ENDIF.
+          lv_end = lv_pos + 1.
+          WHILE lv_end < lv_len AND substring( val = where off = lv_end len = 1 ) CA `<>=`.
+            lv_end = lv_end + 1.
+          ENDWHILE.
+          APPEND substring( val = where off = lv_pos len = lv_end - lv_pos ) TO result.
+          lv_pos = lv_end.
+        WHEN OTHERS.
+          lv_token = lv_token && lv_char.
+          lv_pos = lv_pos + 1.
+      ENDCASE.
+    ENDWHILE.
+
+    IF lv_token IS NOT INITIAL.
+      APPEND lv_token TO result.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD split_tokens.
+
+    DATA lt_group TYPE string_table.
+    DATA lv_depth TYPE i.
+    DATA lv_between TYPE i.
+    DATA lv_upper TYPE string.
+
+    LOOP AT it_tokens INTO DATA(lv_token).
+      lv_upper = to_upper( lv_token ).
+      CASE lv_upper.
+        WHEN `(`.
+          lv_depth = lv_depth + 1.
+        WHEN `)`.
+          lv_depth = lv_depth - 1.
+        WHEN `BETWEEN`.
+          IF lv_depth = 0.
+            lv_between = lv_between + 1.
+          ENDIF.
+      ENDCASE.
+      IF lv_depth = 0 AND lv_upper = separator.
+        "the AND of a BETWEEN belongs to it
+        IF separator = `AND` AND lv_between > 0.
+          lv_between = lv_between - 1.
+        ELSE.
+          APPEND lt_group TO result.
+          CLEAR lt_group.
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+      APPEND lv_token TO lt_group.
+    ENDLOOP.
+
+    IF lt_group IS NOT INITIAL.
+      APPEND lt_group TO result.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD strip_parentheses.
+
+    DATA lv_depth TYPE i.
+    DATA lv_index TYPE i.
+    DATA lv_lines TYPE i.
+
+    DO.
+      lv_lines = lines( ct_tokens ).
+      IF lv_lines < 2.
+        RETURN.
+      ENDIF.
+      IF ct_tokens[ 1 ] <> `(` OR ct_tokens[ lv_lines ] <> `)`.
+        RETURN.
+      ENDIF.
+      "the first parenthesis has to close at the last token: ( a ) OR ( b )
+      "is enclosed by none
+      lv_depth = 0.
+      LOOP AT ct_tokens INTO DATA(lv_token).
+        lv_index = sy-tabix.
+        IF lv_token = `(`.
+          lv_depth = lv_depth + 1.
+        ELSEIF lv_token = `)`.
+          lv_depth = lv_depth - 1.
+        ENDIF.
+        IF lv_depth = 0 AND lv_index < lv_lines.
+          RETURN.
+        ENDIF.
+      ENDLOOP.
+      DELETE ct_tokens INDEX lv_lines.
+      DELETE ct_tokens INDEX 1.
+    ENDDO.
+
+  ENDMETHOD.
+
+
+  METHOD token_value.
+
+    DATA lv_offset TYPE i.
+    DATA lv_host TYPE string.
+
+    CLEAR: value, failed.
+    DATA(lv_len) = strlen( token ).
+    IF lv_len >= 2 AND token(1) = `'` AND substring( val = token off = lv_len - 1 ) = `'`.
+      value = replace( val  = substring( val = token off = 1 len = lv_len - 2 )
+                       sub  = `''`
+                       with = `'`
+                       occ  = 0 ).
+    ELSEIF lv_len > 1 AND token(1) = `@`.
+      "@<LS_HOST>-NAME: the component after the last dash
+      lv_offset = find( val = token sub = `-` occ = -1 ).
+      IF lv_offset < 0.
+        failed = abap_true.
+        RETURN.
+      ENDIF.
+      lv_host = to_upper( substring( val = token off = lv_offset + 1 ) ).
+      READ TABLE host_values INTO DATA(ls_value) WITH KEY name = lv_host.
+      IF sy-subrc <> 0.
+        failed = abap_true.
+        RETURN.
+      ENDIF.
+      value = ls_value-value.
+    ELSEIF lv_len > 0 AND token CO `0123456789.-+`.
+      value = token.
+    ELSE.
+      failed = abap_true.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD tokens_to_sql.
+
+    DATA lv_prev TYPE string.
+    DATA lv_out TYPE string.
+    DATA lv_value TYPE string.
+    DATA lv_failed TYPE abap_bool.
+
+    LOOP AT it_tokens INTO DATA(lv_token).
+      lv_out = lv_token.
+      IF host_values IS NOT INITIAL AND strlen( lv_token ) > 1 AND lv_token(1) = `@`.
+        token_value( EXPORTING token       = lv_token
+                               host_values = host_values
+                     IMPORTING value       = lv_value
+                               failed      = lv_failed ).
+        IF lv_failed = abap_false.
+          lv_out = |'{ replace( val = lv_value sub = `'` with = `''` occ = 0 ) }'|.
+        ENDIF.
+      ENDIF.
+      "a function's parenthesis stays at its name: UPPER( X )
+      IF result IS INITIAL.
+        result = lv_out.
+      ELSEIF lv_token = `(` AND lv_prev CO `ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_`
+        AND lv_prev <> `AND` AND lv_prev <> `OR` AND lv_prev <> `NOT` AND lv_prev <> `IN`
+        AND lv_prev <> `EXISTS`.
+        result = result && lv_out.
+      ELSE.
+        result = |{ result } { lv_out }|.
+      ENDIF.
+      lv_prev = to_upper( lv_token ).
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD search_term.
+
+    DATA lt_tokens TYPE string_table.
+    DATA lv_literal TYPE string.
+    DATA lv_char TYPE string.
+    DATA lv_pos TYPE i.
+
+    lt_tokens = it_tokens.
+    strip_parentheses( CHANGING ct_tokens = lt_tokens ).
+    DATA(lt_or) = split_tokens( it_tokens = lt_tokens
+                                separator = `OR` ).
+    "UPPER( F ) LIKE '%TERM%' ESCAPE '#', ORed - the same term each time
+    LOOP AT lt_or INTO DATA(lt_part).
+      IF lines( lt_part ) <> 8.
+        RETURN.
+      ENDIF.
+      IF to_upper( lt_part[ 1 ] ) <> `UPPER` OR lt_part[ 2 ] <> `(` OR lt_part[ 4 ] <> `)`
+        OR to_upper( lt_part[ 5 ] ) <> `LIKE` OR to_upper( lt_part[ 7 ] ) <> `ESCAPE` OR lt_part[ 8 ] <> `'#'`.
+        RETURN.
+      ENDIF.
+      IF lv_literal IS INITIAL.
+        lv_literal = lt_part[ 6 ].
+      ELSEIF lv_literal <> lt_part[ 6 ].
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+
+    "'%TERM%': the quotes and the % around it off, its escapes undone
+    DATA(lv_len) = strlen( lv_literal ).
+    IF lv_len < 4 OR substring( val = lv_literal len = 2 ) <> `'%`
+      OR substring( val = lv_literal off = lv_len - 2 ) <> `%'`.
+      RETURN.
+    ENDIF.
+    DATA(lv_pattern) = replace( val  = substring( val = lv_literal off = 2 len = lv_len - 4 )
+                                sub  = `''`
+                                with = `'`
+                                occ  = 0 ).
+    lv_len = strlen( lv_pattern ).
+    WHILE lv_pos < lv_len.
+      lv_char = substring( val = lv_pattern off = lv_pos len = 1 ).
+      IF lv_char = `#` AND lv_pos + 1 < lv_len.
+        result = result && substring( val = lv_pattern off = lv_pos + 1 len = 1 ).
+        lv_pos = lv_pos + 2.
+        CONTINUE.
+      ENDIF.
+      result = result && COND string( WHEN lv_char = `%` THEN `*` ELSE lv_char ).
+      lv_pos = lv_pos + 1.
+    ENDWHILE.
+
+  ENDMETHOD.
+
+
+  METHOD like_to_pattern.
+
+    DATA lv_char TYPE string.
+    DATA lv_next TYPE string.
+    DATA lv_pos TYPE i.
+    DATA(lv_len) = strlen( pattern ).
+
+    WHILE lv_pos < lv_len.
+      lv_char = substring( val = pattern off = lv_pos len = 1 ).
+      IF escape IS NOT INITIAL AND lv_char = escape AND lv_pos + 1 < lv_len.
+        lv_next = substring( val = pattern off = lv_pos + 1 len = 1 ).
+        result = result && COND string( WHEN lv_next CA `*+#` THEN `#` && lv_next ELSE lv_next ).
+        lv_pos = lv_pos + 2.
+        CONTINUE.
+      ENDIF.
+      result = result && SWITCH string( lv_char
+                                        WHEN `%` THEN `*`
+                                        WHEN `_` THEN `+`
+                                        WHEN `*` OR `+` OR `#` THEN `#` && lv_char
+                                        ELSE lv_char ).
+      lv_pos = lv_pos + 1.
+    ENDWHILE.
+
+  ENDMETHOD.
+
+
+  METHOD condition_to_range.
+
+    DATA lt_tokens TYPE string_table.
+    DATA lv_value TYPE string.
+    DATA lv_high TYPE string.
+    DATA lv_escape TYPE string.
+    DATA lv_failed TYPE abap_bool.
+    DATA lv_sign TYPE c LENGTH 1.
+    DATA lv_option TYPE c LENGTH 2.
+
+    CLEAR: name, range.
+    failed = abap_true.
+    lv_sign = 'I'.
+    lt_tokens = it_tokens.
+    strip_parentheses( CHANGING ct_tokens = lt_tokens ).
+    IF lines( lt_tokens ) > 1 AND to_upper( lt_tokens[ 1 ] ) = `NOT`.
+      lv_sign = 'E'.
+      DELETE lt_tokens INDEX 1.
+      strip_parentheses( CHANGING ct_tokens = lt_tokens ).
+    ENDIF.
+
+    DATA(lv_count) = lines( lt_tokens ).
+    IF lv_count < 3.
+      RETURN.
+    ENDIF.
+    name = to_upper( lt_tokens[ 1 ] ).
+    IF name CN `ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_/`.
+      CLEAR name.
+      RETURN.
+    ENDIF.
+    DATA(lv_op) = to_upper( lt_tokens[ 2 ] ).
+
+    IF lv_count = 3 AND lv_op = `IS` AND to_upper( lt_tokens[ 3 ] ) = `INITIAL`.
+      lv_option = 'EQ'.
+    ELSEIF lv_count = 4 AND lv_op = `IS` AND to_upper( lt_tokens[ 3 ] ) = `NOT`
+      AND to_upper( lt_tokens[ 4 ] ) = `INITIAL`.
+      lv_option = 'NE'.
+    ELSEIF lv_count = 5 AND lv_op = `BETWEEN` AND to_upper( lt_tokens[ 4 ] ) = `AND`.
+      token_value( EXPORTING token       = lt_tokens[ 3 ]
+                             host_values = host_values
+                   IMPORTING value       = lv_value
+                             failed      = lv_failed ).
+      IF lv_failed = abap_true.
+        RETURN.
+      ENDIF.
+      token_value( EXPORTING token       = lt_tokens[ 5 ]
+                             host_values = host_values
+                   IMPORTING value       = lv_high
+                             failed      = lv_failed ).
+      IF lv_failed = abap_true.
+        RETURN.
+      ENDIF.
+      lv_option = 'BT'.
+    ELSEIF lv_op = `LIKE` AND ( lv_count = 3 OR ( lv_count = 5 AND to_upper( lt_tokens[ 4 ] ) = `ESCAPE` ) ).
+      IF lv_count = 5.
+        token_value( EXPORTING token = lt_tokens[ 5 ]
+                     IMPORTING value = lv_escape
+                               failed = lv_failed ).
+        IF lv_failed = abap_true.
+          RETURN.
+        ENDIF.
+      ENDIF.
+      token_value( EXPORTING token       = lt_tokens[ 3 ]
+                             host_values = host_values
+                   IMPORTING value       = lv_value
+                             failed      = lv_failed ).
+      IF lv_failed = abap_true.
+        RETURN.
+      ENDIF.
+      lv_value = like_to_pattern( pattern = lv_value
+                                  escape  = lv_escape ).
+      lv_option = 'CP'.
+    ELSEIF lv_count = 3.
+      lv_option = SWITCH #( lv_op
+        WHEN `=` OR `EQ` THEN 'EQ'
+        WHEN `<>` OR `!=` OR `NE` THEN 'NE'
+        WHEN `<` OR `LT` THEN 'LT'
+        WHEN `<=` OR `LE` THEN 'LE'
+        WHEN `>` OR `GT` THEN 'GT'
+        WHEN `>=` OR `GE` THEN 'GE' ).
+      IF lv_option IS INITIAL.
+        RETURN.
+      ENDIF.
+      token_value( EXPORTING token       = lt_tokens[ 3 ]
+                             host_values = host_values
+                   IMPORTING value       = lv_value
+                             failed      = lv_failed ).
+      IF lv_failed = abap_true.
+        RETURN.
+      ENDIF.
+    ELSE.
+      RETURN.
+    ENDIF.
+
+    range-sign = lv_sign.
+    range-option = lv_option.
+    range-low = lv_value.
+    range-high = lv_high.
+    failed = abap_false.
+
+  ENDMETHOD.
+
+
+  METHOD build_query_filter.
+
+    DATA lt_sql TYPE string_table.
+    DATA lt_tokens TYPE string_table.
+    DATA lt_lines TYPE ty_t_range_option.
+    DATA ls_range TYPE ty_s_range_option.
+    DATA lv_name TYPE string.
+    DATA lv_cond_name TYPE string.
+    DATA lv_failed TYPE abap_bool.
+    DATA lv_search TYPE string.
+
+    DATA(lt_and) = split_tokens( it_tokens = tokenize_where( where )
+                                 separator = `AND` ).
+    LOOP AT lt_and INTO DATA(lt_conjunct).
+      "the free-text search - a provider is given it on its own
+      IF result-search IS INITIAL.
+        lv_search = search_term( lt_conjunct ).
+        IF lv_search IS NOT INITIAL.
+          result-search = lv_search.
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+      APPEND tokens_to_sql( it_tokens    = lt_conjunct
+                            host_values = host_values ) TO lt_sql.
+      IF result-no_ranges = abap_true.
+        CONTINUE.
+      ENDIF.
+
+      "an OR of conditions on one field - the lines of its range
+      CLEAR: lt_lines, lv_name.
+      lt_tokens = lt_conjunct.
+      strip_parentheses( CHANGING ct_tokens = lt_tokens ).
+      DATA(lt_or) = split_tokens( it_tokens = lt_tokens
+                                  separator = `OR` ).
+      LOOP AT lt_or INTO DATA(lt_disjunct).
+        condition_to_range( EXPORTING it_tokens   = lt_disjunct
+                                      host_values = host_values
+                            IMPORTING name        = lv_cond_name
+                                      range       = ls_range
+                                      failed      = lv_failed ).
+        IF lv_failed = abap_true OR ( lv_name IS NOT INITIAL AND lv_cond_name <> lv_name ).
+          result-no_ranges = abap_true.
+          EXIT.
+        ENDIF.
+        lv_name = lv_cond_name.
+        APPEND ls_range TO lt_lines.
+      ENDLOOP.
+      IF result-no_ranges = abap_true.
+        CONTINUE.
+      ENDIF.
+      "a range includes its I lines and excludes its E lines - NOT a OR b,
+      "or a field in two conditions, is no range
+      IF ( line_exists( lt_lines[ sign = 'E' ] ) AND lines( lt_lines ) > 1 )
+        OR line_exists( result-ranges[ name = lv_name ] ).
+        result-no_ranges = abap_true.
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( name  = lv_name
+                      range = lt_lines ) TO result-ranges.
+    ENDLOOP.
+
+    result-sql = concat_lines_of( table = lt_sql sep = ` AND ` ).
+    IF result-no_ranges = abap_true.
+      CLEAR result-ranges.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD parse_order_by.
+
+    DATA lv_part TYPE string.
+    DATA lv_field TYPE string.
+    DATA lv_direction TYPE string.
+
+    SPLIT order_by AT `,` INTO TABLE DATA(lt_parts).
+    LOOP AT lt_parts INTO lv_part.
+      lv_part = condense( lv_part ).
+      SPLIT lv_part AT ` ` INTO lv_field lv_direction.
+      IF lv_field IS INITIAL.
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( field      = to_upper( lv_field )
+                      descending = xsdbool( to_upper( condense( lv_direction ) ) = `DESCENDING` ) ) TO result.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD order_by_to_string.
+
+    DATA lt_parts TYPE string_table.
+
+    LOOP AT it_sort INTO DATA(ls_sort).
+      APPEND |{ ls_sort-field }{ COND #( WHEN ls_sort-descending = abap_true THEN ` DESCENDING` ELSE `` ) }|
+        TO lt_parts.
+    ENDLOOP.
+    result = concat_lines_of( table = lt_parts sep = `, ` ).
+
+  ENDMETHOD.
+
+
+  METHOD remove_where_fields.
+
+    DATA lt_keep TYPE string_table.
+    DATA lv_dropped TYPE abap_bool.
+    DATA lv_hit TYPE abap_bool.
+    DATA lv_upper TYPE string.
+
+    result = where.
+    IF fields IS INITIAL OR where IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    DATA(lt_and) = split_tokens( it_tokens = tokenize_where( where )
+                                 separator = `AND` ).
+    LOOP AT lt_and INTO DATA(lt_conjunct).
+      lv_hit = abap_false.
+      LOOP AT lt_conjunct INTO DATA(lv_token).
+        lv_upper = to_upper( lv_token ).
+        IF line_exists( fields[ table_line = lv_upper ] ).
+          lv_hit = abap_true.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+      IF lv_hit = abap_true.
+        lv_dropped = abap_true.
+      ELSE.
+        APPEND tokens_to_sql( lt_conjunct ) TO lt_keep.
+      ENDIF.
+    ENDLOOP.
+
+    IF lv_dropped = abap_true.
+      result = concat_lines_of( table = lt_keep sep = ` AND ` ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD is_sortable.
+    result = xsdbool( is_field-type_kind <> `STRING` AND is_field-type_kind <> `RAW`
+                      AND ( is_field-is_virtual = abap_false OR is_field-sort_transform_class IS NOT INITIAL ) ).
+  ENDMETHOD.
+
+
+  METHOD is_filterable.
+    result = xsdbool( is_field-is_virtual = abap_false ).
+  ENDMETHOD.
+
+
+  METHOD aggregate_rows.
+
+    FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
+    FIELD-SYMBOLS <ls_row> TYPE any.
+    FIELD-SYMBOLS <lv_group> TYPE any.
+    FIELD-SYMBOLS <lv_measure> TYPE any.
+    FIELD-SYMBOLS <ls_agg> TYPE ty_s_aggregate.
+    DATA lv_key TYPE string.
+    DATA lv_value TYPE decfloat34.
+    DATA lv_rows TYPE i.
+
+    IF data IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    DATA(lv_method) = to_upper( method ).
+    ASSIGN data->* TO <lt_rows>.
+    IF <lt_rows> IS NOT ASSIGNED.
+      RETURN.
+    ENDIF.
+
+    LOOP AT <lt_rows> ASSIGNING <ls_row>.
+      CLEAR: lv_key, lv_value.
+      IF group_by IS NOT INITIAL.
+        UNASSIGN <lv_group>.
+        ASSIGN COMPONENT group_by OF STRUCTURE <ls_row> TO <lv_group>.
+        IF <lv_group> IS ASSIGNED.
+          lv_key = |{ <lv_group> }|.
+        ENDIF.
+      ENDIF.
+      IF measure IS NOT INITIAL.
+        UNASSIGN <lv_measure>.
+        ASSIGN COMPONENT measure OF STRUCTURE <ls_row> TO <lv_measure>.
+        IF <lv_measure> IS ASSIGNED.
+          TRY.
+              lv_value = <lv_measure>.
+            CATCH cx_sy_conversion_error.
+              CLEAR lv_value.
+          ENDTRY.
+        ENDIF.
+      ENDIF.
+
+      UNASSIGN <ls_agg>.
+      READ TABLE result ASSIGNING <ls_agg> WITH KEY group_key = lv_key.
+      IF <ls_agg> IS NOT ASSIGNED.
+        APPEND VALUE #( group_key = lv_key
+                        value     = lv_value
+                        row_count = 1 ) TO result.
+        CONTINUE.
+      ENDIF.
+      <ls_agg>-row_count = <ls_agg>-row_count + 1.
+      CASE lv_method.
+        WHEN `MIN`.
+          IF lv_value < <ls_agg>-value.
+            <ls_agg>-value = lv_value.
+          ENDIF.
+        WHEN `MAX`.
+          IF lv_value > <ls_agg>-value.
+            <ls_agg>-value = lv_value.
+          ENDIF.
+        WHEN OTHERS.
+          <ls_agg>-value = <ls_agg>-value + lv_value.
+      ENDCASE.
+    ENDLOOP.
+
+    "the count through an i - the transpiled runtime sets no decfloat34
+    "from an int8
+    LOOP AT result ASSIGNING <ls_agg>.
+      lv_rows = <ls_agg>-row_count.
+      CASE lv_method.
+        WHEN `AVG`.
+          <ls_agg>-value = <ls_agg>-value / lv_rows.
+        WHEN `COUNT`.
+          <ls_agg>-value = lv_rows.
+      ENDCASE.
+    ENDLOOP.
+    SORT result BY group_key.
 
   ENDMETHOD.
 

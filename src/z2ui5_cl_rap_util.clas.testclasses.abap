@@ -1329,3 +1329,285 @@ CLASS ltcl_export IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+" the reading of a custom entity and of virtual elements (2026-10, third
+" round): what a query provider is asked for - the filter as ABAP SQL and
+" as ranges, the search apart from it, the sort order - and the
+" annotations that decide how an entity is read
+CLASS ltcl_reading DEFINITION FINAL
+  FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+
+  PRIVATE SECTION.
+    TYPES:
+      BEGIN OF ty_s_row,
+        status TYPE c LENGTH 1,
+        day    TYPE d,
+        price  TYPE p LENGTH 8 DECIMALS 2,
+      END OF ty_s_row.
+
+    METHODS read_info_annotations  FOR TESTING RAISING cx_static_check.
+    METHODS field_annotations      FOR TESTING RAISING cx_static_check.
+    METHODS filter_as_ranges       FOR TESTING RAISING cx_static_check.
+    METHODS filter_host_values     FOR TESTING RAISING cx_static_check.
+    METHODS filter_no_ranges       FOR TESTING RAISING cx_static_check.
+    METHODS search_apart           FOR TESTING RAISING cx_static_check.
+    METHODS search_strings_hidden  FOR TESTING RAISING cx_static_check.
+    METHODS order_by_round_trip    FOR TESTING RAISING cx_static_check.
+    METHODS remove_virtual_fields  FOR TESTING RAISING cx_static_check.
+    METHODS sortable_filterable    FOR TESTING RAISING cx_static_check.
+    METHODS aggregate_groups       FOR TESTING RAISING cx_static_check.
+
+ENDCLASS.
+
+
+CLASS ltcl_reading IMPLEMENTATION.
+
+  METHOD read_info_annotations.
+
+    DATA(ls_info) = z2ui5_cl_rap_util=>parse_read_info(
+      it_entity   = VALUE #( ( key = `ObjectModel.query.implementedBy` value = `'ABAP:ZCL_TRAVEL_QUERY'` ) )
+      it_elements = VALUE #( ( element = `Status`     key = `UI.HIDDEN`                              value = `true` )
+                             ( element = `DaysToGo`   key = `OBJECTMODEL.VIRTUALELEMENTCALCULATEDBY` value = `'ABAP:zcl_days'` )
+                             ( element = `DaysToGo`   key = `OBJECTMODEL.SORT.TRANSFORMEDBY`         value = `'ABAP:ZCL_DAYS_SORT'` )
+                             ( element = `PlainVirt`  key = `ObjectModel.virtualElement`              value = `true` ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( exp = `ZCL_TRAVEL_QUERY`
+                                        act = ls_info-query_class ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_virtual_element(
+              ( name = `DAYSTOGO`  calc_class = `ZCL_DAYS` sort_class = `ZCL_DAYS_SORT` )
+              ( name = `PLAINVIRT` ) )
+      act = ls_info-virtual_elements ).
+
+  ENDMETHOD.
+
+
+  METHOD field_annotations.
+
+    DATA(ls_entity) = VALUE z2ui5_cl_rap_util=>ty_s_entity_info(
+      fields = VALUE #( ( name = `DAYSTOGO` type_kind = `INT` )
+                        ( name = `NAME`     type_kind = `CHAR` ) ) ).
+    z2ui5_cl_rap_util=>apply_annotations(
+      EXPORTING it_entity   = VALUE #( ( key = `OBJECTMODEL.QUERY.IMPLEMENTEDBY` value = `'ABAP:ZCL_Q'` ) )
+                it_elements = VALUE #( ( element = `DAYSTOGO` key = `OBJECTMODEL.VIRTUALELEMENTCALCULATEDBY` value = `'ABAP:ZCL_CALC'` )
+                                       ( element = `DAYSTOGO` key = `OBJECTMODEL.FILTER.TRANSFORMEDBY`       value = `'ABAP:ZCL_FILTER'` )
+                                       ( element = `NAME`     key = `SEARCH.FUZZINESSTHRESHOLD`              value = `0.8` ) )
+      CHANGING  cs_entity   = ls_entity ).
+
+    cl_abap_unit_assert=>assert_equals( exp = `ZCL_Q`
+                                        act = ls_entity-query_class ).
+    DATA(ls_days) = ls_entity-fields[ name = `DAYSTOGO` ].
+    cl_abap_unit_assert=>assert_true( ls_days-is_virtual ).
+    cl_abap_unit_assert=>assert_equals( exp = `ZCL_CALC`
+                                        act = ls_days-virtual_calc_class ).
+    cl_abap_unit_assert=>assert_equals( exp = `ZCL_FILTER`
+                                        act = ls_days-filter_transform_class ).
+    cl_abap_unit_assert=>assert_equals( exp = `0.8`
+                                        act = ls_entity-fields[ name = `NAME` ]-search_fuzziness ).
+    cl_abap_unit_assert=>assert_false( ls_entity-fields[ name = `NAME` ]-is_virtual ).
+
+  ENDMETHOD.
+
+
+  METHOD filter_as_ranges.
+
+    DATA(ls_filter) = z2ui5_cl_rap_util=>build_query_filter(
+      `STATUS = 'O' AND ( PRICE > '10' OR PRICE BETWEEN '1' AND '2' )` &&
+      ` AND NOT ( CITY LIKE '%Ber#_l''n*%' ESCAPE '#' )` ).
+
+    cl_abap_unit_assert=>assert_false( ls_filter-no_ranges ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_name_range(
+              ( name  = `STATUS`
+                range = VALUE #( ( sign = 'I' option = 'EQ' low = `O` ) ) )
+              ( name  = `PRICE`
+                range = VALUE #( ( sign = 'I' option = 'GT' low = `10` )
+                                 ( sign = 'I' option = 'BT' low = `1` high = `2` ) ) )
+              ( name  = `CITY`
+                range = VALUE #( ( sign = 'E' option = 'CP' low = `*Ber_l'n#**` ) ) ) )
+      act = ls_filter-ranges ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `STATUS = 'O' AND ( PRICE > '10' OR PRICE BETWEEN '1' AND '2' )` &&
+            ` AND NOT ( CITY LIKE '%Ber#_l''n*%' ESCAPE '#' )`
+      act = ls_filter-sql ).
+    cl_abap_unit_assert=>assert_initial( ls_filter-search ).
+
+  ENDMETHOD.
+
+
+  METHOD filter_host_values.
+
+    DATA(ls_filter) = z2ui5_cl_rap_util=>build_query_filter(
+      where       = `TRAVELID = @<LS_HOST>-TRAVELID AND AGENCY = @<LS_HOST>-AGENCY AND NAME IS INITIAL`
+      host_values = VALUE #( ( name = `TRAVELID` value = `42` )
+                             ( name = `AGENCY`   value = `O'Neil` ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( exp = `TRAVELID = '42' AND AGENCY = 'O''Neil' AND NAME IS INITIAL`
+                                        act = ls_filter-sql ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_name_range(
+              ( name  = `TRAVELID`
+                range = VALUE #( ( sign = 'I' option = 'EQ' low = `42` ) ) )
+              ( name  = `AGENCY`
+                range = VALUE #( ( sign = 'I' option = 'EQ' low = `O'Neil` ) ) )
+              ( name  = `NAME`
+                range = VALUE #( ( sign = 'I' option = 'EQ' ) ) ) )
+      act = ls_filter-ranges ).
+
+  ENDMETHOD.
+
+
+  METHOD filter_no_ranges.
+
+    " an OR over two fields
+    DATA(ls_filter) = z2ui5_cl_rap_util=>build_query_filter( `( A = '1' OR B = '2' )` ).
+    cl_abap_unit_assert=>assert_true( ls_filter-no_ranges ).
+    cl_abap_unit_assert=>assert_initial( ls_filter-ranges ).
+    cl_abap_unit_assert=>assert_equals( exp = `( A = '1' OR B = '2' )`
+                                        act = ls_filter-sql ).
+
+    " a field in two conditions, NOT a OR b, a function
+    cl_abap_unit_assert=>assert_true(
+      z2ui5_cl_rap_util=>build_query_filter( `A = '1' AND A = '2'` )-no_ranges ).
+    cl_abap_unit_assert=>assert_true(
+      z2ui5_cl_rap_util=>build_query_filter( `( NOT ( A = '1' ) OR A = '2' )` )-no_ranges ).
+    cl_abap_unit_assert=>assert_true(
+      z2ui5_cl_rap_util=>build_query_filter( `UPPER( A ) = 'X'` )-no_ranges ).
+    " an unknown host variable
+    cl_abap_unit_assert=>assert_true(
+      z2ui5_cl_rap_util=>build_query_filter( `A = @<LS_HOST>-A` )-no_ranges ).
+
+    " nothing to filter
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>build_query_filter( `` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD search_apart.
+
+    DATA(lt_fields) = VALUE z2ui5_cl_rap_util=>ty_t_field_info(
+      ( name = `ID`   type_kind = `CHAR` )
+      ( name = `NAME` type_kind = `CHAR` ) ).
+    DATA(lv_search) = z2ui5_cl_rap_util=>build_search_condition( it_fields = lt_fields
+                                                                search    = `a*b%` ).
+
+    DATA(ls_filter) = z2ui5_cl_rap_util=>build_query_filter( |STATUS = 'O' AND { lv_search }| ).
+    cl_abap_unit_assert=>assert_equals( exp = `A*B%`
+                                        act = ls_filter-search ).
+    cl_abap_unit_assert=>assert_equals( exp = `STATUS = 'O'`
+                                        act = ls_filter-sql ).
+    cl_abap_unit_assert=>assert_false( ls_filter-no_ranges ).
+    cl_abap_unit_assert=>assert_equals( exp = 1
+                                        act = lines( ls_filter-ranges ) ).
+
+  ENDMETHOD.
+
+
+  METHOD search_strings_hidden.
+
+    DATA(lt_fields) = VALUE z2ui5_cl_rap_util=>ty_t_field_info(
+      ( name = `ID`   type_kind = `CHAR` )
+      ( name = `NOTE` type_kind = `STRING` )
+      ( name = `CALC` type_kind = `CHAR` is_virtual = abap_true )
+      ( name = `HIDE` type_kind = `CHAR` is_hidden = abap_true ) ).
+
+    " no search element - every visible text and string field, no virtual one
+    cl_abap_unit_assert=>assert_equals(
+      exp = `( UPPER( ID ) LIKE '%X%' ESCAPE '#' OR UPPER( NOTE ) LIKE '%X%' ESCAPE '#' )`
+      act = z2ui5_cl_rap_util=>build_search_condition( it_fields = lt_fields search = `x` ) ).
+
+    " a hidden search element is searched
+    lt_fields[ name = `HIDE` ]-is_searchable = abap_true.
+    cl_abap_unit_assert=>assert_equals(
+      exp = `( UPPER( HIDE ) LIKE '%X%' ESCAPE '#' )`
+      act = z2ui5_cl_rap_util=>build_search_condition( it_fields = lt_fields search = `x` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD order_by_round_trip.
+
+    DATA(lt_sort) = z2ui5_cl_rap_util=>parse_order_by( `travelid DESCENDING,  STATUS , PRICE ASCENDING` ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_sort( ( field = `TRAVELID` descending = abap_true )
+                                                ( field = `STATUS` )
+                                                ( field = `PRICE` ) )
+      act = lt_sort ).
+    cl_abap_unit_assert=>assert_equals( exp = `TRAVELID DESCENDING, STATUS, PRICE`
+                                        act = z2ui5_cl_rap_util=>order_by_to_string( lt_sort ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>parse_order_by( `` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD remove_virtual_fields.
+
+    DATA(lt_virtual) = VALUE string_table( ( `DAYSTOGO` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `STATUS = 'O' AND ( UPPER( NAME ) LIKE '%X%' ESCAPE '#' )`
+      act = z2ui5_cl_rap_util=>remove_where_fields(
+              where  = `STATUS = 'O' AND DaysToGo > '3' AND ( UPPER( NAME ) LIKE '%X%' ESCAPE '#' )`
+              fields = lt_virtual ) ).
+    " nothing to remove - the condition as it was
+    cl_abap_unit_assert=>assert_equals(
+      exp = `STATUS='O' AND NOTE = 'DAYSTOGO'`
+      act = z2ui5_cl_rap_util=>remove_where_fields( where  = `STATUS='O' AND NOTE = 'DAYSTOGO'`
+                                                    fields = lt_virtual ) ).
+    cl_abap_unit_assert=>assert_initial(
+      z2ui5_cl_rap_util=>remove_where_fields( where  = `DAYSTOGO BETWEEN '1' AND '2'`
+                                              fields = lt_virtual ) ).
+
+  ENDMETHOD.
+
+
+  METHOD sortable_filterable.
+
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>is_sortable( VALUE #( type_kind = `CHAR` ) ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_sortable( VALUE #( type_kind = `STRING` ) ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_sortable(
+      VALUE #( type_kind = `INT` is_virtual = abap_true ) ) ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>is_sortable(
+      VALUE #( type_kind = `INT` is_virtual = abap_true sort_transform_class = `ZCL_SORT` ) ) ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>is_filterable( VALUE #( type_kind = `CHAR` ) ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>is_filterable(
+      VALUE #( type_kind = `INT` is_virtual = abap_true filter_transform_class = `ZCL_FILTER` ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD aggregate_groups.
+
+    DATA lt_rows TYPE STANDARD TABLE OF ty_s_row WITH EMPTY KEY.
+    lt_rows = VALUE #( ( status = 'O' day = '20240115' price = '10.50' )
+                       ( status = 'A' day = '20240116' price = '4.00' )
+                       ( status = 'O' day = '20240117' price = '1.50' ) ).
+    DATA(lr_rows) = REF #( lt_rows ).
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_aggregate( ( group_key = `A` value = 4 row_count = 1 )
+                                                     ( group_key = `O` value = 12 row_count = 2 ) )
+      act = z2ui5_cl_rap_util=>aggregate_rows( data     = lr_rows
+                                               group_by = `STATUS`
+                                               measure  = `PRICE` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_aggregate( ( group_key = `` value = 3 row_count = 3 ) )
+      act = z2ui5_cl_rap_util=>aggregate_rows( data   = lr_rows
+                                               method = `COUNT` ) ).
+    DATA(lt_min) = z2ui5_cl_rap_util=>aggregate_rows( data    = lr_rows
+                                                      measure = `PRICE`
+                                                      method  = `MIN` ).
+    cl_abap_unit_assert=>assert_equals( exp = `1.5`
+                                        act = |{ lt_min[ 1 ]-value }| ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_aggregate( ( group_key = `20240115` value = '10.5' row_count = 1 )
+                                                     ( group_key = `20240116` value = 4 row_count = 1 )
+                                                     ( group_key = `20240117` value = '1.5' row_count = 1 ) )
+      act = z2ui5_cl_rap_util=>aggregate_rows( data     = lr_rows
+                                               group_by = `DAY`
+                                               measure  = `PRICE`
+                                               method   = `AVG` ) ).
+
+  ENDMETHOD.
+
+ENDCLASS.
