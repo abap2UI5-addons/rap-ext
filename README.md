@@ -179,7 +179,7 @@ Overridable steps per floorplan:
 - **Overview Page**: `render_page`, `render_table_card`, `render_kpi_card`, `render_chart_card`, `render_card_link`, `load_all_cards`, `load_kpi_value`, `load_chart_rows`, `collect_card_rows`, `display`, `on_card`, `on_card_row`, `on_event`
 - **Value Help**: `render_dialog`, `render_filter_dialog`, `load_data`, `get_where_clause`, `on_confirm`, `on_event`
 - **Action Dialog**: `render_action_dialog`, `get_control_for_field`, `render_value_help`, `handle_value_help_confirm`, `apply_default_values`, `get_missing_fields`, `on_event`
-- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `is_static_action`, `get_action_entries`, `get_action_button_type`, `is_hidden_by_annotation`, `navigate_to_intent`, `read_association_target`, `get_text`, ...
+- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `get_read_info`, `query_rows`, `calculate_virtual_elements`, `adjust_virtual_order_by`, `aggregate_rows`, `get_load_error`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `is_static_action`, `get_action_entries`, `get_action_button_type`, `is_hidden_by_annotation`, `navigate_to_intent`, `read_association_target`, `get_text`, ...
 
 ## Extension points without a subclass
 
@@ -283,7 +283,9 @@ and qualifiers are read per entry:
 | `@ObjectModel.resultSet.sizeCategory: #XS` | a dropdown instead of a value help |
 | `@Consumption.valueHelpDefinition` | value helps, with `additionalBinding` (usage `#FILTER` and `#RESULT`) |
 | `@Consumption.filter` | filter bar: `defaultValue`, `mandatory` (no rows until it has a value), `selectionType: #SINGLE` / `multipleSelections: false` (the value help selects one), `hidden` |
-| `@Search.searchable`, `@Search.defaultSearchElement` | the search field and what it searches |
+| `@Search.searchable`, `@Search.defaultSearchElement` | the search field and what it searches: the `defaultSearchElement` fields (also when `@UI.hidden`), else every visible text and string field; `@Search.fuzzinessThreshold` is read (`search_fuzziness`), the search stays a case-insensitive `LIKE` |
+| `@ObjectModel.query.implementedBy` | a custom entity - read through its query provider (see "Reading") |
+| `@ObjectModel.virtualElementCalculatedBy` | a virtual element - calculated after each read; not a filter field, not searched, sortable only with `@ObjectModel.sort.transformedBy` (see "Reading") |
 | `@Semantics.amount.currencyCode`, `.quantity.unitOfMeasure`, `.booleanIndicator` | numbers with units, Yes/No |
 | `@Semantics.user.createdBy`, `.systemDateTime.createdAt` | a record created with late numbering is found again by them |
 | `@EndUserText.label` / `.quickInfo` | labels; the quick info is the tooltip of the label in the object page's forms and the action dialog and of the column headers |
@@ -296,6 +298,45 @@ takes what it does not redirect from its base, and a composition takes its
 ON condition from the child's association to parent. The object page reads
 the rows of a `#LINEITEM_REFERENCE` table by that ON condition (else by the
 keys under the same names), and `resolve_association` still decides first.
+
+## Reading - views, custom entities, virtual elements
+
+Every floorplan reads through `select_rows` and `count_rows`
+(`z2ui5_cl_rap_floorplan`), and so does every value help, child table and
+overview card. How an entity is read is decided by `get_read_info`:
+
+- **A CDS view or a table** is read with ABAP SQL, as before.
+- **A custom entity** (`@ObjectModel.query.implementedBy: 'ABAP:ZCL_...'`)
+  is read through its query provider: `z2ui5_cl_rap_query` calls
+  `IF_RAP_QUERY_PROVIDER~SELECT` with its own request and response. The
+  provider is given the filter as ABAP SQL (`get_as_sql_string`, the key
+  values of an object page as literals) and as ranges (`get_as_ranges` -
+  it raises `CX_RAP_QUERY_FILTER_NO_RANGE` when the filter is no AND of one
+  range per field, e.g. an OR over two fields), the search apart from the
+  filter (`get_search_expression`), the sort order, the page (offset 0,
+  `max_rows`), every element as requested, and whether rows
+  (`is_data_requested`) or the count (`is_total_numb_of_rec_requested`) are
+  wanted - a list asks twice, once for each. No aggregation is requested and
+  no entity parameter is supplied; `get_as_tree` answers no tree. The
+  worklist's tabs and the overview's KPI and chart cards aggregate the rows
+  in ABAP (`aggregate_rows`, at most 5000 rows). A provider that raises is
+  shown as an error (`get_load_error`: the load error, the entity and the
+  exception's text) - never as an empty list.
+- **A virtual element** (`@ObjectModel.virtualElementCalculatedBy`) has no
+  column: the other columns are selected, a condition on it is left out of
+  the WHERE (`remove_where_fields`) and it is not offered as a filter or
+  searched. After the read its class is called -
+  `IF_SADL_EXIT_CALC_ELEMENT_READ~GET_CALCULATION_INFO` and `~CALCULATE`,
+  dynamically, once per class for the rows read. It is sortable only with
+  `@ObjectModel.sort.transformedBy`: the sort is then by the elements
+  `IF_SADL_EXIT_SORT_TRANSFORM~MAP_ELEMENT` names (`adjust_virtual_order_by`).
+  `@ObjectModel.filter.transformedBy` is read but not called - its
+  transformation builds conditions with SADL objects no release offers here,
+  so a virtual element stays no filter field.
+
+A subclass can change all of it: `get_read_info` names a provider or a
+calculation the annotations do not show, `query_rows` builds the request,
+`calculate_virtual_elements` and `adjust_virtual_order_by` call the exits.
 
 ## Writing - RAP, tables, read-only
 
@@ -676,6 +717,19 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   `get_identification_fields-qualifier`.
 - New protected members (see the lists above) - the rename rule applies to a
   subclass.
+- Reading (see "Reading"): a custom entity is read through its query provider
+  (new class `z2ui5_cl_rap_query`, the only one implementing the
+  `IF_RAP_QUERY_*` interfaces), a virtual element is calculated and no longer
+  selected, filtered or sorted by ABAP SQL. `select_rows` and `count_rows` keep
+  their signatures; a failed read sets the new `mv_read_error`, and the list
+  report, the worklist, the object page and the value help show it. The
+  search also covers `STRING` fields and hidden `@Search.defaultSearchElement`
+  fields. Appended components: `ty_s_field_info` (`is_virtual`,
+  `virtual_calc_class`, `sort_transform_class`, `filter_transform_class`,
+  `search_fuzziness`), `ty_s_entity_info` (`query_class`); new types and
+  methods of `z2ui5_cl_rap_util` (`get_read_info`, `build_query_filter`,
+  `parse_order_by`, `remove_where_fields`, `aggregate_rows`, ...) and the
+  floorplan's `query_available`.
 
 ## Development
 

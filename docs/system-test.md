@@ -14,7 +14,8 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
 ## 1 · Install
 
 - [ ] every object activates - in particular `z2ui5_cl_rap_eml` (dynamic
-      EML), `z2ui5_cl_rap_variant` and the table `z2ui5_t_rap_var` (its
+      EML), `z2ui5_cl_rap_query` (the query provider interfaces, see 9a),
+      `z2ui5_cl_rap_variant` and the table `z2ui5_t_rap_var` (its
       sidecar was written by hand, after the core's exported `z2ui5_t_01`)
 - [ ] the text pool of `z2ui5_cl_rap_floorplan` arrived (SE24 > Goto > Text
       Elements, 43 entries); an English logon shows its texts
@@ -146,6 +147,46 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
       chart a trend
 - [ ] a card with `presentation_variant` shows that variant's chart or its
       sorted, sized table
+
+## 9a · Custom entities, virtual elements, search
+
+Needs a custom entity with a query provider (e.g. one written for the test
+on the flight tables, `@ObjectModel.query.implementedBy: 'ABAP:ZCL_...'`)
+and a projection with a virtual element
+(`@ObjectModel.virtualElementCalculatedBy`).
+
+- [ ] `z2ui5_cl_rap_query` activates. It implements every method of the
+      `IF_RAP_QUERY_*` interfaces abaplint knows (the steampunk-2305 API set):
+      on a release without one of them (`IF_RAP_QUERY_FILTER~GET_AS_TREE`,
+      `IF_RAP_QUERY_REQUEST~GET_ENTITY_ID` and
+      `CX_RAP_QUERY_FILTER_NO_RANGE=>NOT_EXPRESSABLE_AS_RANGE` are the
+      likely candidates) the class does not activate - note which, and only
+      the custom entities are affected; every other read stays ABAP SQL
+- [ ] the list report of the custom entity shows its rows, the count, "more"
+      (the provider is asked for rows and, separately, for the count)
+- [ ] a filter bar value arrives in `get_as_ranges` (EQ, CP for `*`, BT for
+      `a..z`, E for `!`) and in `get_as_sql_string`; a provider that asks for
+      the ranges of an OR over two fields gets `CX_RAP_QUERY_FILTER_NO_RANGE`
+- [ ] the search arrives in `get_search_expression`, not in the filter
+- [ ] sorting arrives in `get_sort_elements`, the page size in `get_paging`
+- [ ] the object page of a custom entity opens by key (the key arrives as a
+      literal and as an EQ range), its child tables and a value help on a
+      custom entity read through the provider
+- [ ] a worklist with a `segment_field`, a KPI and a chart card on a custom
+      entity: the counts and sums are the rows' (at most 5000 read)
+- [ ] a provider that raises: the list shows the load error with the
+      exception's text, not an empty list
+- [ ] a virtual element: its column shows the calculated value (the calc
+      class is called with the table of the entity in both `it_original_data`
+      and `ct_calculated_data`); it is no filter field and is not searched;
+      the list sorts by it only with `@ObjectModel.sort.transformedBy`, by the
+      elements `MAP_ELEMENT` returns
+- [ ] a virtual element is selected out (`SELECT` with a field list) - check
+      that a projection with one still reads, and that a calc class that
+      raises leaves the column empty and the rows shown
+- [ ] the search finds a value in a `STRING` field (`UPPER( ) LIKE` on a
+      string column - check it is allowed on the release) and in a
+      `@UI.hidden` `@Search.defaultSearchElement` field
 
 ## 10 · Deep links
 

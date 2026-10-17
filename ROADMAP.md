@@ -37,6 +37,12 @@ clicked through in an SAP system yet** - that is the first open item, and
    system).
 9. The **overview page and value help** in the transpiled unit run (the
    overview's test runs in a system only).
+10. **`@ObjectModel.filter.transformedBy`** of a virtual element: its
+    `IF_SADL_EXIT_FILTER_TRANSFORM` builds conditions with SADL condition
+    objects (`IF_SADL_SIMPLE_COND_FACTORY`) that the abaplint API set does
+    not have - a virtual element stays no filter field. Likewise a
+    **fuzzy search** (`@Search.fuzzinessThreshold`, HANA only) and
+    **parameters of a custom entity** (`get_parameters` answers none).
 
 ### Why 2-4 are blocked
 
@@ -78,6 +84,19 @@ decision:
 - **`@UI.selectionVariant` filters** with OR and parentheses.
 - **`@UI.createHidden` / `updateHidden` / `deleteHidden`**: `true`, or a
   field of the record on the object page.
+- **Custom entities** (`@ObjectModel.query.implementedBy`): read through
+  the query provider (`z2ui5_cl_rap_query`, an own `IF_RAP_QUERY_REQUEST` /
+  `_RESPONSE` / `_FILTER` / `_PAGING` / `_AGGREGATION`) - filter as SQL
+  string and ranges, search, sort, paging, requested elements, count - in
+  every floorplan, value help and card; aggregates computed from the rows; a
+  failed read is an error message, not an empty list.
+- **Virtual elements** (`@ObjectModel.virtualElementCalculatedBy`):
+  calculated after every read (`IF_SADL_EXIT_CALC_ELEMENT_READ`, dynamic),
+  left out of the SELECT list, the WHERE and the ORDER BY, no filter field;
+  sortable through `@ObjectModel.sort.transformedBy`
+  (`IF_SADL_EXIT_SORT_TRANSFORM`).
+- **Search** over `STRING` fields and hidden `@Search.defaultSearchElement`
+  fields; `@Search.fuzzinessThreshold` read, the search stays a `LIKE`.
 
 ### 2026-10, second round
 
