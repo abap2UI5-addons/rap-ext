@@ -183,11 +183,16 @@ class actually builds, that is the signal.
 
 Five things learned the hard way with the floorplan base class:
 
-- **The shared input controls are invisible to it.**
-  `z2ui5_cl_rap_floorplan->render_field_input( )` lives in a class that is no
-  app, so the edit-mode controls of the object page and the action dialog
-  (DatePicker, ComboBox, Input with value help, ...) are not judged. Check a
-  change there by hand against the UI5 API of the 1.77 floor.
+- **The floorplan base class is judged too.** Since 2026-10 (third round)
+  `z2ui5_cl_rap_floorplan` builds popups of its own (the message view, the
+  upload dialog), so the linter reads it like an app: its popups are
+  rendered, and its methods - `render_field_input( )` with the edit-mode
+  controls of the object page and the action dialog among them - go
+  through the property and binding rules (a `client->_bind( )` captured
+  into a variable there was reported in that round). What the controls of
+  `render_field_input( )` look like inside the object page's form only a
+  system shows - its callers pass their own handle, so check a change
+  there against the UI5 API of the 1.77 floor as well.
 - **A builder call inside a parameter** (`io_container = lo_card->ele( ... )`)
   makes it skip the whole document's render gate ("built in helper
   methods"). Put the handle in a variable first.

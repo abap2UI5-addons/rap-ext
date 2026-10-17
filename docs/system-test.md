@@ -16,9 +16,11 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
 - [ ] every object activates - in particular `z2ui5_cl_rap_eml` (dynamic
       EML), `z2ui5_cl_rap_query` (the query provider interfaces, see 9a),
       `z2ui5_cl_rap_variant` and the table `z2ui5_t_rap_var` (its
-      sidecar was written by hand, after the core's exported `z2ui5_t_01`)
+      sidecar was written by hand, after the core's exported `z2ui5_t_01`;
+      the columns `IS_PUBLIC` and `AUTO_APPLY` were appended in 2026-10,
+      third round - an existing table is adjusted, check SE14)
 - [ ] the text pool of `z2ui5_cl_rap_floorplan` arrived (SE24 > Goto > Text
-      Elements, 62 entries); an English logon shows its texts
+      Elements, 86 entries); an English logon shows its texts
 - [ ] **unverified syntax**: `z2ui5_cl_rap_eml_perm` (`GET PERMISSIONS
       OPERATIONS ... FAILED ... REPORTED`, operand `ABP_BEHV_PERMISSIONS_TAB`),
       `z2ui5_cl_rap_eml_read` (`READ ENTITIES OPERATIONS ... FAILED ...
@@ -224,6 +226,61 @@ instance feature control on `acceptTravel` / `rejectTravel` and Edit).
 
 - [ ] a `@UI.selectionVariant` with `OR` and parentheses selects the same
       rows as the condition written out in SQL
+- [ ] the filter bar: a boolean filter is a list (Yes, No, all - No finds
+      the initial value), a date one a date picker (`#SINGLE`) or a date
+      range (the range arrives as `2024-01-01 .. 2024-01-31` - check how
+      `DateRangeSelection` writes its value with `displayFormat
+      yyyy-MM-dd` and the delimiter `..` on the release), a value help
+      field a MultiInput: the value help adds tokens, Enter turns the typed
+      text into a token, a token's delete removes it (the `Token.delete`
+      event and its `${KEY}` argument in a nested binding)
+- [ ] define conditions: every operator, include and exclude, between
+      with two values, empty; OK writes the filter, the dialog opens again
+      with it; excluding and including together select `( a OR b ) AND NOT
+      c`
+- [ ] Go without a mandatory filter marks it red (valueState), a value
+      clears it
+- [ ] adapt filters: add a field (also a boolean, a date, one with fixed
+      values), remove it; save a view with it and open the view again
+- [ ] the columns dialog: hide, move up and down, a width (`12`, `8rem`,
+      `20%`; `abc` is ignored), group by a field: the rows come grouped
+      with a header per value; a view keeps it; `cssDefault.width` is the
+      default width
+- [ ] `@UI.presentationVariant.groupBy` groups at the start; a
+      `@UI.selectionPresentationVariant` starts with its presentation
+      variant (sort, group, a qualified `@UI.lineItem` from its
+      `visualizations`) and its selection variant's values in the filter
+      bar (`selectOptions` as `GET_ANNOS` hands them over -
+      `SELECTOPTIONS$1$.RANGES$1$.LOW`; an OR in `filter` restricts without
+      a filter value)
+- [ ] views: a public view of user A is listed for user B as "name (A)",
+      B cannot delete it and saves changes as a view of their own; a view
+      without "apply automatically" sets its filters and waits for Go (the
+      table says so); `initial_load = DISABLED` starts without rows,
+      `ENABLED` always reads
+- [ ] criticality: the entity's `@UI.lineItem.criticality` highlights the
+      rows (child tables too), a criticality column shows its icon,
+      `#WITHOUT_ICON` none, 5 is blue (Information); check
+      `sap-icon://sys-enter-2`, `error`, `alert`, `message-information`
+      on the release
+- [ ] an `#AS_FIELDGROUP` column shows its group's fields; `hidden:
+      #(Field)` empties the cell of a row whose field is true; an
+      `iconUrl` column, an `@Semantics.imageUrl` column (Avatar); the
+      semantic key is bold, also in the popin of a narrow screen
+- [ ] `@ObjectModel.text.association` (e.g. a status with a text view
+      `_StatusText`): the list shows the text in the logon language (the
+      target's `@Semantics.text` and `@Semantics.language` fields - check
+      the DDL association's ON condition was read), the object page too
+- [ ] `@Consumption.hidden`: no column, no filter, not in adapt filters
+- [ ] in the launchpad: a `@Consumption.semanticObject` link (list and
+      object page) passes the value under the name of
+      `semanticObjectMapping`; a `#FOR_INTENT_BASED_NAVIGATION` with
+      `semanticObjectBinding` takes the selected rows' values (several
+      rows: an array - check the target app reads it)
+- [ ] a field without a value help whose domain has fixed values: a
+      dropdown in edit mode and the action dialog, a list in the filter
+      bar (`CL_ABAP_ELEMDESCR->GET_DDIC_FIXED_VALUES` with `P_LANGU` and
+      `P_FIXED_VALUES` of type `DDFIXVALUES` - check the signature)
 - [ ] `@UI.createHidden: true` hides Create; `@UI.updateHidden` /
       `.deleteHidden` with a field (`#(...)`) hide Edit / Delete per record -
       check how `GET_ANNOS` hands a path over (`#(Field)`, `'Field'`)
@@ -246,6 +303,15 @@ instance feature control on `acceptTravel` / `rejectTravel` and Edit).
       `typeImageUrl` (`sap-icon://...` or a URL) when it has none
 - [ ] `@EndUserText.quickInfo`: the tooltip of the label in a form, in the
       action dialog and of a column header
+- [ ] a `@UI.fieldGroup` / `@UI.identification` entry with `criticality`
+      (a field and a literal) shows an ObjectStatus with its icon (not
+      with `#WITHOUT_ICON`); `importance: #LOW` is gone on a phone and a
+      tablet, `#MEDIUM` on a phone (the classes `sapUiHideOnPhone` /
+      `sapUiHideOnTablet`); `hidden: #(Field)` hides the entry for a
+      record whose field is true
+- [ ] a dropdown (`sizeCategory #XS`) lists the text with the key beside
+      it; an input of a field with `@ObjectModel.text.element` shows the
+      text beside it (`description`) in edit mode
 
 ## 9 · Overview page
 

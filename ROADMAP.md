@@ -36,8 +36,13 @@ clicked through in an SAP system yet** - that is the first open item, and
 6. **Microcharts** (`sap.suite.ui.microchart`) for the chart cards - the
    cards draw with `sap.m`, because the microchart library is SAPUI5 only and
    the view gate renders with OpenUI5.
-7. A **qualified `@UI.lineItem`** for the table card of a presentation
-   variant (it shows the unqualified columns today).
+7. **What the list's personalisation cannot do yet** (the qualified
+   `@UI.lineItem` of a presentation variant, the former item 7, is done):
+   a group header shows the group's value only - "Label: value" needs a
+   group header factory, which an XML view cannot name; another user's
+   public view cannot be a user's default (the default is a flag of the
+   user's own row); the define conditions dialog offers every operator for
+   every type; a text association is shown, not edited, and not searched.
 8. German through a **translation of the text pool** instead of the built-in
    German texts (needs the I18N part of the sidecar, best exported from a
    system).
@@ -79,6 +84,42 @@ like the others - is still the better one; the classes go when it lands.
 ## Done
 
 ### 2026-10, third round
+
+- **Filter bar**: a control per type - a list for a boolean (Yes, No,
+  all), fixed values and a dropdown value help, a date picker or a date
+  range, a `MultiInput` with tokens for a value help with several values;
+  **define conditions** (equal, not equal, between, greater, less, contains,
+  starts with, ends with, empty - each including or excluding) in the
+  filter syntax; the error state of a missing mandatory filter; **adapt
+  filters** (any visible field), kept in the views. An excluding filter
+  part is ANDed.
+- **Table personalisation**: column order and width in the columns dialog
+  (`@UI.lineItem.cssDefault.width` the default), grouping by
+  `@UI.presentationVariant.groupBy` or the user's choice (ordered in the
+  database, a group header per value), all kept in the views.
+- **Views**: public views (`IS_PUBLIC` in `z2ui5_t_rap_var`), "apply
+  automatically" (`AUTO_APPLY`) apart from the default; the start from
+  `@UI.selectionPresentationVariant` - the presentation variant's sort,
+  group and qualified `@UI.lineItem` (formerly open item 7, also for the
+  overview's table card), the selection variant's `selectOptions` and
+  filter as filter values; `initial_load` (auto, enabled, disabled).
+- **Criticality**: the row highlight from the entity's `@UI.lineItem`,
+  `criticalityRepresentation` (`#WITH_ICON` / `#WITHOUT_ICON`), 5 as
+  Information and 0 as neutral, the criticality of `@UI.identification`
+  and `@UI.fieldGroup` entries on the object page.
+- **Display**: `#AS_FIELDGROUP` columns (`valueQualifier`), `hidden:
+  #(Field)` per row (`@UI.lineItem`) and per record (field group,
+  identification), `@Semantics.imageUrl` and `iconUrl`, the text of
+  `sizeCategory #XS` dropdown entries, the text beside an input in edit
+  mode, `@ObjectModel.text.association`, `@Consumption.hidden`, the
+  semantic key bold and of HIGH importance, the importance of field group
+  and identification entries.
+- **Navigation**: `@Consumption.semanticObject` with
+  `semanticObjectMapping` as a link; `semanticObjectBinding` of
+  `#FOR_INTENT_BASED_NAVIGATION` with the selected rows' values (several
+  as an array) and of `#WITH_INTENT_BASED_NAVIGATION`.
+- **Value help from domain fixed values** where no value help is annotated
+  (`GET_DDIC_FIXED_VALUES`, called dynamically).
 
 - **Messages by severity**: success and information as a toast, a single
   message of the floorplan as a message box, everything else in a

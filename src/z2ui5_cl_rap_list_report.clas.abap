@@ -1642,7 +1642,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
             ENDIF.
           ENDLOOP.
         ENDIF.
-        IF lv_apply = abap_true.
+        IF lv_apply = abap_true OR mv_floorplan = cs_floorplan-worklist.
           load_data( ).
         ELSE.
           clear_rows( ).
@@ -3558,6 +3558,11 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD is_initial_load.
 
+    "a worklist has no Go - it is always read
+    IF mv_floorplan = cs_floorplan-worklist.
+      result = abap_true.
+      RETURN.
+    ENDIF.
     result = SWITCH #( mv_initial_load
       WHEN cs_initial_load-disabled THEN abap_false
       WHEN cs_initial_load-enabled  THEN abap_true

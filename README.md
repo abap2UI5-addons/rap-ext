@@ -173,13 +173,13 @@ ENDCLASS.
 ```
 
 Overridable steps per floorplan:
-- **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `on_action`, `execute_action`, `render_action_buttons`, `open_created`, `on_navigated`, `load_data`, `get_where_clause`, `get_line_item_fields`, `get_selection_fields`, `get_row_key_fields`, `get_line_item_actions`, `get_line_item_intents`, `get_visible_columns`, `get_missing_filters`, `on_nav_path`, `on_intent`, `on_export`, `render_export_button`, `init_variants`, `get_action_rows`, `apply_filter_presets`, `render_variant_controls`, `render_variant_popup`, `render_column_popup`, `on_variant_event`, `capture_variant`, `apply_variant`, `apply_row_states`, `fill_draft_status`, `update_action_state`, `get_action_enabled`, `has_row_column`, `on_event`
+- **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `on_action`, `execute_action`, `render_action_buttons`, `open_created`, `on_navigated`, `load_data`, `get_where_clause`, `get_line_item_fields`, `get_selection_fields`, `get_row_key_fields`, `get_line_item_actions`, `get_line_item_intents`, `get_visible_columns`, `get_missing_filters`, `on_nav_path`, `on_intent`, `on_export`, `render_export_button`, `init_variants`, `get_action_rows`, `apply_filter_presets`, `render_variant_controls`, `render_variant_popup`, `render_column_popup`, `on_variant_event`, `capture_variant`, `apply_variant`, `apply_row_states`, `fill_draft_status`, `update_action_state`, `get_action_enabled`, `has_row_column`, `create_filter`, `update_filter_tokens`, `take_filter_inputs`, `apply_presentation_variants`, `on_filter_event`, `render_condition_popup`, `render_adapt_popup`, `get_adaptable_fields`, `clear_rows`, `is_initial_load`, `apply_text_columns`, `get_text_column`, `has_selection`, `get_condition_operators`, `get_ordered_columns`, `get_variant_key`, `on_event`
 - **Worklist**: everything of the list report (it is a subclass of it), plus `load_segments`
 - **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_content`, `render_section_form`, `render_section_fields`, `render_section_table`, `get_sections`, `save_data`, `delete_data`, `reload_data`, `load_child_rows`, `get_association_target`, `get_child_filter`, `get_child_context`, `on_child_create`, `get_bdef`, `get_root_keys`, `get_own_keys`, `start_draft`, `save_draft`, `find_created_record`, `get_link`, `on_action`, `execute_action`, `get_record_actions`, `get_identification_fields`, `render_section_actions`, `render_action_buttons`, `on_child_action`, `execute_child_action`, `open_created`, `on_child_row`, `format_value`, `load_permissions`, `get_field_for_edit`, `read_own_draft`, `read_draft_status`, `resume_draft`, `render_draft_info`, `get_disabled_actions`, `apply_start_mode`, `on_event`
 - **Overview Page**: `render_page`, `render_table_card`, `render_kpi_card`, `render_chart_card`, `render_card_link`, `load_all_cards`, `load_kpi_value`, `load_chart_rows`, `collect_card_rows`, `display`, `on_card`, `on_card_row`, `on_event`
 - **Value Help**: `render_dialog`, `render_filter_dialog`, `load_data`, `get_where_clause`, `on_confirm`, `on_event`
 - **Action Dialog**: `render_action_dialog`, `get_control_for_field`, `render_value_help`, `handle_value_help_confirm`, `apply_default_values`, `get_mandatory_parameters`, `apply_mandatory_parameters`, `get_missing_fields`, `on_event`
-- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `get_read_info`, `query_rows`, `calculate_virtual_elements`, `adjust_virtual_order_by`, `aggregate_rows`, `get_load_error`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `is_static_action`, `get_action_entries`, `get_action_button_type`, `is_hidden_by_annotation`, `navigate_to_intent`, `read_association_target`, `get_permissions`, `get_row_permissions`, `get_keys_of_row`, `read_drafts`, `get_etag_field`, `check_etag`, `show_messages`, `render_message_view`, `render_file_field`, `render_upload_popup`, `apply_upload`, `download_file`, `get_max_file_size`, `get_default_function_name`, `apply_action_defaults`, `get_text`, ...
+- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `get_read_info`, `query_rows`, `calculate_virtual_elements`, `adjust_virtual_order_by`, `aggregate_rows`, `get_load_error`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `is_static_action`, `get_action_entries`, `get_action_button_type`, `is_hidden_by_annotation`, `navigate_to_intent`, `read_association_target`, `get_permissions`, `get_row_permissions`, `get_keys_of_row`, `read_drafts`, `get_etag_field`, `check_etag`, `show_messages`, `render_message_view`, `render_file_field`, `render_upload_popup`, `apply_upload`, `download_file`, `get_max_file_size`, `get_default_function_name`, `apply_action_defaults`, `read_association_texts`, `get_association_text_key`, `get_text`, ...
 - **Deep links** (`z2ui5_cl_rap_start`): `get_allowed_entities`, `get_extension`, `get_parameters`, `map_parameters`, `open`, `render_message`
 
 ## Extension points without a subclass
@@ -267,22 +267,28 @@ and qualifiers are read per entry:
 | Annotation | Used for |
 | --- | --- |
 | `@UI.headerInfo` | titles, object page header; `imageUrl` (a field) is the header's avatar, `typeImageUrl` (a URL or `sap-icon://`) stands in when the record has no image |
-| `@UI.lineItem` | columns (position, label, importance, criticality); `type: #FOR_ACTION` entries are actions (`inline: true` per row) - by `position`, `criticality` the button's type (positive Accept, negative Reject, critical Emphasized; a field's value on the object page), `actionGroupId` puts one into the menu button of a `#FOR_ACTION_GROUP` entry (`id`, `label`), `invocationGrouping: #ISOLATED` runs it row by row; `#WITH_URL` a link to the URL in another field, `#WITH_NAVIGATION_PATH` the object page of the record the association (`targetElement`) leads to, `#WITH_INTENT_BASED_NAVIGATION` and `#FOR_INTENT_BASED_NAVIGATION` a navigation in the Fiori launchpad (`semanticObject`, `semanticObjectAction`) |
-| `@UI.selectionField` | filter bar |
-| `@UI.identification` | object page header attributes (the unqualified entries); a `qualifier` puts the field (with its `label`) into the `#IDENTIFICATION_REFERENCE` facet of that `targetQualifier` only; `#FOR_ACTION` entries are header actions, qualified ones the actions of that section (groups, criticality and position as in `@UI.lineItem`) |
-| `@UI.fieldGroup` | object page forms - a field can sit in several groups; a `#FOR_ACTION` entry is an action of the group's section |
+| `@UI.lineItem` | columns (position, label, importance - a semantic key without one is HIGH -, criticality with its icon unless `criticalityRepresentation: #WITHOUT_ICON`, `cssDefault.width`, `iconUrl`, `hidden: true` or `#(Field)` per row); `#AS_FIELDGROUP` with `valueQualifier` a cell with the fields of that field group one under the other; a qualified `@UI.lineItem` is the table of a presentation variant whose `visualizations` names it; the entity's own `@UI.lineItem` `criticality` highlights the rows; `type: #FOR_ACTION` entries are actions (`inline: true` per row) - by `position`, `criticality` the button's type (positive Accept, negative Reject, critical Emphasized; a field's value on the object page), `actionGroupId` puts one into the menu button of a `#FOR_ACTION_GROUP` entry (`id`, `label`), `invocationGrouping: #ISOLATED` runs it row by row; `#WITH_URL` a link to the URL in another field, `#WITH_NAVIGATION_PATH` the object page of the record the association (`targetElement`) leads to, `#WITH_INTENT_BASED_NAVIGATION` and `#FOR_INTENT_BASED_NAVIGATION` a navigation in the Fiori launchpad (`semanticObject`, `semanticObjectAction`, `semanticObjectBinding` - the parameters the row's, the selected rows' or the record's fields fill; a toolbar navigation with bindings makes the rows selectable) |
+| `@UI.selectionField` | filter bar - each filter with the control of its type (see "Filter syntax") |
+| `@UI.identification` | object page header attributes (the unqualified entries; `criticality` an ObjectStatus with its icon, `importance` LOW left out on phones and tablets, MEDIUM on phones, `hidden` true or a field of the record); a `qualifier` puts the field (with its `label`) into the `#IDENTIFICATION_REFERENCE` facet of that `targetQualifier` only; `#FOR_ACTION` entries are header actions, qualified ones the actions of that section (groups, criticality and position as in `@UI.lineItem`) |
+| `@UI.fieldGroup` | object page forms - a field can sit in several groups, with the entry's `label`, `criticality`, `criticalityRepresentation`, `importance` and `hidden` (as in `@UI.identification`); a `#FOR_ACTION` entry is an action of the group's section |
 | `@UI.createHidden`, `.updateHidden`, `.deleteHidden` | no Create (list report, child tables), Edit or Delete (object page): `true`, or a field of the record (`#(IsLocked)`) whose value decides on the object page |
 | `@UI.facet` | object page sections: `#COLLECTION`, `#FIELDGROUP_REFERENCE`, `#IDENTIFICATION_REFERENCE`, `#LINEITEM_REFERENCE` - on the entity or on an element; with `purpose: #HEADER` (`#DATAPOINT_REFERENCE`, `#FIELDGROUP_REFERENCE`) the object page header |
 | `@UI.dataPoint` | status with criticality, KPI cards; `criticalityCalculation` (`#MAXIMIZE`, `#MINIMIZE`, `#TARGET` with tolerance/deviation values) colors a KPI card |
-| `@UI.presentationVariant` | the default sort order (`sortOrder`) of list report and worklist; an overview card's content (`visualizations`, `sortOrder`, `maxItems`) |
-| `@UI.selectionVariant` | worklist tabs - one per variant, its `filter` string (`Status EQ O AND Priority GE 3`, `(Status EQ O OR Status EQ A) AND Priority GE 3`; EQ NE GT GE LT LE, AND before OR, parentheses) |
+| `@UI.presentationVariant` | the default sort order (`sortOrder`) and grouping (`groupBy`) of list report and worklist, the qualified `@UI.lineItem` of its `visualizations`; an overview card's content (`visualizations` - a chart or a qualified line item -, `sortOrder`, `maxItems`) |
+| `@UI.selectionPresentationVariant` | which presentation variant (`presentationVariantQualifier`) and selection variant (`selectionVariantQualifier`) a list report starts with - the unqualified one, else the first |
+| `@UI.selectionVariant` | the filter values a list report starts with (the unqualified one, or the one its selection presentation variant names: `selectOptions` and the comparisons of an AND in `filter`; an OR is applied as it is); worklist tabs - one per variant, its `filter` string and `selectOptions` (`propertyName`, `ranges` with `sign`, `option`, `low`, `high`), the `filter` string (`Status EQ O AND Priority GE 3`, `(Status EQ O OR Status EQ A) AND Priority GE 3`; EQ NE GT GE LT LE, AND before OR, parentheses) |
 | `@UI.textArrangement` | how value and text are shown: `#TEXT_FIRST` (default), `#TEXT_LAST`, `#TEXT_ONLY`, `#TEXT_SEPARATE` |
 | `@UI.chart` | chart cards (first dimension, first measure); `chartType` `#BAR`/`#COLUMN` bars, `#DONUT`/`#PIE` shares, `#LINE`/`#AREA` a trend |
 | `@UI.hidden`, `@UI.multiLineText`, `@UI.defaultValue` | visibility, text areas, dialog defaults |
-| `@ObjectModel.text.element` | "Text (Value)" cells, value help descriptions |
-| `@ObjectModel.semanticKey` | the key when the DDIC has none |
+| `@ObjectModel.text.element` | "Text (Value)" cells, value help descriptions, the text beside an input in edit mode (`description`) |
+| `@ObjectModel.text.association` | the text of a field from its association's target - the target's `@Semantics.text` field, in the logon language by its `@Semantics.language` field (list report cells, object page) |
+| `@ObjectModel.semanticKey` | the key when the DDIC has none; its fields bold (`ObjectIdentifier`) and of HIGH importance in the list |
+| `@Semantics.imageUrl` | the value is an image: an `Avatar` in a cell and on the object page |
+| `@Consumption.hidden` | the field is offered nowhere - no column, no filter, not in "adapt filters" |
+| `@Consumption.semanticObject`, `.semanticObjectMapping.additionalBinding` | the value is a link that navigates to the semantic object (`display`), with the value (under the mapped name) and the row's keys - in the list and on the object page |
 | `@ObjectModel.mandatory` / `.readOnly` | required fields (checked before save/confirm), read-only inputs |
-| `@ObjectModel.resultSet.sizeCategory: #XS` | a dropdown instead of a value help |
+| `@ObjectModel.resultSet.sizeCategory: #XS` | a dropdown instead of a value help - its entries with the value help's text element and the key beside it; in the filter bar a list |
+| domain fixed values | a field without an annotated value help whose domain has fixed values gets a dropdown of them (edit mode, action dialog) and a list in the filter bar (`CL_ABAP_ELEMDESCR->GET_DDIC_FIXED_VALUES`, called dynamically) |
 | `@Consumption.valueHelpDefinition` | value helps, with `additionalBinding` (usage `#FILTER` and `#RESULT`) |
 | `@Consumption.filter` | filter bar: `defaultValue`, `mandatory` (no rows until it has a value), `selectionType: #SINGLE` / `multipleSelections: false` (the value help selects one), `hidden` |
 | `@Search.searchable`, `@Search.defaultSearchElement` | the search field and what it searches: the `defaultSearchElement` fields (also when `@UI.hidden`), else every visible text and string field; `@Search.fuzzinessThreshold` is read (`search_fuzziness`), the search stays a case-insensitive `LIKE` |
@@ -501,6 +507,23 @@ FileName   : abap.char(128);
 
 ## Filter syntax
 
+Each filter of the filter bar has the control of its field's type
+(`z2ui5_cl_rap_util=>get_filter_control`): a list for a boolean (Yes, No,
+all), for fixed values and for a dropdown value help; a date picker for a
+date of a single value, else a date range; a `MultiInput` with a token per
+value for a field with a value help that takes several (the value help
+adds tokens, a typed value becomes one on Enter or Go, a token's delete
+removes it); an input with the syntax below for every other field. The
+filter button next to an input or a MultiInput opens **Define
+conditions**: rows of an operator (equal to, not equal to, between,
+greater, greater or equal, less, less or equal, contains, starts with,
+ends with, empty) with its values, each including or excluding - written
+into the same syntax (`conditions_to_filter`, read back by
+`filter_to_conditions`). A mandatory filter without a value is marked as
+an error on Go. **Adapt filters** adds a filter for any visible field and
+removes one again (a mandatory filter stays); the views keep the filter
+fields.
+
 The filter bar (and `build_filter_condition`) understands:
 
 | Input | Meaning |
@@ -512,8 +535,11 @@ The filter bar (and `build_filter_condition`) understands:
 | `a..z` | between |
 | `>x` `>=x` `<x` `<=x` | compare |
 | `a;b` | several, ORed |
+| `=` | empty |
 
-Dates can be typed as `2024-01-15`. A value help in the filter bar fills
+An excluding part (`!...`) is ANDed with the others since 2026-10 (third
+round): `=A;=B;!=C` is `( A OR B ) AND NOT C`. Dates can be typed as
+`2024-01-15`, a range as `2024-01-01..2024-01-31`. A value help in the filter bar fills
 exact values (`=US;=DE`).
 
 ## CDS Action Dialog (Popup)
@@ -605,7 +631,11 @@ Renders a Fiori-Elements-style list report for any CDS view, driven entirely by 
 - Sorting in the database - a select of the columns and a direction button, the default from `@UI.presentationVariant`; "More" loads the next rows from the database
 - Actions from `@UI.lineItem` `#FOR_ACTION` (toolbar on the selected rows, or inline per row); links and launchpad navigations from `#WITH_URL`, `#WITH_NAVIGATION_PATH`, `#WITH_INTENT_BASED_NAVIGATION` and `#FOR_INTENT_BASED_NAVIGATION`
 - Mandatory and single-value filters from `@Consumption.filter`
-- Views per user (filters, search, sort order, hidden columns; one the default), a columns dialog, and the export of every matching row as a CSV file
+- Views per user (filters, the filter fields, search, sort order, the columns - hidden, order, width -, the group field; one the default, each public or private and applied automatically or not), a columns dialog (visible, order, width, group by), and the export of every matching row as a CSV file
+- Filters by type (lists, dates, date ranges, MultiInputs with tokens), "define conditions", "adapt filters", the error state of a missing mandatory filter
+- Grouping (`@UI.presentationVariant.groupBy` or the user's group field): the rows ordered by it in the database, a group header per value
+- The start from `@UI.selectionPresentationVariant` (sort, group, a qualified `@UI.lineItem`, the selection variant's filter values); `initial_load` (`AUTO` - unless the default view does not apply automatically -, `ENABLED`, `DISABLED`: the rows only on Go)
+- Row highlight by the entity's `@UI.lineItem.criticality`, criticality icons, `#AS_FIELDGROUP` cells, images, icons, the semantic key bold, texts of a text association, links to semantic objects
 - Create where the entity allows it; row navigation to a generated object page
 - RAP feature control: an inline action enabled per row, a toolbar action by the selected rows; a draft business object shows the editing status of each row (own draft, locked by another user) and filters by it
 
@@ -614,8 +644,16 @@ Renders a Fiori-Elements-style list report for any CDS view, driven entirely by 
 client->nav_app_call( NEW z2ui5_cl_rap_list_report(
   cds_view_name = `I_COUNTRY`
   title         = `Countries`
-  max_rows      = 500 ) ).
+  max_rows      = 500
+  initial_load  = z2ui5_cl_rap_list_report=>cs_initial_load-disabled ) ).
 ```
+
+A view can be **public** (every user sees it with its owner's name; only
+the owner saves or deletes it) and **apply automatically** - the list is
+read as soon as it is chosen; one that does not sets its filters and waits
+for Go. Both need the columns `IS_PUBLIC` and `AUTO_APPLY` of
+`z2ui5_t_rap_var` (added 2026-10, third round); a system whose table lacks
+them keeps private views that always apply.
 
 ## CDS Object Page
 
@@ -868,6 +906,50 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   `lob_file_name_field`, `lob_mime_types`, `lob_disposition`,
   `is_mime_type`), `cs_text` (9 texts, text pool 054-062). The
   floorplan's own dialogs are now read by the view gate too.
+- Filter bar, table, views, display: the filter bar is no longer one
+  input per filter in the subheader - the subheader holds the search, the
+  editing status, "adapt filters" and Go, and the filters (a label over the
+  control of their type) are the first content of the page. A filter value
+  that excludes (`!...`) is ANDed with the others instead of ORed, and `=`
+  alone is the empty condition. The list report's constructor has the new
+  optional `initial_load`, its rows can carry the columns
+  `cs_row_column-text_prefix` (`ZZTEXT_n`); the rows are selectable also
+  for an intent navigation with `semanticObjectBinding`. A criticality
+  cell shows its icon (`#WITHOUT_ICON` leaves it out), 5 is Information
+  everywhere (`criticality_state`, `criticality_expression`, which has the
+  new optional `kind`). `navigate_to_intent` sends a parameter named
+  several times as an array. The object page applies a field group
+  entry's `label`. Appended: `ty_s_field_info` (`line_item_width`,
+  `line_item_crit_repr`, `line_item_value_qualifier`, `line_item_hidden`,
+  `line_item_icon_url`, `line_items`, `is_image_url`, `text_association`,
+  `is_semantic_text`, `is_language`, `is_consumption_hidden`,
+  `semantic_object`, `sem_object_bindings`, `entry_criticality`,
+  `entry_crit_repr`, `entry_importance`, `entry_hidden`),
+  `ty_s_field_group` (`criticality`, `crit_representation`, `importance`,
+  `hidden`), `ty_s_value_help` (`text_element`, `fixed_values`),
+  `ty_s_action` (`sem_object_bindings`), `ty_s_presentation_variant`
+  (`group_by`), `ty_s_selection_variant` (`select_options`),
+  `ty_s_entity_info` (`row_criticality`, `group_by`,
+  `sel_pres_variants`), the list report's `ty_s_filter` (`control`,
+  `tokens`, `entries`, `input`, `state`, `is_added`), `ty_s_column`
+  (`width`) and `cs_event` (tokens, conditions, adapt filters, column
+  order), the overview's `ty_s_card_data` (`line_item_qualifier`),
+  `z2ui5_cl_rap_variant`'s `ty_s_data` (`filter_fields`, `column_order`,
+  `column_widths`, `group_field`) and `ty_s_variant` (`is_public`,
+  `auto_apply`, `owner`), `cs_text` (24 texts, text pool 063-086). New:
+  the table columns `IS_PUBLIC` and `AUTO_APPLY` of `z2ui5_t_rap_var`,
+  `z2ui5_cl_rap_variant=>has_public_views`, the util's
+  `conditions_to_filter`, `filter_to_conditions`, `split_filter_value`,
+  `get_filter_control`, `get_filter_list`, `selection_variant_filters`,
+  `selection_variant_where`, `get_line_item_columns`,
+  `criticality_binding`, `get_navigation_params`, `normalize_css_width`
+  and types `ty_s_line_item`, `ty_s_sel_pres_variant`, `ty_s_condition`,
+  `cs_condition_op`, `cs_filter_control`; the list report's
+  `cs_initial_load`, `ty_s_filter_entry`, `ty_s_condition_row` and its
+  public `mv_variant_public`, `mv_variant_auto`, `mt_condition`,
+  `mt_condition_op`, `mt_adapt`, `mv_group_field`, `mt_group_item`,
+  `mv_no_data`. New protected members (see the lists above) - the rename
+  rule applies to a subclass.
 
 ## Development
 
