@@ -57,6 +57,9 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         draft_decision TYPE string VALUE `DRAFT_DECISION`,
         intent         TYPE string VALUE `INTENT`,
         copy_link      TYPE string VALUE `COPY_LINK`,
+        "added 2026-10, third round: an action of a child table - args
+        "the section's component and the action
+        child_action   TYPE string VALUE `CHILD_ACTION`,
       END OF cs_event.
 
     "! val: the record, any structure typed after the CDS entity. Or,
@@ -123,6 +126,9 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         "under this record (a create by association)
         association TYPE string,
         can_create  TYPE abap_bool,
+        "added 2026-10, third round: the toolbar actions of the child's
+        "@UI.lineItem - on the selected rows of the table
+        actions     TYPE z2ui5_cl_rap_util=>ty_t_action,
       END OF ty_s_child.
 
     TYPES ty_t_child TYPE STANDARD TABLE OF ty_s_child WITH DEFAULT KEY.
@@ -141,6 +147,13 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
     "! the page edits a draft of the business object (committed, kept
     "! between roundtrips)
     DATA mv_draft TYPE abap_bool.
+    "! the child table (its component) of the action waiting for its
+    "! parameter dialog - empty for an action of this record (added
+    "! 2026-10, third round)
+    DATA mv_pending_child TYPE string.
+    "! the last action created a record and its object page was called -
+    "! nothing else is rendered in this roundtrip
+    DATA mv_opened_created TYPE abap_bool.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app
@@ -208,9 +221,63 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         is_section TYPE ty_s_section
         client     TYPE REF TO z2ui5_if_client.
 
+    "! the fields of @UI.identification, by position - qualifier (added
+    "! 2026-10, third round) the entries of that qualifier, with their
+    "! labels; the unqualified ones fall back to the first visible fields
     METHODS get_identification_fields
+      IMPORTING
+        qualifier     TYPE string OPTIONAL
       RETURNING
         VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_field_info.
+
+    "! the actions of a section: a qualified @UI.identification's at its
+    "! #IDENTIFICATION_REFERENCE, a field group's #FOR_ACTION entries at
+    "! its #FIELDGROUP_REFERENCE - a toolbar above the content
+    METHODS render_section_actions
+      IMPORTING
+        io_parent  TYPE REF TO z2ui5_cl_ui5_view_builder
+        is_section TYPE ty_s_section
+        client     TYPE REF TO z2ui5_if_client.
+
+    "! the actions this page offers on its record: @UI.identification
+    "! (unqualified: the header, qualified: a section) and @UI.fieldGroup
+    METHODS get_record_actions
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_t_action.
+
+    "! an action of a child table on its selected rows (cs_event-child_action)
+    METHODS on_child_action
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    "! run the pending action of the child table mv_pending_child
+    METHODS execute_child_action
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client
+        param  TYPE REF TO data OPTIONAL.
+
+    "! the buttons of it_actions, by position (get_action_entries): a
+    "! button per action, its criticality its type, and a MenuButton per
+    "! action group with its actions as items. The press is event with
+    "! the arguments args_before and the action's name; row decides a
+    "! criticality that names a field (added 2026-10, third round)
+    METHODS render_action_buttons
+      IMPORTING
+        io_container TYPE REF TO z2ui5_cl_ui5_view_builder
+        it_actions   TYPE z2ui5_cl_rap_util=>ty_t_action
+        it_groups    TYPE z2ui5_cl_rap_util=>ty_t_action_group OPTIONAL
+        client       TYPE REF TO z2ui5_if_client
+        event        TYPE string
+        args_before  TYPE string_table OPTIONAL
+        row          TYPE data OPTIONAL.
+
+    "! the object page of the record an action created (its MAPPED keys)
+    METHODS open_created
+      IMPORTING
+        client      TYPE REF TO z2ui5_if_client
+        entity_name TYPE string
+        keys        TYPE ty_t_name_value
+        context     TYPE ty_s_rap_context OPTIONAL.
 
     METHODS get_datapoint_fields
       RETURNING
@@ -493,7 +560,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
 
     IF client->check_on_event( cs_event-edit ).
-      IF ms_caps-can_update = abap_false.
+      IF ms_caps-can_update = abap_false
+        OR is_hidden_by_annotation( value = ms_entity-update_hidden
+                                    row   = ms_data->* ) = abap_true.
         client->message_box_display( text = get_text( cs_text-read_only )
                                      type = `error` ).
         RETURN.
@@ -598,6 +667,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
 
     IF client->check_on_event( cs_event-delete ).
+      IF is_hidden_by_annotation( value = ms_entity-delete_hidden
+                                  row   = ms_data->* ) = abap_true.
+        RETURN.
+      ENDIF.
       IF delete_data( client ).
         mv_saved = abap_true.
         client->message_toast_display( get_text( cs_text-deleted ) ).
@@ -650,6 +723,11 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    IF client->check_on_event( cs_event-child_action ).
+      on_child_action( client ).
+      RETURN.
+    ENDIF.
+
     "returning from a called app or a restored bookmark: check_on_init( ) is
     "false here and the browser still shows the OTHER app's view, so the view
     "has to be built again - a model push would reach nothing
@@ -662,13 +740,21 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       IF mv_pending_action IS NOT INITIAL.
         TRY.
             DATA(lo_dialog) = CAST z2ui5_cl_rap_action_dialog( client->get_app_prev( ) ).
-            IF lo_dialog->was_confirmed( ).
+            IF lo_dialog->was_confirmed( ) AND mv_pending_child IS NOT INITIAL.
+              execute_child_action( client = client
+                                    param  = lo_dialog->result( ) ).
+            ELSEIF lo_dialog->was_confirmed( ).
               execute_action( client = client
                               param  = lo_dialog->result( ) ).
             ENDIF.
           CATCH cx_root ##NO_HANDLER.
         ENDTRY.
-        CLEAR mv_pending_action.
+        CLEAR: mv_pending_action, mv_pending_child.
+        "the action created a record - its object page is on its way
+        IF mv_opened_created = abap_true.
+          CLEAR mv_opened_created.
+          RETURN.
+        ENDIF.
       ENDIF.
       "a child record may have changed
       load_child_rows( ).
@@ -850,16 +936,31 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         APPEND ls_value-name TO lt_names.
       ENDLOOP.
 
-      DATA(lr_rows) = select_rows( entity_name = lv_target
-                                   where       = build_key_condition( lt_names )
-                                   host        = create_host( entity_name = lv_target
-                                                              values      = lt_values ) ).
+      "what may be done to a row: create under this record, and the
+      "toolbar actions of the child's @UI.lineItem on the selected rows
+      DATA(ls_child_caps) = get_entity_capabilities(
+        entity_name = lv_target
+        context     = get_child_context( ls_child-association ) ).
+      ls_child-can_create = ls_child_caps-can_create.
+      IF is_hidden_by_annotation( value = ls_child-entity-create_hidden
+                                  row   = ms_data->* ) = abap_true.
+        ls_child-can_create = abap_false.
+      ENDIF.
+      IF ls_child_caps-is_rap_bo = abap_true.
+        LOOP AT ls_child-entity-actions INTO DATA(ls_child_action)
+          WHERE source = `LINEITEM` AND inline = abap_false AND semantic_object IS INITIAL.
+          APPEND ls_child_action TO ls_child-actions.
+        ENDLOOP.
+      ENDIF.
+
+      DATA(lr_rows) = select_rows( entity_name    = lv_target
+                                   where          = build_key_condition( lt_names )
+                                   host           = create_host( entity_name = lv_target
+                                                                 values      = lt_values )
+                                   with_selection = xsdbool( ls_child-actions IS NOT INITIAL ) ).
       IF lr_rows IS NOT BOUND.
         CONTINUE.
       ENDIF.
-      ls_child-can_create = get_entity_capabilities(
-        entity_name = lv_target
-        context     = get_child_context( ls_child-association ) )-can_create.
 
       APPEND VALUE #( name = ls_child-component
                       type = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_data_ref( lr_rows ) ) ) TO lt_comp.
@@ -1201,9 +1302,12 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD on_action.
 
-    "only an action of @UI.identification, whatever the event names
+    "only an action this page offers, whatever the event names
     mv_pending_action = client->get_event_arg( ).
-    IF NOT line_exists( ms_entity-actions[ name = mv_pending_action source = `IDENTIFICATION` semantic_object = `` ] ).
+    CLEAR mv_pending_child.
+    DATA(lt_actions) = get_record_actions( ).
+    READ TABLE lt_actions INTO DATA(ls_action) WITH KEY name = mv_pending_action.
+    IF sy-subrc <> 0.
       CLEAR mv_pending_action.
       RETURN.
     ENDIF.
@@ -1213,7 +1317,6 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     IF lr_param IS BOUND.
       "the parameter first - the action runs on the return
       ASSIGN lr_param->* TO FIELD-SYMBOL(<ls_param>).
-      READ TABLE ms_entity-actions INTO DATA(ls_action) WITH KEY name = mv_pending_action.
       DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = <ls_param>
                                                         title = ls_action-label ).
       lo_dialog->set_extension( mo_ext ).
@@ -1223,7 +1326,24 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     execute_action( client ).
     CLEAR mv_pending_action.
+    IF mv_opened_created = abap_true.
+      CLEAR mv_opened_created.
+      RETURN.
+    ENDIF.
     render_page( client ).
+
+  ENDMETHOD.
+
+
+  METHOD get_record_actions.
+
+    IF ms_caps-is_rap_bo = abap_false.
+      RETURN.
+    ENDIF.
+    LOOP AT ms_entity-actions INTO DATA(ls_action)
+      WHERE ( source = `IDENTIFICATION` OR source = `FIELDGROUP` ) AND semantic_object IS INITIAL.
+      APPEND ls_action TO result.
+    ENDLOOP.
 
   ENDMETHOD.
 
@@ -1240,15 +1360,28 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     APPEND INITIAL LINE TO <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
     MOVE-CORRESPONDING ms_data->* TO <ls_row>.
 
-    DATA(ls_result) = run_action( entity_name = mv_entity_name
-                                  action      = mv_pending_action
-                                  rows        = lr_rows
-                                  param       = param
-                                  context     = ms_context ).
+    DATA(lt_actions) = get_record_actions( ).
+    READ TABLE lt_actions INTO DATA(ls_action) WITH KEY name = mv_pending_action.
+    DATA(ls_result) = run_action( entity_name         = mv_entity_name
+                                  action              = mv_pending_action
+                                  rows                = lr_rows
+                                  param               = param
+                                  context             = ms_context
+                                  invocation_grouping = ls_action-invocation_grouping ).
     IF ls_result-success = abap_true.
       mv_saved = abap_true.
       reload_data( ).
       ms_data_backup->* = ms_data->*.
+      "an action may change the children too
+      load_child_rows( ).
+      "a factory action: the record it created
+      IF ls_result-keys IS NOT INITIAL.
+        open_created( client      = client
+                      entity_name = mv_entity_name
+                      keys        = ls_result-keys
+                      context     = ms_context ).
+        RETURN.
+      ENDIF.
       IF ls_result-messages IS INITIAL.
         client->message_toast_display( get_text( cs_text-action_done ) ).
       ELSE.
@@ -1260,6 +1393,182 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       show_messages( client   = client
                      messages = ls_result-messages ).
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD on_child_action.
+
+    "arg 1 the section's component, arg 2 the action - one the table offers
+    READ TABLE mt_child INTO DATA(ls_child) WITH KEY component = client->get_event_arg( ).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    READ TABLE ls_child-actions INTO DATA(ls_action) WITH KEY name = client->get_event_arg( 2 ).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    mv_pending_action = ls_action-name.
+    mv_pending_child = ls_child-component.
+
+    DATA(ls_context) = get_child_context( ls_child-association ).
+    CLEAR: ls_context-association, ls_context-parent_fields.
+    DATA(lr_param) = create_action_parameter( entity_name = ls_child-entity-name
+                                              action      = mv_pending_action
+                                              context     = ls_context ).
+    IF lr_param IS BOUND.
+      "the parameter first - the action runs on the return
+      ASSIGN lr_param->* TO FIELD-SYMBOL(<ls_param>).
+      DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = <ls_param>
+                                                        title = ls_action-label ).
+      lo_dialog->set_extension( mo_ext ).
+      client->nav_app_call( lo_dialog ).
+      RETURN.
+    ENDIF.
+
+    execute_child_action( client ).
+    CLEAR: mv_pending_action, mv_pending_child.
+    IF mv_opened_created = abap_true.
+      CLEAR mv_opened_created.
+      RETURN.
+    ENDIF.
+    render_page( client ).
+
+  ENDMETHOD.
+
+
+  METHOD execute_child_action.
+
+    FIELD-SYMBOLS <ls_all> TYPE any.
+    FIELD-SYMBOLS <lt_rows> TYPE any.
+
+    READ TABLE mt_child INTO DATA(ls_child) WITH KEY component = mv_pending_child.
+    IF sy-subrc <> 0 OR mr_child_rows IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN mr_child_rows->* TO <ls_all>.
+    ASSIGN COMPONENT ls_child-component OF STRUCTURE <ls_all> TO <lt_rows>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    READ TABLE ls_child-actions INTO DATA(ls_action) WITH KEY name = mv_pending_action.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    "the child is changed in the business object of this record
+    DATA(ls_context) = get_child_context( ls_child-association ).
+    CLEAR: ls_context-association, ls_context-parent_fields.
+    DATA(ls_result) = run_action( entity_name         = ls_child-entity-name
+                                  action              = ls_action-name
+                                  rows                = get_selected_rows( entity_name = ls_child-entity-name
+                                                                           data        = REF #( <lt_rows> ) )
+                                  param               = param
+                                  context             = ls_context
+                                  invocation_grouping = ls_action-invocation_grouping ).
+    "#ISOLATED: some rows may have changed even when others failed
+    reload_data( ).
+    ms_data_backup->* = ms_data->*.
+    load_child_rows( ).
+    IF ls_result-success = abap_true.
+      mv_saved = abap_true.
+      IF ls_result-keys IS NOT INITIAL.
+        open_created( client      = client
+                      entity_name = ls_child-entity-name
+                      keys        = ls_result-keys
+                      context     = ls_context ).
+        RETURN.
+      ENDIF.
+      IF ls_result-messages IS INITIAL.
+        client->message_toast_display( get_text( cs_text-action_done ) ).
+      ELSE.
+        show_messages( client   = client
+                       messages = ls_result-messages
+                       type     = `success` ).
+      ENDIF.
+    ELSE.
+      show_messages( client   = client
+                     messages = ls_result-messages ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD render_action_buttons.
+
+    DATA lt_arg TYPE string_table.
+    DATA ls_crit TYPE z2ui5_cl_rap_util=>ty_s_action.
+
+    LOOP AT get_action_entries( it_actions = it_actions
+                                it_groups  = it_groups ) INTO DATA(ls_entry).
+
+      IF ls_entry-group-id IS NOT INITIAL.
+        DATA(lo_menu) = io_container->ele( `MenuButton`
+            )->a( n = `text`
+                  t = ls_entry-group-label
+            )->ele( `menu`
+                )->ele( `Menu` ).
+        LOOP AT ls_entry-items INTO DATA(ls_item).
+          lt_arg = args_before.
+          APPEND ls_item-name TO lt_arg.
+          lo_menu->tag( `MenuItem`
+              )->a( n = `text`
+                    t = ls_item-label
+              )->a( n = `press`
+                    v = client->_event( val   = event
+                                        t_arg = lt_arg ) ).
+        ENDLOOP.
+        CONTINUE.
+      ENDIF.
+
+      "the criticality as the button's type - written as a literal of
+      "sap.m.ButtonType, so the view gate can check it
+      ls_crit = ls_entry-action.
+      DATA(lv_button_type) = `Default`.
+      IF row IS SUPPLIED.
+        CASE get_action_button_type( is_action = ls_crit
+                                     row       = row ).
+          WHEN `Accept`.
+            lv_button_type = `Accept`.
+          WHEN `Reject`.
+            lv_button_type = `Reject`.
+          WHEN `Emphasized`.
+            lv_button_type = `Emphasized`.
+        ENDCASE.
+      ELSE.
+        CASE get_action_button_type( ls_crit ).
+          WHEN `Accept`.
+            lv_button_type = `Accept`.
+          WHEN `Reject`.
+            lv_button_type = `Reject`.
+          WHEN `Emphasized`.
+            lv_button_type = `Emphasized`.
+        ENDCASE.
+      ENDIF.
+      lt_arg = args_before.
+      APPEND ls_entry-action-name TO lt_arg.
+      io_container->tag( `Button`
+          )->a( n = `text`
+                t = ls_entry-action-label
+          )->a( n = `type`
+                v = lv_button_type
+          )->a( n = `press`
+                v = client->_event( val   = event
+                                    t_arg = lt_arg ) ).
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD open_created.
+
+    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( cds_view_name = entity_name
+                                                keys          = keys
+                                                context       = context ).
+    lo_op->set_extension( mo_ext ).
+    mv_opened_created = abap_true.
+    client->nav_app_call( lo_op ).
 
   ENDMETHOD.
 
@@ -1287,8 +1596,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       IF ls_facet-type CS `COLLECTION`.
         ls_section-type = `COLLECTION`.
       ELSEIF ls_facet-type CS `IDENTIFICATION`.
+        "the entries of the facet's targetQualifier - unqualified as before
         ls_section-type = `IDENTIFICATION`.
-        IF get_identification_fields( ) IS INITIAL.
+        IF get_identification_fields( ls_facet-target_qualifier ) IS INITIAL.
           CONTINUE.
         ENDIF.
       ELSEIF ls_facet-type CS `LINEITEM`.
@@ -1356,15 +1666,29 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD get_identification_fields.
 
-    "fields annotated with @UI.identification, ordered by position
-    LOOP AT ms_entity-fields INTO DATA(ls_field)
-      WHERE is_identification = abap_true AND is_hidden = abap_false.
+    "fields annotated with @UI.identification of the qualifier, by position -
+    "the unqualified ones as is_identification says (an extension may
+    "change it), the qualified ones by their entry
+    LOOP AT ms_entity-fields INTO DATA(ls_field) WHERE is_hidden = abap_false.
+      READ TABLE ls_field-identifications INTO DATA(ls_ident) WITH KEY qualifier = qualifier.
+      DATA(lv_found) = xsdbool( sy-subrc = 0 ).
+      IF ( qualifier IS INITIAL AND ls_field-is_identification = abap_false )
+        OR ( qualifier IS NOT INITIAL AND lv_found = abap_false ).
+        CONTINUE.
+      ENDIF.
+      IF lv_found = abap_true AND qualifier IS NOT INITIAL.
+        ls_field-identification_pos = ls_ident-position.
+      ENDIF.
+      IF lv_found = abap_true AND ls_ident-label IS NOT INITIAL.
+        ls_field-label = ls_ident-label.
+      ENDIF.
       APPEND ls_field TO result.
     ENDLOOP.
-    SORT result BY identification_pos.
+    SORT result STABLE BY identification_pos.
 
-    "fallback: first 3 visible fields (dataPoints are rendered separately)
-    IF result IS INITIAL.
+    "fallback: first 3 visible fields (dataPoints are rendered separately) -
+    "a qualifier with no field is no section
+    IF result IS INITIAL AND qualifier IS INITIAL.
       LOOP AT ms_entity-fields INTO ls_field
         WHERE is_hidden = abap_false AND datapoint_qualifier IS INITIAL.
         APPEND ls_field TO result.
@@ -1559,17 +1883,27 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       render_extension( spot         = cs_spot-header_actions
                         io_container = io_actions
                         client       = client ).
-      "@UI.identification actions of type #FOR_ACTION
+      "@UI.identification actions of type #FOR_ACTION - the unqualified
+      "ones, a qualified one sits at its section; by position, an action
+      "group as a menu, the criticality as the button's type
       IF ms_caps-is_rap_bo = abap_true.
+        DATA lt_header_actions TYPE z2ui5_cl_rap_util=>ty_t_action.
+        DATA lt_header_groups TYPE z2ui5_cl_rap_util=>ty_t_action_group.
+        CLEAR: lt_header_actions, lt_header_groups.
         LOOP AT ms_entity-actions INTO DATA(ls_action)
-          WHERE source = `IDENTIFICATION` AND semantic_object IS INITIAL.
-          io_actions->tag( `Button`
-              )->a( n = `text`
-                    t = ls_action-label
-              )->a( n = `press`
-                    v = client->_event( val = cs_event-action
-                                        arg = ls_action-name ) ).
+          WHERE source = `IDENTIFICATION` AND semantic_object IS INITIAL AND qualifier IS INITIAL.
+          APPEND ls_action TO lt_header_actions.
         ENDLOOP.
+        LOOP AT ms_entity-action_groups INTO DATA(ls_group)
+          WHERE source = `IDENTIFICATION` AND qualifier IS INITIAL.
+          APPEND ls_group TO lt_header_groups.
+        ENDLOOP.
+        render_action_buttons( io_container = io_actions
+                               it_actions   = lt_header_actions
+                               it_groups    = lt_header_groups
+                               client       = client
+                               event        = cs_event-action
+                               row          = ms_data->* ).
       ENDIF.
       "and of type #FOR_INTENT_BASED_NAVIGATION - to another app
       LOOP AT ms_entity-actions INTO DATA(ls_intent)
@@ -1591,7 +1925,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
             )->a( n = `press`
                   v = client->_event( cs_event-copy_link ) ).
       ENDIF.
-      IF ms_caps-can_update = abap_true.
+      "@UI.updateHidden / .deleteHidden - true, or a field of the record
+      IF ms_caps-can_update = abap_true
+        AND is_hidden_by_annotation( value = ms_entity-update_hidden
+                                     row   = ms_data->* ) = abap_false.
         io_actions->tag( `Button`
             )->a( n = `text`
                   t = get_text( cs_text-edit )
@@ -1602,7 +1939,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
             )->a( n = `icon`
                   v = `sap-icon://edit` ).
       ENDIF.
-      IF ms_caps-can_delete = abap_true.
+      IF ms_caps-can_delete = abap_true
+        AND is_hidden_by_annotation( value = ms_entity-delete_hidden
+                                     row   = ms_data->* ) = abap_false.
         io_actions->tag( `Button`
             )->a( n = `text`
                   t = get_text( cs_text-delete )
@@ -1742,6 +2081,30 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         )->a( n = `fitContainer`
               v = `true` ).
 
+    "@UI.headerInfo.imageUrl - the record's image, else typeImageUrl
+    DATA(lv_image) = ``.
+    IF ms_entity-header_info-image_field IS NOT INITIAL.
+      FIELD-SYMBOLS <lv_image> TYPE any.
+      ASSIGN COMPONENT ms_entity-header_info-image_field OF STRUCTURE ms_data->* TO <lv_image>.
+      IF sy-subrc = 0.
+        lv_image = condense( |{ <lv_image> }| ).
+      ENDIF.
+    ENDIF.
+    IF lv_image IS INITIAL.
+      lv_image = ms_entity-header_info-type_image_url.
+    ENDIF.
+    IF lv_image IS NOT INITIAL.
+      lo_hbox->tag( `Avatar`
+          )->a( n = `src`
+                t = lv_image
+          )->a( n = `displaySize`
+                v = `L`
+          )->a( n = `displayShape`
+                v = `Square`
+          )->a( n = `class`
+                v = `sapUiMediumMarginEnd sapUiSmallMarginBottom` ).
+    ENDIF.
+
     "@UI.facet with purpose #HEADER decides the header when there is one
     IF line_exists( ms_entity-facets[ purpose = `#HEADER` ] ) OR line_exists( ms_entity-facets[ purpose = `HEADER` ] ).
       render_header_facets( io_container = lo_hbox
@@ -1858,10 +2221,15 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD render_section_content.
 
+    render_section_actions( io_parent  = io_parent
+                            is_section = is_section
+                            client     = client ).
+
     CASE is_section-type.
       WHEN `IDENTIFICATION`.
+        "the entries of the facet's targetQualifier (field_group)
         render_section_fields( io_parent = io_parent
-                               it_fields = get_identification_fields( )
+                               it_fields = get_identification_fields( is_section-field_group )
                                client    = client ).
       WHEN `LINEITEM`.
         render_section_table( io_parent  = io_parent
@@ -1872,6 +2240,46 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                              iv_group  = is_section-field_group
                              client    = client ).
     ENDCASE.
+
+  ENDMETHOD.
+
+
+  METHOD render_section_actions.
+
+    DATA lt_actions TYPE z2ui5_cl_rap_util=>ty_t_action.
+    DATA lt_groups TYPE z2ui5_cl_rap_util=>ty_t_action_group.
+
+    IF mv_editable = abap_true OR ms_caps-is_rap_bo = abap_false OR is_section-field_group IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA(lv_source) = SWITCH string( is_section-type
+      WHEN `IDENTIFICATION` THEN `IDENTIFICATION`
+      WHEN `FIELDGROUP`     THEN `FIELDGROUP` ).
+    IF lv_source IS INITIAL.
+      RETURN.
+    ENDIF.
+    LOOP AT ms_entity-actions INTO DATA(ls_action)
+      WHERE source = lv_source AND qualifier = is_section-field_group AND semantic_object IS INITIAL.
+      APPEND ls_action TO lt_actions.
+    ENDLOOP.
+    IF lt_actions IS INITIAL.
+      RETURN.
+    ENDIF.
+    LOOP AT ms_entity-action_groups INTO DATA(ls_group)
+      WHERE source = lv_source AND qualifier = is_section-field_group.
+      APPEND ls_group TO lt_groups.
+    ENDLOOP.
+
+    DATA(lo_section_bar) = io_parent->ele( `OverflowToolbar`
+        )->a( n = `style`
+              v = `Clear` ).
+    lo_section_bar->tag( `ToolbarSpacer` ).
+    render_action_buttons( io_container = lo_section_bar
+                           it_actions   = lt_actions
+                           it_groups    = lt_groups
+                           client       = client
+                           event        = cs_event-action
+                           row          = ms_data->* ).
 
   ENDMETHOD.
 
@@ -1931,6 +2339,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       lo_form->tag( `Label`
           )->a( n = `text`
                 t = ls_field-label
+          )->a( n = `tooltip`
+                t = ls_field-tooltip
           )->a( n = `required`
                 b = xsdbool( mv_editable = abap_true AND ls_field-is_mandatory = abap_true ) ).
 
@@ -2046,26 +2456,43 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ENDLOOP.
     ENDIF.
 
+    "the rows are selectable when the table has actions to run on them
+    DATA(lv_child_actions) = xsdbool( ls_child-actions IS NOT INITIAL AND mv_editable = abap_false ).
+    DATA(lv_child_mode) = `None`.
+    IF lv_child_actions = abap_true.
+      lv_child_mode = `MultiSelect`.
+    ENDIF.
     DATA(lo_table) = io_parent->ele( `Table`
         )->a( n = `items`
               v = `{path:'` && client->_bind( val  = <lt_rows>
                                               path = abap_true ) && `'}`
         )->a( n = `growing`
-              v = `true` ).
+              v = `true`
+        )->a( n = `mode`
+              v = lv_child_mode ).
 
-    "a new child of this record - a create by association
-    IF ls_child-can_create = abap_true AND mv_editable = abap_false.
+    "the actions of the child's @UI.lineItem, and a new child of this
+    "record - a create by association
+    IF mv_editable = abap_false AND ( ls_child-can_create = abap_true OR lv_child_actions = abap_true ).
       DATA(lo_toolbar) = lo_table->ele( `headerToolbar`
           )->ele( `OverflowToolbar` ).
       lo_toolbar->tag( `ToolbarSpacer` ).
-      lo_toolbar->tag( `Button`
-          )->a( n = `text`
-                t = get_text( cs_text-create )
-          )->a( n = `icon`
-                v = `sap-icon://add`
-          )->a( n = `press`
-                v = client->_event( val = cs_event-child_create
-                                    arg = ls_child-component ) ).
+      render_action_buttons( io_container = lo_toolbar
+                             it_actions   = ls_child-actions
+                             it_groups    = ls_child-entity-action_groups
+                             client       = client
+                             event        = cs_event-child_action
+                             args_before  = VALUE #( ( ls_child-component ) ) ).
+      IF ls_child-can_create = abap_true.
+        lo_toolbar->tag( `Button`
+            )->a( n = `text`
+                  t = get_text( cs_text-create )
+            )->a( n = `icon`
+                  v = `sap-icon://add`
+            )->a( n = `press`
+                  v = client->_event( val = cs_event-child_create
+                                      arg = ls_child-component ) ).
+      ENDIF.
     ENDIF.
 
     DATA(lo_columns) = lo_table->ele( `columns` ).
@@ -2074,7 +2501,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
           )->tag( `Text`
               )->a( n = `text`
                     t = COND #( WHEN ls_field-line_item_label IS NOT INITIAL THEN ls_field-line_item_label
-                                ELSE ls_field-label ) ).
+                                ELSE ls_field-label )
+              )->a( n = `tooltip`
+                    t = ls_field-tooltip ).
     ENDLOOP.
 
     DATA(lt_arg) = VALUE string_table( ( ls_child-component ) ).
@@ -2084,6 +2513,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     DATA(lo_item) = lo_table->ele( `items`
         )->ele( `ColumnListItem` ).
+    IF lv_child_actions = abap_true.
+      lo_item->a( n = `selected`
+                  v = |\{{ cv_select_column }\}| ).
+    ENDIF.
     "a row opens its own object page - which needs the child's keys
     IF ls_child-entity-keys IS NOT INITIAL.
       lo_item->a( n = `type`

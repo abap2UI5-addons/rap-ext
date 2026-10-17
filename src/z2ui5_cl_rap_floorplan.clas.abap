@@ -128,6 +128,18 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     TYPES ty_t_message TYPE STANDARD TABLE OF ty_s_message WITH EMPTY KEY.
 
     TYPES:
+      "! a button of the actions (get_action_entries): one action, or an
+      "! action group - a menu of its actions (added 2026-10, third round)
+      BEGIN OF ty_s_action_entry,
+        position TYPE i,
+        action   TYPE z2ui5_cl_rap_util=>ty_s_action,
+        group    TYPE z2ui5_cl_rap_util=>ty_s_action_group,
+        items    TYPE z2ui5_cl_rap_util=>ty_t_action,
+      END OF ty_s_action_entry.
+
+    TYPES ty_t_action_entry TYPE STANDARD TABLE OF ty_s_action_entry WITH EMPTY KEY.
+
+    TYPES:
       BEGIN OF ty_s_result,
         success  TYPE abap_bool,
         messages TYPE string_table,
@@ -484,7 +496,9 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
-    "! run a RAP action on rows (a table of the entity)
+    "! run a RAP action on rows (a table of the entity) - a static action
+    "! (is_static_action) runs without rows. The keys of what a factory
+    "! action created (MAPPED) are result-keys
     METHODS run_action
       IMPORTING
         entity_name   TYPE string
@@ -492,8 +506,52 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         rows          TYPE REF TO data
         param         TYPE REF TO data OPTIONAL
         context       TYPE ty_s_rap_context OPTIONAL
+        "ISOLATED: one request per row (ty_s_action-invocation_grouping) -
+        "added 2026-10, third round
+        invocation_grouping TYPE string OPTIONAL
       RETURNING
         VALUE(result) TYPE ty_s_result.
+
+    "! the action is static - it needs no row: its derived type carries no
+    "! key of an instance (z2ui5_cl_rap_util=>is_static_action_line)
+    METHODS is_static_action
+      IMPORTING
+        entity_name   TYPE string
+        action        TYPE string
+        context       TYPE ty_s_rap_context OPTIONAL
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! an operation hidden by @UI.createHidden / .updateHidden /
+    "! .deleteHidden (ty_s_entity_info-create_hidden, ...): TRUE hides it,
+    "! a field hides it when the field of row is true - without a row a
+    "! field hides nothing
+    METHODS is_hidden_by_annotation
+      IMPORTING
+        value         TYPE string
+        row           TYPE data OPTIONAL
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! the sap.m.ButtonType of an action by its criticality - a field's
+    "! value is read from row, without a row such a button is Default
+    METHODS get_action_button_type
+      IMPORTING
+        is_action     TYPE z2ui5_cl_rap_util=>ty_s_action
+        row           TYPE data OPTIONAL
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! the buttons of it_actions in their order: by position, an action
+    "! alone or an action group (it_groups) with its actions - a group
+    "! without one of them is left out. What render_action_buttons of the
+    "! list report and the object page draw
+    METHODS get_action_entries
+      IMPORTING
+        it_actions    TYPE z2ui5_cl_rap_util=>ty_t_action
+        it_groups     TYPE z2ui5_cl_rap_util=>ty_t_action_group OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_t_action_entry.
 
     "! the business object bdef (its root entity) has a draft
     METHODS is_draft_enabled
@@ -1888,28 +1946,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
   METHOD run_action.
 
     DATA lv_cancel TYPE abap_bool.
+    DATA lv_static TYPE abap_bool.
+    DATA lr_rows TYPE REF TO data.
     FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
-
-    IF rows IS NOT BOUND.
-      APPEND get_text( cs_text-no_selection ) TO result-messages.
-      RETURN.
-    ENDIF.
-    ASSIGN rows->* TO <lt_rows>.
-    IF <lt_rows> IS INITIAL.
-      APPEND get_text( cs_text-no_selection ) TO result-messages.
-      RETURN.
-    ENDIF.
-
-    IF mo_ext IS BOUND.
-      mo_ext->before_save( EXPORTING entity_name = entity_name
-                                     operation   = |ACTION:{ action }|
-                                     data        = rows
-                           CHANGING  messages    = result-messages
-                                     cancel      = lv_cancel ).
-      IF lv_cancel = abap_true.
-        RETURN.
-      ENDIF.
-    ENDIF.
 
     IF eml_available( ) = abap_false
       OR get_entity_capabilities( entity_name = entity_name
@@ -1918,17 +1957,150 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "a static action runs without rows, an instance action needs them
+    lv_static = is_static_action( entity_name = entity_name
+                                  action      = action
+                                  context     = context ).
+    lr_rows = rows.
+    IF lv_static = abap_true AND lr_rows IS NOT BOUND.
+      lr_rows = create_entity_table( entity_name ).
+    ENDIF.
+    IF lr_rows IS NOT BOUND.
+      APPEND get_text( cs_text-no_selection ) TO result-messages.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_rows->* TO <lt_rows>.
+    IF <lt_rows> IS INITIAL AND lv_static = abap_false.
+      APPEND get_text( cs_text-no_selection ) TO result-messages.
+      RETURN.
+    ENDIF.
+
+    IF mo_ext IS BOUND.
+      mo_ext->before_save( EXPORTING entity_name = entity_name
+                                     operation   = |ACTION:{ action }|
+                                     data        = lr_rows
+                           CHANGING  messages    = result-messages
+                                     cancel      = lv_cancel ).
+      IF lv_cancel = abap_true.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
     result = z2ui5_cl_rap_eml=>execute_action( entity_name = entity_name
                                                action      = action
                                                rows        = <lt_rows>
                                                param       = param
-                                               context     = context ).
+                                               context     = context
+                                               is_static   = lv_static
+                                               isolated    = xsdbool( to_upper( invocation_grouping ) CS `ISOLATED` ) ).
 
     IF result-success = abap_true AND mo_ext IS BOUND.
       mo_ext->after_save( entity_name = entity_name
                           operation   = |ACTION:{ action }|
-                          data        = rows ).
+                          data        = lr_rows ).
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD is_static_action.
+
+    DATA lr_table TYPE REF TO data.
+    DATA lt_names TYPE string_table.
+    FIELD-SYMBOLS <lt_table> TYPE STANDARD TABLE.
+
+    IF eml_available( ) = abap_false.
+      RETURN.
+    ENDIF.
+    DATA(lv_entity) = to_upper( entity_name ).
+    DATA(lv_bdef) = COND string( WHEN context-bdef IS NOT INITIAL THEN to_upper( context-bdef ) ELSE lv_entity ).
+    DATA(lv_type) = |\\BDEF={ lv_bdef }\\ENTITY={ lv_entity }\\ACTION={ to_upper( action ) }\\TYPE=IMPORTING|.
+    TRY.
+        CREATE DATA lr_table TYPE (lv_type).
+        ASSIGN lr_table->* TO <lt_table>.
+        APPEND INITIAL LINE TO <lt_table> ASSIGNING FIELD-SYMBOL(<ls_line>).
+        DATA(lo_line) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <ls_line> ) ).
+        LOOP AT lo_line->components INTO DATA(ls_comp).
+          APPEND CONV string( ls_comp-name ) TO lt_names.
+        ENDLOOP.
+        result = z2ui5_cl_rap_util=>is_static_action_line( lt_names ).
+      CATCH cx_root.
+        result = abap_false.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD is_hidden_by_annotation.
+
+    FIELD-SYMBOLS <lv_value> TYPE any.
+
+    IF value IS INITIAL.
+      RETURN.
+    ENDIF.
+    IF to_upper( value ) = `TRUE`.
+      result = abap_true.
+      RETURN.
+    ENDIF.
+    IF row IS NOT SUPPLIED.
+      RETURN.
+    ENDIF.
+    "a path: the field of the record decides
+    ASSIGN COMPONENT value OF STRUCTURE row TO <lv_value>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    DATA(lv_text) = to_upper( condense( |{ <lv_value> }| ) ).
+    result = xsdbool( lv_text = `X` OR lv_text = `TRUE` OR lv_text = `1` ).
+
+  ENDMETHOD.
+
+
+  METHOD get_action_button_type.
+
+    FIELD-SYMBOLS <lv_value> TYPE any.
+
+    DATA(lv_crit) = is_action-criticality.
+    IF lv_crit IS INITIAL.
+      result = `Default`.
+      RETURN.
+    ENDIF.
+    "a field holds the criticality - only a record can tell
+    IF lv_crit CN `0123456789` AND lv_crit <> `POSITIVE` AND lv_crit <> `NEGATIVE`
+      AND lv_crit <> `CRITICAL` AND lv_crit <> `NEUTRAL`.
+      CLEAR lv_crit.
+      IF row IS SUPPLIED.
+        ASSIGN COMPONENT is_action-criticality OF STRUCTURE row TO <lv_value>.
+        IF sy-subrc = 0.
+          lv_crit = |{ <lv_value> }|.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+    result = z2ui5_cl_rap_util=>criticality_button_type( lv_crit ).
+
+  ENDMETHOD.
+
+
+  METHOD get_action_entries.
+
+    "an action of a group sits in the group's menu, the others alone
+    LOOP AT it_actions INTO DATA(ls_action).
+      IF ls_action-group_id IS NOT INITIAL
+        AND line_exists( it_groups[ id = ls_action-group_id source = ls_action-source ] ).
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( position = ls_action-position action = ls_action ) TO result.
+    ENDLOOP.
+    LOOP AT it_groups INTO DATA(ls_group).
+      DATA(ls_entry) = VALUE ty_s_action_entry( position = ls_group-position group = ls_group ).
+      LOOP AT it_actions INTO ls_action WHERE group_id = ls_group-id AND source = ls_group-source.
+        APPEND ls_action TO ls_entry-items.
+      ENDLOOP.
+      IF ls_entry-items IS NOT INITIAL.
+        APPEND ls_entry TO result.
+      ENDIF.
+    ENDLOOP.
+    SORT result STABLE BY position.
 
   ENDMETHOD.
 

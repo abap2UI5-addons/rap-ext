@@ -343,6 +343,8 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
     io_form->tag( `Label`
         )->a( n = `text`
               t = is_field-label
+        )->a( n = `tooltip`
+              t = is_field-tooltip
         )->a( n = `required`
               b = is_field-is_mandatory ).
     get_control_for_field(

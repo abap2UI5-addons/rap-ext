@@ -146,6 +146,10 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     "! the keys of the row an inline action was pressed on - empty for a
     "! toolbar action, which runs on the selected rows
     DATA mt_pending_keys TYPE string_table.
+    "! the last action created a record and its object page was called -
+    "! nothing else is rendered in this roundtrip (added 2026-10, third
+    "! round)
+    DATA mv_opened_created TYPE abap_bool.
 
     "! the columns the user hid (the columns dialog, a view)
     DATA mt_hidden_column TYPE string_table.
@@ -234,11 +238,34 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       IMPORTING
         client TYPE REF TO z2ui5_if_client.
 
-    "! run the pending action on its rows, param is its parameter
+    "! run the pending action on its rows, param is its parameter - a
+    "! static action runs without rows, and the record a factory action
+    "! created opens (open_created)
     METHODS execute_action
       IMPORTING
         client TYPE REF TO z2ui5_if_client
         param  TYPE REF TO data OPTIONAL.
+
+    "! the buttons of it_actions, by position (get_action_entries): a
+    "! button per action, its criticality its type, and a MenuButton per
+    "! action group with its actions as items. The press is event with
+    "! the arguments args_before and the action's name; row decides a
+    "! criticality that names a field (added 2026-10, third round)
+    METHODS render_action_buttons
+      IMPORTING
+        io_container TYPE REF TO z2ui5_cl_ui5_view_builder
+        it_actions   TYPE z2ui5_cl_rap_util=>ty_t_action
+        it_groups    TYPE z2ui5_cl_rap_util=>ty_t_action_group OPTIONAL
+        client       TYPE REF TO z2ui5_if_client
+        event        TYPE string
+        args_before  TYPE string_table OPTIONAL
+        row          TYPE data OPTIONAL.
+
+    "! the object page of the record an action created (its MAPPED keys)
+    METHODS open_created
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client
+        keys   TYPE ty_t_name_value.
 
     "! the return from a called app: value help, action dialog, object page
     METHODS on_navigated
@@ -394,6 +421,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
       mt_row_key = get_row_key_fields( ).
       ms_caps = get_entity_capabilities( mv_cds_view ).
+      "@UI.createHidden: true - a path has no record to ask in a list
+      IF is_hidden_by_annotation( ms_entity-create_hidden ) = abap_true.
+        ms_caps-can_create = abap_false.
+      ENDIF.
 
       "sortable: the columns that are text, numbers or dates
       LOOP AT get_line_item_fields( ) INTO DATA(ls_col)
@@ -552,6 +583,11 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         CATCH cx_root ##NO_HANDLER.
       ENDTRY.
       CLEAR: mv_pending_action, mt_pending_keys.
+      "the action created a record - its object page is on its way
+      IF mv_opened_created = abap_true.
+        CLEAR mv_opened_created.
+        RETURN.
+      ENDIF.
     ENDIF.
 
     "back from the object page - refresh if data was saved
@@ -1314,7 +1350,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     ENDIF.
 
     execute_action( client ).
-    CLEAR: mv_pending_action, mt_pending_keys.
+    CLEAR: mv_pending_action, mt_pending_keys, mv_opened_created.
 
   ENDMETHOD.
 
@@ -1342,12 +1378,21 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    DATA(ls_result) = run_action( entity_name = mv_cds_view
-                                  action      = mv_pending_action
-                                  rows        = lr_rows
-                                  param       = param ).
+    READ TABLE ms_entity-actions INTO DATA(ls_action) WITH KEY name = mv_pending_action source = `LINEITEM`.
+    DATA(ls_result) = run_action( entity_name         = mv_cds_view
+                                  action              = mv_pending_action
+                                  rows                = lr_rows
+                                  param               = param
+                                  invocation_grouping = ls_action-invocation_grouping ).
+    "#ISOLATED: some rows may have changed even when others failed
+    load_data( ).
     IF ls_result-success = abap_true.
-      load_data( ).
+      "a factory action: the record it created
+      IF ls_result-keys IS NOT INITIAL.
+        open_created( client = client
+                      keys   = ls_result-keys ).
+        RETURN.
+      ENDIF.
       IF ls_result-messages IS INITIAL.
         client->message_toast_display( get_text( cs_text-action_done ) ).
       ELSE.
@@ -1359,6 +1404,84 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       show_messages( client   = client
                      messages = ls_result-messages ).
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD render_action_buttons.
+
+    DATA lt_arg TYPE string_table.
+    DATA ls_crit TYPE z2ui5_cl_rap_util=>ty_s_action.
+
+    LOOP AT get_action_entries( it_actions = it_actions
+                                it_groups  = it_groups ) INTO DATA(ls_entry).
+
+      IF ls_entry-group-id IS NOT INITIAL.
+        DATA(lo_menu) = io_container->ele( `MenuButton`
+            )->a( n = `text`
+                  t = ls_entry-group-label
+            )->ele( `menu`
+                )->ele( `Menu` ).
+        LOOP AT ls_entry-items INTO DATA(ls_item).
+          lt_arg = args_before.
+          APPEND ls_item-name TO lt_arg.
+          lo_menu->tag( `MenuItem`
+              )->a( n = `text`
+                    t = ls_item-label
+              )->a( n = `press`
+                    v = client->_event( val   = event
+                                        t_arg = lt_arg ) ).
+        ENDLOOP.
+        CONTINUE.
+      ENDIF.
+
+      "the criticality as the button's type - written as a literal of
+      "sap.m.ButtonType, so the view gate can check it
+      ls_crit = ls_entry-action.
+      DATA(lv_button_type) = `Default`.
+      IF row IS SUPPLIED.
+        CASE get_action_button_type( is_action = ls_crit
+                                     row       = row ).
+          WHEN `Accept`.
+            lv_button_type = `Accept`.
+          WHEN `Reject`.
+            lv_button_type = `Reject`.
+          WHEN `Emphasized`.
+            lv_button_type = `Emphasized`.
+        ENDCASE.
+      ELSE.
+        CASE get_action_button_type( ls_crit ).
+          WHEN `Accept`.
+            lv_button_type = `Accept`.
+          WHEN `Reject`.
+            lv_button_type = `Reject`.
+          WHEN `Emphasized`.
+            lv_button_type = `Emphasized`.
+        ENDCASE.
+      ENDIF.
+      lt_arg = args_before.
+      APPEND ls_entry-action-name TO lt_arg.
+      io_container->tag( `Button`
+          )->a( n = `text`
+                t = ls_entry-action-label
+          )->a( n = `type`
+                v = lv_button_type
+          )->a( n = `press`
+                v = client->_event( val   = event
+                                    t_arg = lt_arg ) ).
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD open_created.
+
+    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( cds_view_name = mv_cds_view
+                                                keys          = keys ).
+    lo_op->set_extension( mo_ext ).
+    mv_opened_created = abap_true.
+    client->nav_app_call( lo_op ).
 
   ENDMETHOD.
 
@@ -1545,9 +1668,22 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     LOOP AT lt_inline INTO ls_inline.
       DATA(lt_action_arg) = VALUE string_table( ( ls_inline-name ) ).
       APPEND LINES OF lt_arg TO lt_action_arg.
+      "the criticality as the type - a literal the view gate can check; a
+      "field's criticality needs the row, which the template does not have
+      DATA(lv_inline_type) = `Default`.
+      CASE get_action_button_type( ls_inline ).
+        WHEN `Accept`.
+          lv_inline_type = `Accept`.
+        WHEN `Reject`.
+          lv_inline_type = `Reject`.
+        WHEN `Emphasized`.
+          lv_inline_type = `Emphasized`.
+      ENDCASE.
       lo_cells->tag( `Button`
           )->a( n = `text`
                 t = ls_inline-label
+          )->a( n = `type`
+                v = lv_inline_type
           )->a( n = `press`
                 v = client->_event( val   = cs_event-action
                                     t_arg = lt_action_arg ) ).
@@ -1580,15 +1716,13 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     lo_toolbar->tag( `ToolbarSpacer` ).
 
-    "@UI.lineItem actions of type #FOR_ACTION - on the selected rows
-    LOOP AT get_line_item_actions( abap_false ) INTO DATA(ls_action).
-      lo_toolbar->tag( `Button`
-          )->a( n = `text`
-                t = ls_action-label
-          )->a( n = `press`
-                v = client->_event( val = cs_event-action
-                                    arg = ls_action-name ) ).
-    ENDLOOP.
+    "@UI.lineItem actions of type #FOR_ACTION - on the selected rows, a
+    "static one without; by position, an action group as a menu
+    render_action_buttons( io_container = lo_toolbar
+                           it_actions   = get_line_item_actions( abap_false )
+                           it_groups    = ms_entity-action_groups
+                           client       = client
+                           event        = cs_event-action ).
 
     "@UI.lineItem #FOR_INTENT_BASED_NAVIGATION - to another app
     LOOP AT get_line_item_intents( ) INTO DATA(ls_intent).
@@ -1652,7 +1786,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                 v = `true`
           )->tag( `Text`
               )->a( n = `text`
-                    t = lv_col_label ).
+                    t = lv_col_label
+              )->a( n = `tooltip`
+                    t = is_col-tooltip ).
     ELSEIF is_col-line_item_importance CS `LOW`.
       io_columns->ele( `Column`
           )->a( n = `minScreenWidth`
@@ -1661,12 +1797,16 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                 v = `true`
           )->tag( `Text`
               )->a( n = `text`
-                    t = lv_col_label ).
+                    t = lv_col_label
+              )->a( n = `tooltip`
+                    t = is_col-tooltip ).
     ELSE.
       io_columns->ele( `Column`
           )->tag( `Text`
               )->a( n = `text`
-                    t = lv_col_label ).
+                    t = lv_col_label
+              )->a( n = `tooltip`
+                    t = is_col-tooltip ).
     ENDIF.
 
   ENDMETHOD.

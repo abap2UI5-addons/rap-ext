@@ -74,7 +74,13 @@ CLASS z2ui5_cl_rap_eml DEFINITION
         VALUE(result) TYPE abap_bool.
 
     "! execute an action for every row of rows (a table of the entity);
-    "! param is the action's parameter structure, if it has one
+    "! param is the action's parameter structure, if it has one. A static
+    "! action (is_static) runs once, without rows. Every instance gets a
+    "! %cid where its type has one - a factory action needs it - and the
+    "! keys of what the action created (MAPPED) are the result's keys.
+    "! isolated (@UI...invocationGrouping: #ISOLATED): one request and
+    "! commit per row, so a row that fails does not stop the others -
+    "! success then means every row succeeded
     CLASS-METHODS execute_action
       IMPORTING
         entity_name   TYPE clike
@@ -82,6 +88,9 @@ CLASS z2ui5_cl_rap_eml DEFINITION
         rows          TYPE ANY TABLE
         param         TYPE REF TO data OPTIONAL
         context       TYPE ty_s_context OPTIONAL
+        "added 2026-10, third round
+        is_static     TYPE abap_bool DEFAULT abap_false
+        isolated      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -213,8 +222,28 @@ CLASS z2ui5_cl_rap_eml DEFINITION
         op            TYPE clike
         sub_name      TYPE string OPTIONAL
         instances     TYPE REF TO data
+        "the MAPPED keys are the result's keys - a create, a factory action
+        with_keys     TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
+
+    "! the instances of an action, one request per instance - each
+    "! committed, the messages of all of them in the result
+    CLASS-METHODS run_isolated
+      IMPORTING
+        entity_name   TYPE string
+        action        TYPE string
+        instances     TYPE REF TO data
+      RETURNING
+        VALUE(result) TYPE ty_s_result.
+
+    "! the parameter and the content ID of one action instance
+    CLASS-METHODS fill_action_instance
+      IMPORTING
+        param    TYPE REF TO data
+        cid      TYPE string
+      CHANGING
+        instance TYPE data.
 
     "! a derived type of the BDEF bdef (the entity itself when empty)
     CLASS-METHODS create_instances
@@ -551,27 +580,91 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     ENDTRY.
     ASSIGN lr_inst->* TO <lt_inst>.
 
-    LOOP AT rows ASSIGNING FIELD-SYMBOL(<ls_row>).
-      APPEND INITIAL LINE TO <lt_inst> ASSIGNING FIELD-SYMBOL(<ls_inst>).
-      MOVE-CORRESPONDING <ls_row> TO <ls_inst>.
-      IF param IS BOUND.
-        ASSIGN COMPONENT `%PARAM` OF STRUCTURE <ls_inst> TO FIELD-SYMBOL(<ls_param>).
-        IF sy-subrc = 0.
-          ASSIGN param->* TO FIELD-SYMBOL(<ls_param_value>).
-          MOVE-CORRESPONDING <ls_param_value> TO <ls_param>.
-        ENDIF.
-      ENDIF.
-    ENDLOOP.
+    IF is_static = abap_true.
+      "a static action has no instance - one call, its content ID and
+      "parameter only
+      APPEND INITIAL LINE TO <lt_inst> ASSIGNING FIELD-SYMBOL(<ls_static>).
+      fill_action_instance( EXPORTING param    = param
+                                      cid      = `Z2UI5_ACTION_1`
+                            CHANGING  instance = <ls_static> ).
+    ELSE.
+      LOOP AT rows ASSIGNING FIELD-SYMBOL(<ls_row>).
+        APPEND INITIAL LINE TO <lt_inst> ASSIGNING FIELD-SYMBOL(<ls_inst>).
+        MOVE-CORRESPONDING <ls_row> TO <ls_inst>.
+        fill_action_instance( EXPORTING param    = param
+                                        cid      = |Z2UI5_ACTION_{ lines( <lt_inst> ) }|
+                              CHANGING  instance = <ls_inst> ).
+      ENDLOOP.
+    ENDIF.
 
     IF <lt_inst> IS INITIAL.
       result-messages = VALUE #( ( `Select at least one row` ) ).
       RETURN.
     ENDIF.
 
+    IF isolated = abap_true AND lines( <lt_inst> ) > 1.
+      result = run_isolated( entity_name = lv_entity
+                             action      = lv_action
+                             instances   = lr_inst ).
+      RETURN.
+    ENDIF.
+
     result = run( entity_name = lv_entity
                   op          = if_abap_behv=>op-m-action
                   sub_name    = lv_action
-                  instances   = lr_inst ).
+                  instances   = lr_inst
+                  with_keys   = abap_true ).
+
+  ENDMETHOD.
+
+
+  METHOD fill_action_instance.
+
+    IF param IS BOUND.
+      ASSIGN COMPONENT `%PARAM` OF STRUCTURE instance TO FIELD-SYMBOL(<ls_param>).
+      IF sy-subrc = 0.
+        ASSIGN param->* TO FIELD-SYMBOL(<ls_param_value>).
+        MOVE-CORRESPONDING <ls_param_value> TO <ls_param>.
+      ENDIF.
+    ENDIF.
+    "a static or factory action refers to what it creates by its content ID
+    ASSIGN COMPONENT `%CID` OF STRUCTURE instance TO FIELD-SYMBOL(<lv_cid>).
+    IF sy-subrc = 0.
+      <lv_cid> = cid.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD run_isolated.
+
+    DATA lr_one TYPE REF TO data.
+    FIELD-SYMBOLS <lt_all> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_one> TYPE STANDARD TABLE.
+
+    ASSIGN instances->* TO <lt_all>.
+    result-success = abap_true.
+    LOOP AT <lt_all> ASSIGNING FIELD-SYMBOL(<ls_inst>).
+      CREATE DATA lr_one LIKE <lt_all>.
+      ASSIGN lr_one->* TO <lt_one>.
+      APPEND <ls_inst> TO <lt_one>.
+      DATA(ls_one) = run( entity_name = entity_name
+                          op          = if_abap_behv=>op-m-action
+                          sub_name    = action
+                          instances   = lr_one
+                          with_keys   = abap_true ).
+      LOOP AT ls_one-messages INTO DATA(lv_message).
+        IF NOT line_exists( result-messages[ table_line = lv_message ] ).
+          APPEND lv_message TO result-messages.
+        ENDIF.
+      ENDLOOP.
+      APPEND LINES OF ls_one-details TO result-details.
+      IF ls_one-success = abap_false.
+        result-success = abap_false.
+      ELSEIF ls_one-keys IS NOT INITIAL.
+        result-keys = ls_one-keys.
+      ENDIF.
+    ENDLOOP.
 
   ENDMETHOD.
 
@@ -651,7 +744,7 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
                     sub_name    = sub_name
                     instances   = instances ) TO lt_op.
     result = run_steps( VALUE #( ( ops       = lt_op
-                                   is_create = xsdbool( op = if_abap_behv=>op-m-create ) ) ) ).
+                                   is_create = xsdbool( op = if_abap_behv=>op-m-create OR with_keys = abap_true ) ) ) ).
 
   ENDMETHOD.
 

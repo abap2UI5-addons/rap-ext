@@ -313,15 +313,13 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     render_variant_controls( io_toolbar = lo_toolbar
                              client     = client ).
 
-    "@UI.lineItem actions of type #FOR_ACTION - on the selected rows
-    LOOP AT get_line_item_actions( abap_false ) INTO DATA(ls_action).
-      lo_toolbar->tag( `Button`
-          )->a( n = `text`
-                t = ls_action-label
-          )->a( n = `press`
-                v = client->_event( val = ls_event-action
-                                    arg = ls_action-name ) ).
-    ENDLOOP.
+    "@UI.lineItem actions of type #FOR_ACTION - on the selected rows, a
+    "static one without; by position, an action group as a menu
+    render_action_buttons( io_container = lo_toolbar
+                           it_actions   = get_line_item_actions( abap_false )
+                           it_groups    = ms_entity-action_groups
+                           client       = client
+                           event        = ls_event-action ).
 
     "@UI.lineItem #FOR_INTENT_BASED_NAVIGATION - to another app
     LOOP AT get_line_item_intents( ) INTO DATA(ls_intent).
