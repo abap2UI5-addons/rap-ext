@@ -12,8 +12,16 @@
 "! release whose signature differs falls back to the direct reading instead of
 "! failing to compile.
 "!
-"! The parsing itself (apply_annotations) works on plain key/value tables and
-"! needs no system - that is what the unit tests drive.
+"! In ABAP Cloud, where the service is not released, the annotations come
+"! from z2ui5_cl_rap_anno_xco (the released XCO API) in the same key/value
+"! form - get_environment and get_annotation_reader decide, and every
+"! on-premise object this class reads (the service, DDFIELDS, DDDDLSRC) is
+"! named dynamically only, so the class activates there (added 2026-10,
+"! third round).
+"!
+"! The parsing itself (apply_annotations), the flattening and the layer
+"! merge of the XCO annotations work on plain key/value tables and need no
+"! system - that is what the unit tests drive.
 CLASS z2ui5_cl_rap_util DEFINITION
   PUBLIC
   FINAL

@@ -44,6 +44,15 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
 - [ ] `z2ui5_cl_rap_util=>read_raw_annotations( '/DMO/C_TRAVEL_PROCESSOR_M' )-with_metadata_extensions`
       is `abap_true`, and the list report shows the metadata extension's columns
 - [ ] `read_entity( )-keys` and the data element labels arrive
+- [ ] `z2ui5_cl_rap_util=>get_environment( )` answers `ON_PREMISE`, and
+      `read_raw_annotations( ... )-reader` is `DDIC`
+- [ ] the XCO reader on premise (if XCO_CP_CDS is there): after
+      `set_annotation_reader( cs_anno_reader-xco )` the raw annotations of
+      `/DMO/C_TRAVEL_PROCESSOR_M` are the same keys and values as those of
+      the DDIC reader (compare both tables; note every difference), and
+      `read_associations( )` finds the same associations
+- [ ] `z2ui5_cl_rap_anno_xco` activates (it names the XCO API statically -
+      on a release without it only this class stays inactive)
 - [ ] `read_associations( '/DMO/C_TRAVEL_PROCESSOR_M' )` finds `_BOOKING` with
       its target and ON condition (the source is read from `DDDDLSRC` by name)
 
@@ -489,3 +498,45 @@ one with `@Aggregation.default` fields.
       `z2ui5_cl_rap_util=>build_fuzzy_search` through `CL_SQL_STATEMENT` on
       HANA - the native `CONTAINS( ( "F" ), 'text', FUZZY( 0.8 ) )` runs
       against the entity's SQL view or table and its keys filter the list
+
+## 12 · ABAP Cloud (2026-10, third round)
+
+In an SAP BTP ABAP environment (or S/4HANA Cloud with developer
+extensibility), with the abap2UI5 core and this repository pulled by
+abapGit and a RAP business object with UI annotations in metadata
+extensions (e.g. the flight reference scenario).
+
+- [ ] every class activates under ABAP for Cloud Development - note the
+      syntax warnings (the system fields `sy-uname`, `sy-datum`,
+      `sy-zonlo`) and every error
+- [ ] `z2ui5_cl_rap_util=>get_environment( )` answers `CLOUD`
+      (`CL_DD_DDL_ANNOTATION_SERVICE` unknown to RTTI, or
+      `CX_SY_RTTI_TYPE_NOT_RELEASED`), `read_raw_annotations( ... )-reader`
+      is `XCO`
+- [ ] the keys: `UI.LINEITEM$1$.POSITION` / `10`, `UI.HEADERINFO.TYPENAME`
+      / `'Travel'`, `UI.LINEITEM$2$.TYPE` / `#FOR_ACTION` - i.e. the
+      visitor reports `visit_name` before each member of a record and the
+      property of an annotation is its full name (`UI.lineItem`) or its
+      first part (`UI`); either gives the same keys, anything else does not
+- [ ] metadata extensions: an annotation that is only in the extension
+      arrives (`with_metadata_extensions` true); one in the entity and the
+      extension comes from the extension; a whole `@UI.lineItem` of the
+      extension replaces the entity's
+- [ ] two extensions of different layers (CORE and CUSTOMER) on one entity:
+      the CUSTOMER value wins - XCO's merge, note if not
+- [ ] propagation: a projection view without own `@EndUserText.label` on a
+      field shows the base view's label; with
+      `@Metadata.ignorePropagatedAnnotations: true` it does not
+- [ ] keys (`read_entity( )-keys`) and the data element labels arrive
+      through `ddic_fields`
+- [ ] associations: `read_associations( )` of the projection finds its
+      redirected compositions with the child's ON condition (the child's
+      association to parent as XCO prints it), the object page lists the
+      children
+- [ ] a field with a domain with fixed values gets the dropdown
+- [ ] list report, object page (display, edit through RAP, actions,
+      draft), value help, action dialog, overview page, worklist, tree (with
+      `@Hierarchy.parentChild`), column layout: as on premise
+- [ ] a database table: read-only, no Edit, `write_table_row` answers
+      "read-only"
+- [ ] the texts of the text pool arrive (English and the built-in German)

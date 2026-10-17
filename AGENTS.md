@@ -16,6 +16,7 @@ views and their UI annotations, rendered with abap2UI5.
 | `z2ui5_cl_rap_list_report`, `_worklist` and `_tree` (subclasses of it), `_object_page`, `_overview_page`, `_value_help`, `_action_dialog` | the floorplans - each an abap2UI5 app |
 | `z2ui5_cl_rap_fcl`, `z2ui5_cl_rap_fcl_client` | the flexible column layout: a host app that calls the floorplans with a client of its own and puts their views into the columns of one view (README, "Flexible Column Layout") - the client implements every method of the pinned core's `z2ui5_if_client` |
 | `z2ui5_cl_rap_util` | the metadata: RTTI, DDIC keys/texts, annotations (`read_entity`, `apply_annotations`), the associations of the DDL source (`read_associations`, `parse_ddl_associations`), the filter/search syntax, CSV/UTF-8/Base64/URL helpers - no UI, needs no other class of the addon, unit-tested |
+| `z2ui5_cl_rap_anno_xco` | the annotation reader for ABAP Cloud: the released XCO API (`XCO_CP_CDS`, `XCO_CP_ABAP_DICTIONARY`) - the annotations of an entity and its fields, its associations written as DDL for the parser, domain fixed values; named by a literal in `z2ui5_cl_rap_util` and called dynamically, not in `npm run unit` |
 | `z2ui5_cl_rap_eml` | the RAP write path - the only class with EML abaplint parses |
 | `z2ui5_cl_rap_eml_perm`, `_read`, `_key` | one dynamic EML statement each (`GET PERMISSIONS OPERATIONS`, `READ ENTITIES OPERATIONS`, `CONVERT KEY`) - in `global.noIssues`, called dynamically from `z2ui5_cl_rap_eml`, unverified syntax |
 | `z2ui5_cl_rap_query` | the read path of custom entities - the only class implementing the `IF_RAP_QUERY_*` interfaces (the request and response a query provider is called with); not in `npm run unit`, reached only behind `query_available( )` |
@@ -36,12 +37,26 @@ SAP system needed):
 npm ci                          # @abaplint/cli, the transpiler, @abap2ui5/linter
                                 # and its render runtime, from the lockfile
 npm run lint                    # abaplint - expect 0 issues
+npm run lint:cloud              # abaplint, ABAP Cloud language version and
+                                # released API set (abaplint-cloud.jsonc) - 0 issues
 npm run unit                    # ABAP Unit tests that need no system, transpiled
 npx abap2ui5lint                # views: metadata + headless render
 npx abap2ui5lint --no-render    # fast loop, no browser
 ```
 
-`npm run check` runs all three, exactly as CI does.
+`npm run check` runs all three (abaplint in both configurations), exactly
+as CI does.
+
+- `abaplint-cloud.jsonc` checks the same sources with syntax version
+  `Cloud` and `errorNamespace: "."` against the steampunk-2305 API set: a
+  static reference to anything ABAP Cloud does not release is an error
+  there, where `abaplint.jsonc` (`^Z`) treats it as void. It holds the
+  rules for syntax and the API set only (style stays in `abaplint.jsonc`)
+  and the same core pin - `scripts/core-pin.mjs set` moves both, `get`
+  fails when they differ. It cannot see whether a *method* of a released
+  class is released (the stub of `GET_DDIC_FIELD_LIST` is there), an
+  authorization object, or the system fields ABAP Cloud warns about
+  (README "ABAP Cloud", ROADMAP.md).
 
 - abaplint clones the two dependencies from the URLs in `abaplint.jsonc`
   (the steampunk-2305 API set and the abap2UI5 core repo), so the first run
@@ -93,9 +108,10 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   CDS views (and the /DMO/ flight scenario for the RAP paths), run the demo
   class `z2ui5_cl_rap_test`, and click through the floorplans. State in the
   PR what was and was not verified that way - **the RAP write path
-  (`z2ui5_cl_rap_eml`, actions, capabilities) and the metadata-extension
-  reading (`GET_ANNOS`) were written without a system** and are the first
-  things to verify.
+  (`z2ui5_cl_rap_eml`, actions, capabilities), the metadata-extension
+  reading (`GET_ANNOS`) and the XCO reader (`z2ui5_cl_rap_anno_xco`, ABAP
+  Cloud) were written without a system** and are the first things to
+  verify.
 
 ## Target platform — do not "modernize"
 
@@ -105,17 +121,43 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   at the oldest release the code actually needs — raising it further silently
   stops the gate from reporting members missing on real systems.
 - Syntax level is **v758**; the abaplint dependency is the steampunk-2305 API
-  set, but the wrapper deliberately uses **on-prem DDIC APIs**
-  (`cl_dd_ddl_annotation_service`, `DDSTRUCOBJNAME`) to read CDS annotations —
-  these are not released for ABAP Cloud, which is why
-  `abaplint.jsonc` sets `errorNamespace: "^Z"` (unknown SAP-standard objects
-  are void; the own namespace stays fully checked).
+  set. **On premise is the default platform**: there the wrapper reads CDS
+  annotations through the on-prem DDIC API `cl_dd_ddl_annotation_service`
+  and the DDIC (DDFIELDS, DD02L, DDDDLSRC) - not released for ABAP Cloud,
+  which is why `abaplint.jsonc` sets `errorNamespace: "^Z"` (unknown
+  SAP-standard objects are void; the own namespace stays fully checked).
+- **ABAP Cloud is an additional path** (maintainer decision, 2026-10, third
+  round). Every on-premise object is named **dynamically only** - by a
+  literal, a variable or RTTI - so every class activates in ABAP Cloud
+  (`npm run lint:cloud` proves no static reference is left), and
+  `z2ui5_cl_rap_util=>get_environment( )` decides once per session which
+  path runs: `ON_PREMISE` when RTTI knows `CL_DD_DDL_ANNOTATION_SERVICE`,
+  else `CLOUD`. In ABAP Cloud the annotations, associations, data element
+  labels, key flags and domain fixed values come from
+  `z2ui5_cl_rap_anno_xco` (the released XCO API), and the database-table
+  write path (DD02L, `S_TABU_NAM`, `ENQUEUE_E_TABLE`) and the DDDDLSRC read
+  are off. Keep a new on-premise dependency the same way: dynamic, behind
+  `get_environment( )`, with what ABAP Cloud does instead (or "off") in the
+  README's "ABAP Cloud" section - a static one is a red `lint:cloud`.
 - Annotations are read with `CL_DD_DDL_ANNOTATION_SERVICE=>GET_ANNOS`
   (metadata extensions included), called **dynamically** with its parameter
   types taken from RTTI (`read_annos_effective`); when that fails, the
-  direct annotations are read as before (`read_annos_direct`). Keep the
-  dynamic call - a static one would pin the service's type names, which
-  are not released.
+  direct annotations are read the same way (`read_annos_direct`). Keep the
+  dynamic calls - a static one would pin the service's type names, which
+  are not released. `get_annotation_reader( )` chooses: AUTO (the default)
+  is this service on premise and XCO in ABAP Cloud;
+  `set_annotation_reader( )` picks DDIC or XCO for the session (on premise
+  an XCO read that finds nothing falls back to the service).
+- **The XCO reader produces the keys of GET_ANNOS** (`UI.LINEITEM$1$.POSITION`
+  / `10`, strings in quotes, enums with `#`), so `apply_annotations` and
+  everything after it is one code for both readers. Its pure parts live in
+  `z2ui5_cl_rap_util` and are unit-tested: `flatten_annotation` (the walk
+  of `IF_XCO_CDS_ANN_VT_VISITOR` as events) and `merge_annotation_layers`
+  (by `get_layer_priority`: CUSTOMER > PARTNER > INDUSTRY > LOCALIZATION >
+  CORE > the merged metadata extensions > the entity's own > propagated; a
+  whole array or a single value replaced). `z2ui5_cl_rap_anno_xco` itself
+  only asks XCO, is not transpiled and was written without a system
+  (docs/system-test.md, 12).
 - **`z2ui5_cl_rap_eml` is the only class with EML statements abaplint
   parses** (dynamic `MODIFY ENTITIES OPERATIONS`, `COMMIT ENTITIES
   RESPONSES`, `ROLLBACK ENTITIES`). abaplint parses only the static forms of
@@ -155,10 +197,14 @@ npx abap2ui5lint --no-render    # fast loop, no browser
   step of a child runs on the root (`root_keys`), and a create by
   association uses `\BDEF=<root>\ENTITY=<parent>\ASSOC=<assoc>\TYPE=CREATE`
   (the documented form), else `\ASSOCIATION=` (the one used before).
-- `z2ui5_cl_rap_util` reads types via **classic RTTI** (`cl_abap_typedescr`),
-  not the XCO library. Do not rewrite RTTI to XCO or swap the annotation API
-  "for cloud readiness" — that changes the supported platform and is a
-  maintainer decision, not a cleanup.
+- `z2ui5_cl_rap_util` reads types via **classic RTTI** (`cl_abap_typedescr`)
+  on both platforms - RTTI is released for ABAP Cloud. XCO is used only
+  where RTTI and the released APIs have no answer (annotations,
+  associations, labels, key flags, fixed values) and only through
+  `z2ui5_cl_rap_anno_xco`. Do not move the on-premise path onto XCO or drop
+  the annotation service: the on-premise reading stays the default and
+  unchanged where it works; the XCO reader is the additional path
+  (maintainer decision, 2026-10, third round).
 - Views are built with the core's generic builder
   **`z2ui5_cl_ui5_view_builder`** (`ele`/`tag`/`a`/`end`/`stringify`), which
   lives in `src/02` and is part of the released API. The frozen fluent

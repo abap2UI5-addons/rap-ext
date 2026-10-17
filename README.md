@@ -39,8 +39,11 @@ Good for:
 
 What it is not:
 
-- **Not for ABAP Cloud.** The annotations are read through on-premise DDIC
-  APIs (`CL_DD_DDL_ANNOTATION_SERVICE`) that are not released for ABAP Cloud.
+- **Not the whole addon in ABAP Cloud.** On premise the annotations are read
+  through the DDIC API `CL_DD_DDL_ANNOTATION_SERVICE`, which ABAP Cloud does
+  not release. There the addon reads through the released XCO API instead,
+  and a database table is read-only - see [ABAP Cloud](#abap-cloud) for
+  what works, what is off and what is not verified yet.
 - **Not for a plain internal table.** This addon renders from **CDS
   annotations**. For a list report over a plain internal table there is no
   counterpart in the abap2UI5 core today — an RTTI-based
@@ -53,7 +56,9 @@ What it is not:
 **Requirements**
 
 - Standard ABAP 7.58 or higher - the release the code is checked against;
-  not ABAP Cloud
+  ABAP Cloud as an additional path with the limits in
+  [ABAP Cloud](#abap-cloud) (the sources are also checked against the ABAP
+  Cloud language version, `npm run lint:cloud`)
 - [abap2UI5](https://github.com/abap2UI5/abap2UI5) - the checks run against
   the release pinned in `abaplint.jsonc`
 - UI5 1.77 or higher in the browser (the object page uses
@@ -270,7 +275,8 @@ includes `if_serializable_object`, so keep its attributes serializable.
 `z2ui5_cl_rap_util=>read_entity( )` reads the fields (RTTI), the keys and the
 data element texts (DDIC), the associations and every annotation - through
 `CL_DD_DDL_ANNOTATION_SERVICE=>GET_ANNOS`, so **metadata extensions** are
-included (RAP objects keep their `@UI` annotations there). Annotation arrays
+included (RAP objects keep their `@UI` annotations there); in ABAP Cloud
+the same through XCO (see [ABAP Cloud](#abap-cloud)). Annotation arrays
 and qualifiers are read per entry:
 
 | Annotation | Used for |
@@ -298,7 +304,7 @@ and qualifiers are read per entry:
 | `@Consumption.semanticObject`, `.semanticObjectMapping.additionalBinding` | the value is a link that navigates to the semantic object (`display`), with the value (under the mapped name) and the row's keys - in the list and on the object page |
 | `@ObjectModel.mandatory` / `.readOnly` | required fields (checked before save/confirm), read-only inputs |
 | `@ObjectModel.resultSet.sizeCategory: #XS` | a dropdown instead of a value help - its entries with the value help's text element and the key beside it; in the filter bar a list |
-| domain fixed values | a field without an annotated value help whose domain has fixed values gets a dropdown of them (edit mode, action dialog) and a list in the filter bar (`CL_ABAP_ELEMDESCR->GET_DDIC_FIXED_VALUES`, called dynamically) |
+| domain fixed values | a field without an annotated value help whose domain has fixed values gets a dropdown of them (edit mode, action dialog) and a list in the filter bar (`CL_ABAP_ELEMDESCR->GET_DDIC_FIXED_VALUES`, called dynamically; in ABAP Cloud the domain through `XCO_CP_ABAP_DICTIONARY`) |
 | `@Consumption.valueHelpDefinition` | value helps, with `additionalBinding` (usage `#FILTER` and `#RESULT`) |
 | `@Consumption.filter` | filter bar: `defaultValue`, `mandatory` (no rows until it has a value), `selectionType: #SINGLE` / `multipleSelections: false` (the value help selects one), `hidden` |
 | `@Search.searchable`, `@Search.defaultSearchElement` | the search field and what it searches: the `defaultSearchElement` fields (also when `@UI.hidden`), else every visible text and string field; a case-insensitive `LIKE` |
@@ -324,6 +330,61 @@ takes what it does not redirect from its base, and a composition takes its
 ON condition from the child's association to parent. The object page reads
 the rows of a `#LINEITEM_REFERENCE` table by that ON condition (else by the
 keys under the same names), and `resolve_association` still decides first.
+Where `DDDDLSRC` cannot be read (ABAP Cloud), XCO describes the
+declarations of a view entity or projection view, and they are parsed the
+same way (see [ABAP Cloud](#abap-cloud)).
+
+## ABAP Cloud
+
+On premise nothing changes: the annotations come from
+`CL_DD_DDL_ANNOTATION_SERVICE`, the keys and labels from the DDIC field
+list, the associations from the DDL source. The same classes also activate
+in ABAP Cloud (SAP BTP ABAP environment, S/4HANA Cloud) - every
+on-premise object is named only dynamically, and `npm run lint:cloud`
+checks the sources against the ABAP Cloud language version and the
+released API set - and there they take another path. **Written without an
+ABAP Cloud system** - the checklist is [docs/system-test.md](docs/system-test.md),
+section 12.
+
+**How the reader is chosen.** `z2ui5_cl_rap_util=>get_environment( )`
+answers `ON_PREMISE` when RTTI knows `CL_DD_DDL_ANNOTATION_SERVICE`, else
+`CLOUD` - once per session. `get_annotation_reader( )` follows it (AUTO):
+the annotation service on premise, `z2ui5_cl_rap_anno_xco` in ABAP Cloud.
+`z2ui5_cl_rap_util=>set_annotation_reader( z2ui5_cl_rap_util=>cs_anno_reader-xco )`
+(or `-ddic`, `-auto`) chooses for the rest of the session - for example to
+compare both readers on premise, where an XCO read that finds nothing falls
+back to the service. `read_raw_annotations( )-reader` says who read them.
+Call it before the first floorplan reads (a subclass's constructor, the
+app that opens it): the setting lives in the ABAP session, like the
+annotation cache.
+
+**What works in ABAP Cloud**
+
+| Part | How |
+| --- | --- |
+| annotations of the entity and its elements | `XCO_CP_CDS=>ANNOTATIONS`: `direct`, `metadata_extension` and `inherited`, walked with `IF_XCO_CDS_ANN_VT_VISITOR` into the keys `GET_ANNOS` returns (`UI.LINEITEM$1$.POSITION`, strings in quotes, enums with `#`) - every annotation in the table above is read the same way |
+| metadata extensions | the extension annotations XCO returns, already merged over all layers by the system; merged over the entity's own: an annotation of a higher layer replaces the same annotation of a lower one - a whole array (`@UI.lineItem` with all its entries) or one value (`@UI.headerInfo.typeName`) (`merge_annotation_layers`, by `get_layer_priority`: CUSTOMER > PARTNER > INDUSTRY > LOCALIZATION > CORE > entity > propagated) |
+| propagated element annotations | `inherited` of XCO; where that answers nothing, a projection view takes the direct element annotations of its base by the original element names - not when the entity has `@Metadata.ignorePropagatedAnnotations: true` |
+| keys and labels | the key flag of the CDS field and the medium label of its data element (`read_raw_annotations( )-ddic_fields`), where the DDIC field list is not released |
+| associations | view entities: the associations (target, `to parent`, the ON condition as XCO prints it, cardinality) and compositions (target, cardinality); projection views: the base and the `redirected to [composition child / parent]` of each field - written as DDL and read by `parse_ddl_associations`, so a projection, a composition and its child's association to parent are completed as on premise |
+| domain fixed values | `XCO_CP_ABAP_DICTIONARY=>DATA_ELEMENT( )` -> its domain's fixed values (intervals left out) |
+| reading, RAP writes, actions, drafts, feature control, custom entities | as on premise - EML, `IF_RAP_QUERY_*` and RTTI are released |
+| texts | the text pool of `z2ui5_cl_rap_floorplan` (text symbols are released) - translated with the system's translation tool instead of SE63 |
+
+**What is off in ABAP Cloud**
+
+| Part | Why |
+| --- | --- |
+| writing a database table (`write_table_row`) | DD02L, `S_TABU_NAM` and `ENQUEUE_E_TABLE` are not released: `get_capabilities` reports no table, a table is read-only, and `write_table_row` answers "read-only" - write through a RAP business object |
+| the DDL source (`DDDDLSRC`) | not released: not read; a CDS hierarchy named by `@OData.hierarchy.recursiveHierarchy` is not parsed, a tree needs `@Hierarchy.parentChild`, `@ObjectModel.hierarchy.association` or a parent association |
+| associations of other entity kinds | XCO describes associations for view entities and projection views here - a classic DDIC-based view, an abstract or a custom entity has none (`resolve_association` still can name them) |
+| layer of a single metadata extension | the 2305 API set gives the merged annotations of all extensions, not each extension with its layer; `merge_annotation_layers` takes single layers as soon as a release offers them |
+
+**Hooks**: `z2ui5_cl_rap_util=>get_environment`, `set_annotation_reader`,
+`get_annotation_reader`, `flatten_annotation`, `merge_annotation_layers`,
+`get_layer_priority`, `get_ddic_fields` (public now, typed
+`ty_t_ddic_field`); the class `z2ui5_cl_rap_anno_xco` (`read_annotations`,
+`read_ddl_source`, `read_fixed_values`).
 
 ## Reading - views, custom entities, virtual elements
 
@@ -1214,6 +1275,18 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   `aggregate_rows` knows `COUNT_DISTINCT`. Appended:
   `ty_s_field_info-aggregation_default`, `cs_text` (10 texts, text pool
   089-098).
+- **ABAP Cloud** as an additional path (see [ABAP Cloud](#abap-cloud)): the
+  new class `z2ui5_cl_rap_anno_xco` reads annotations, associations, labels,
+  key flags and domain fixed values through XCO; every on-premise object is
+  named dynamically; the database-table writes and the DDL source read are
+  off in ABAP Cloud. New in `z2ui5_cl_rap_util`: `get_environment`,
+  `set_annotation_reader`, `get_annotation_reader`, `flatten_annotation`,
+  `get_layer_priority`, `merge_annotation_layers`, the types
+  `ty_s_ddic_field`, `ty_s_anno_event`, `ty_s_anno_layer` and the constants
+  `cs_environment`, `cs_anno_reader`, `cs_anno_event`, `cs_anno_layer`;
+  `get_ddic_fields` is public and returns `ty_t_ddic_field` instead of
+  `DDFIELDS`; appended `ty_s_raw_annotations-reader` and `-ddic_fields`.
+  `npm run lint:cloud` (`abaplint-cloud.jsonc`) is part of `npm run check`.
 
 ## Development
 
@@ -1223,11 +1296,13 @@ and PR):
 ```bash
 npm ci                          # the pinned toolchain, linter and render runtime
 npm run lint                    # abaplint: syntax/style, 0 issues expected
+npm run lint:cloud              # abaplint: ABAP Cloud language version and
+                                # released API set, 0 issues expected
 npm run unit                    # ABAP Unit tests that need no system, transpiled -
                                 # the util and the list report and object page
 npx abap2ui5lint                # every generated view: UI5 metadata + headless render
 npx abap2ui5lint --no-render    # fast loop, no browser
-npm run check                   # all three
+npm run check                   # all of them
 ```
 
 abaplint checks against the abap2UI5 release pinned in `abaplint.jsonc`

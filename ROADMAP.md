@@ -92,6 +92,23 @@ clicked through in an SAP system yet** - that is the first open item, and
     `side effects` are not read (no table holds a BDEF source) - the fields
     are configured (`get_side_effect_fields`).
 
+14. **What ABAP Cloud cannot do yet** (2026-10, third round - the XCO
+    reader is written, not run): everything in it is unverified until an
+    ABAP Cloud system runs docs/system-test.md, 12 - in particular the
+    order in which XCO's visitor reports names and values, the property
+    names XCO returns, whether `inherited` holds the propagated element
+    annotations, and the text of an ON condition. A single metadata
+    extension with its layer cannot be read through the 2305 API set (the
+    layers come merged); a database table cannot be written (DD02L,
+    `S_TABU_NAM`, `ENQUEUE_E_TABLE` - write through a RAP BO); a CDS
+    hierarchy's DDL source is not read; associations are known for view
+    entities and projection views only. What `npm run lint:cloud` cannot
+    see: the system fields ABAP Cloud's syntax check warns about
+    (`sy-uname`, `sy-datum`, `sy-zonlo` in the floorplans and the variant
+    store - `CL_ABAP_CONTEXT_INFO` is the released way) and whether a
+    method of a released class is released itself (the DDIC field list and
+    the fixed values are reached dynamically for that reason).
+
 ### How the dynamic EML statements were unblocked
 
 `GET PERMISSIONS ... OPERATIONS`, `READ ENTITIES OPERATIONS` and
@@ -268,6 +285,19 @@ like the others - is still the better one; the classes go when it lands.
   (`IF_SADL_EXIT_SORT_TRANSFORM`).
 - **Search** over `STRING` fields and hidden `@Search.defaultSearchElement`
   fields; `@Search.fuzzinessThreshold` read, the search stays a `LIKE`.
+- **ABAP Cloud** as an additional path (maintainer decision): an
+  annotation reader through the released XCO API (`z2ui5_cl_rap_anno_xco`)
+  that produces the keys of `GET_ANNOS` - direct, metadata extension and
+  inherited annotations, merged by layer (`merge_annotation_layers`), a
+  projection's base for the propagated ones - chosen when RTTI does not
+  know the annotation service, or by `set_annotation_reader`; associations,
+  compositions and redirections through XCO where `DDDDLSRC` cannot be
+  read; key flags, data element labels and domain fixed values through
+  XCO; every other on-premise dependency (the annotation service, DDFIELDS,
+  DD02L, `S_TABU_NAM`, `ENQUEUE_E_TABLE`, DDDDLSRC) named dynamically and
+  off in ABAP Cloud; the environment decided once (`get_environment`).
+  Checked by `npm run lint:cloud` (ABAP Cloud language version, released
+  API set), part of `npm run check`; open item 14 is what is left.
 
 ### 2026-10, second round
 
