@@ -19,17 +19,22 @@
  * `set main` is what the weekly canary run in abap-standard.yaml does in its own
  * checkout - it is never committed. bump-core.yml moves the pin to `latest`
  * after the gates passed on it.
+ *
+ * abaplint-cloud.jsonc (npm run lint:cloud) names the same release: `set`
+ * moves it there too, `get` reads abaplint.jsonc and fails when the two
+ * differ.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const FILE = new URL('../abaplint.jsonc', import.meta.url);
+const CLOUD_FILE = new URL('../abaplint-cloud.jsonc', import.meta.url);
 const CORE = 'https://github.com/abap2UI5/abap2UI5';
 // the one line the pin lives on - kept on its own line next to the core URL
 const PIN = /("branch":\s*")([^"]+)(")/;
 
-function read() {
-  const text = readFileSync(FILE, 'utf8');
+function read(file = FILE) {
+  const text = readFileSync(file, 'utf8');
   const at = text.indexOf(`"url": "${CORE}"`);
   if (at < 0) throw new Error(`abaplint.jsonc: no dependency on ${CORE}`);
   const block = text.slice(at, text.indexOf('}', at));
@@ -41,12 +46,17 @@ function read() {
 const [cmd, arg] = process.argv.slice(2);
 
 if (cmd === 'get') {
-  console.log(read().ref);
+  const { ref } = read();
+  const cloud = read(CLOUD_FILE).ref;
+  if (cloud !== ref) throw new Error(`abaplint-cloud.jsonc pins ${cloud}, abaplint.jsonc ${ref}`);
+  console.log(ref);
 } else if (cmd === 'set') {
   if (!arg) throw new Error('usage: core-pin.mjs set <ref>');
-  const { text, at, block } = read();
-  const next = block.replace(PIN, `$1${arg}$3`);
-  writeFileSync(FILE, text.slice(0, at) + next + text.slice(at + block.length));
+  for (const file of [FILE, CLOUD_FILE]) {
+    const { text, at, block } = read(file);
+    const next = block.replace(PIN, `$1${arg}$3`);
+    writeFileSync(file, text.slice(0, at) + next + text.slice(at + block.length));
+  }
   console.log(`core pinned to ${arg}`);
 } else if (cmd === 'latest') {
   // plain release tags only - `1.146.0`, not the downported `1.146.0-702`

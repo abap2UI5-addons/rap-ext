@@ -42,3 +42,7 @@ jobs:
         run: node scripts/core-pin.mjs set main
       - name: abaplint (expect 0 issues)
         run: npm run lint
+      # the same sources against the ABAP Cloud language version and the
+      # released API set (abaplint-cloud.jsonc)
+      - name: abaplint, ABAP Cloud (expect 0 issues)
+        run: npm run lint:cloud
