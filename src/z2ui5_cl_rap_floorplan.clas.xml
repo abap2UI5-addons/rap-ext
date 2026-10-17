@@ -528,6 +528,18 @@
      <ENTRY>Remove</ENTRY>
      <LENGTH>6</LENGTH>
     </item>
+    <item>
+     <ID>I</ID>
+     <KEY>087</KEY>
+     <ENTRY>Change Information</ENTRY>
+     <LENGTH>18</LENGTH>
+    </item>
+    <item>
+     <ID>I</ID>
+     <KEY>088</KEY>
+     <ENTRY>Changes</ENTRY>
+     <LENGTH>7</LENGTH>
+    </item>
    </TPOOL>
   </asx:values>
  </asx:abap>

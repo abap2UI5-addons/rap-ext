@@ -82,12 +82,16 @@ INTERFACE z2ui5_if_rap_ext
   "! binding reaches only PUBLIC attributes of the floorplan (the app), not
   "! the extension's own - use events and constant values; and a control
   "! from another library declares its own xmlns (a( n = `xmlns:core` ... ))
+  "! At cs_spot-custom_section, section_id is the id of the section of
+  "! get_custom_sections being rendered - container is its blocks
+  "! aggregation (added 2026-10, third round)
   METHODS extend_view DEFAULT IGNORE
     IMPORTING
-      floorplan TYPE string
-      spot      TYPE string
-      container TYPE REF TO z2ui5_cl_ui5_view_builder
-      client    TYPE REF TO z2ui5_if_client.
+      floorplan  TYPE string
+      spot       TYPE string
+      container  TYPE REF TO z2ui5_cl_ui5_view_builder
+      client     TYPE REF TO z2ui5_if_client
+      section_id TYPE string OPTIONAL.
 
   "! what the floorplans offer to write for entity_name - the operations
   "! its BDEF defines, and nothing for a database table. Set can_create,
@@ -136,5 +140,45 @@ INTERFACE z2ui5_if_rap_ext
     CHANGING
       name        TYPE string
       value       TYPE string.
+
+  "! the sections the extension adds to the object page of entity_name,
+  "! each placed BEFORE or AFTER (the default) the @UI.facet whose id is
+  "! its anchor - no anchor, or one the page does not show, is the end.
+  "! Its content comes from extend_view at cs_spot-custom_section with the
+  "! section's id as section_id (added 2026-10, third round)
+  METHODS get_custom_sections DEFAULT IGNORE
+    IMPORTING
+      floorplan   TYPE string
+      entity_name TYPE string
+    CHANGING
+      sections    TYPE z2ui5_cl_rap_util=>ty_t_custom_section.
+
+  "! the fields of entity_name whose change updates the draft at once
+  "! (side effects; the BDEF source is not read): its determinations run
+  "! and the page shows what they changed - * is every field. fields
+  "! comes filled with the default: * for a business object with draft,
+  "! nothing without one - a change of a business object without draft
+  "! reaches it on Save only, so the list does nothing there (added
+  "! 2026-10, third round)
+  METHODS get_side_effect_fields DEFAULT IGNORE
+    IMPORTING
+      floorplan   TYPE string
+      entity_name TYPE string
+    CHANGING
+      fields      TYPE string_table.
+
+  "! a section of the change documents of a record of entity_name: entity
+  "! is the CDS entity of its change documents (none: no section), filter
+  "! its fields with the field of the record whose value they must have
+  "! (name the change document entity's field, value the record's field;
+  "! empty: the record's keys under their own names) - the section shows
+  "! the entity's @UI.lineItem, read-only (added 2026-10, third round)
+  METHODS get_change_documents DEFAULT IGNORE
+    IMPORTING
+      floorplan   TYPE string
+      entity_name TYPE string
+    CHANGING
+      entity      TYPE string
+      filter      TYPE z2ui5_cl_rap_util=>ty_t_name_value.
 
 ENDINTERFACE.

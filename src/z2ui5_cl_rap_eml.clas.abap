@@ -57,12 +57,15 @@ CLASS z2ui5_cl_rap_eml DEFINITION
 
     "! create one instance - fields with a value are sent. With
     "! context-association it is created by association under
-    "! context-parent
+    "! context-parent. in_draft (added 2026-10, third round): the parent is
+    "! a draft the object page edits - the child is created in that draft,
+    "! committed, without Edit and Activate of the root
     CLASS-METHODS create
       IMPORTING
         entity_name   TYPE clike
         row           TYPE data
         context       TYPE ty_s_context OPTIONAL
+        in_draft      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -76,11 +79,15 @@ CLASS z2ui5_cl_rap_eml DEFINITION
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
+    "! delete one instance. in_draft (added 2026-10, third round): a child
+    "! of the draft the object page edits - deleted in that draft,
+    "! committed, without Edit and Activate of the root
     CLASS-METHODS delete
       IMPORTING
         entity_name   TYPE clike
         row           TYPE data
         context       TYPE ty_s_context OPTIONAL
+        in_draft      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -184,6 +191,25 @@ CLASS z2ui5_cl_rap_eml DEFINITION
       RETURNING
         VALUE(result) TYPE REF TO data.
 
+    "! READ ENTITIES BY association of the instances of rows (a table of
+    "! entity_name, the parent): the rows of the association's target the
+    "! instances lead to - their drafts when is_draft is set - as a table
+    "! of the READ RESULT type of the association. What the object page
+    "! shows of the children of the draft it edits; unbound when the read
+    "! could not be made. The derived type names (\ASSOC= or
+    "! \ASSOCIATION=...\TYPE=READ_I / READ_R) and IF_ABAP_BEHV=>OP-R-READ_BA
+    "! are written from the documentation - docs/system-test.md (added
+    "! 2026-10, third round)
+    CLASS-METHODS read_by_association
+      IMPORTING
+        entity_name   TYPE clike
+        association   TYPE clike
+        rows          TYPE REF TO data
+        context       TYPE ty_s_context OPTIONAL
+        is_draft      TYPE abap_bool DEFAULT abap_true
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
   PRIVATE SECTION.
 
     TYPES:
@@ -248,6 +274,7 @@ CLASS z2ui5_cl_rap_eml DEFINITION
         entity_name   TYPE string
         row           TYPE data
         context       TYPE ty_s_context
+        in_draft      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -438,7 +465,8 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     IF context-association IS NOT INITIAL.
       result = create_by_association( entity_name = lv_entity
                                       row         = row
-                                      context     = context ).
+                                      context     = context
+                                      in_draft    = in_draft ).
       RETURN.
     ENDIF.
 
@@ -569,7 +597,8 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
                                sub_name    = lv_assoc
                                instances   = lr_inst ) )
         is_create = abap_true ) ).
-    IF lv_draft = abap_true.
+    "a child of the draft the page edits stays in that draft
+    IF lv_draft = abap_true AND in_draft = abap_false.
       TRY.
           wrap_in_root_draft( EXPORTING bdef      = lv_bdef
                                         root_keys = context-root_keys
@@ -701,6 +730,13 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     ENDIF.
 
     set_draft( CHANGING instance = <ls_inst> ).
+    "a child of the draft the page edits is deleted in that draft
+    IF in_draft = abap_true.
+      result = run( entity_name = lv_entity
+                    op          = if_abap_behv=>op-m-delete
+                    instances   = lr_inst ).
+      RETURN.
+    ENDIF.
     DATA(lt_steps) = VALUE ty_t_steps(
       ( ops = VALUE #( ( op = if_abap_behv=>op-m-delete entity_name = lv_entity instances = lr_inst ) ) ) ).
     TRY.
@@ -1738,6 +1774,96 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
       ENDIF.
       EXIT.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD read_by_association.
+
+    DATA lt_ops TYPE abp_behv_retrievals_tab.
+    DATA lt_failed TYPE abp_behv_response_tab.
+    DATA lt_reported TYPE abp_behv_response_tab.
+    DATA lr_in TYPE REF TO data.
+    DATA lr_out TYPE REF TO data.
+    DATA lt_kinds TYPE string_table.
+    FIELD-SYMBOLS <lt_in> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
+    FIELD-SYMBOLS <lv_op> TYPE any.
+    FIELD-SYMBOLS <lv_comp> TYPE any.
+
+    IF rows IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    DATA(lv_entity) = to_upper( entity_name ).
+    DATA(lv_assoc) = to_upper( association ).
+    DATA(lv_bdef) = get_bdef( entity_name = lv_entity
+                              context     = context ).
+    "the operation, read by name - a release without it only loses the
+    "children of a draft
+    ASSIGN (`IF_ABAP_BEHV=>OP-R-READ_BA`) TO <lv_op>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    "\ASSOC= is the documented form, \ASSOCIATION= the one create uses as
+    "its second try
+    lt_kinds = VALUE #( ( `\ASSOC=` ) ( `\ASSOCIATION=` ) ).
+    LOOP AT lt_kinds INTO DATA(lv_kind).
+      TRY.
+          lr_in = create_instances( entity_name = lv_entity
+                                    bdef        = lv_bdef
+                                    type_suffix = |{ lv_kind }{ lv_assoc }\\TYPE=READ_I| ).
+          lr_out = create_instances( entity_name = lv_entity
+                                     bdef        = lv_bdef
+                                     type_suffix = |{ lv_kind }{ lv_assoc }\\TYPE=READ_R| ).
+          EXIT.
+        CATCH cx_sy_create_data_error.
+          CLEAR: lr_in, lr_out.
+      ENDTRY.
+    ENDLOOP.
+    IF lr_in IS NOT BOUND OR lr_out IS NOT BOUND.
+      RETURN.
+    ENDIF.
+
+    ASSIGN lr_in->* TO <lt_in>.
+    ASSIGN rows->* TO <lt_rows>.
+    LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      APPEND INITIAL LINE TO <lt_in> ASSIGNING FIELD-SYMBOL(<ls_in>).
+      MOVE-CORRESPONDING <ls_row> TO <ls_in>.
+      IF is_draft = abap_true.
+        set_draft( CHANGING instance = <ls_in> ).
+      ENDIF.
+      set_control_all( CHANGING instance = <ls_in> ).
+    ENDLOOP.
+    IF <lt_in> IS INITIAL.
+      result = lr_out.
+      RETURN.
+    ENDIF.
+
+    APPEND INITIAL LINE TO lt_ops ASSIGNING FIELD-SYMBOL(<ls_op>).
+    <ls_op>-op = <lv_op>.
+    <ls_op>-entity_name = lv_entity.
+    <ls_op>-instances = lr_in.
+    <ls_op>-results = lr_out.
+    "the association's name - SUB_NAME, read by name like the operation
+    ASSIGN COMPONENT `SUB_NAME` OF STRUCTURE <ls_op> TO <lv_comp>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    <lv_comp> = lv_assoc.
+
+    DATA(lv_class) = cs_dynamic-read.
+    DATA(lv_method) = `READ`.
+    TRY.
+        CALL METHOD (lv_class)=>(lv_method)
+          CHANGING
+            operations = lt_ops
+            failed     = lt_failed
+            reported   = lt_reported.
+      CATCH cx_root.
+        RETURN.
+    ENDTRY.
+    result = lr_out.
 
   ENDMETHOD.
 

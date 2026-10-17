@@ -118,6 +118,9 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         auto_apply     TYPE string VALUE `AUTO_APPLY`,
         press_go       TYPE string VALUE `PRESS_GO`,
         remove         TYPE string VALUE `REMOVE`,
+        "added 2026-10, third round (object page)
+        change_info    TYPE string VALUE `CHANGE_INFO`,
+        change_docs    TYPE string VALUE `CHANGE_DOCS`,
       END OF cs_text.
 
     " Where z2ui5_if_rap_ext~extend_view may add controls
@@ -133,6 +136,12 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         dialog_content TYPE string VALUE `DIALOG_CONTENT`,
         "the grid of the overview page - add cards
         cards          TYPE string VALUE `CARDS`,
+        "added 2026-10, third round: the content of a section of the object
+        "page an extension added (z2ui5_if_rap_ext~get_custom_sections) -
+        "extend_view gets its section_id
+        custom_section TYPE string VALUE `CUSTOM_SECTION`,
+        "the header content of the object page, behind its facets
+        header_content TYPE string VALUE `HEADER_CONTENT`,
       END OF cs_spot.
 
     "! The selection column added to rows a table or dialog lets the user
@@ -357,12 +366,15 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       CHANGING
         cs_entity TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
 
-    "! let the extension add controls at one of the cs_spot places
+    "! let the extension add controls at one of the cs_spot places -
+    "! section_id names the custom section of cs_spot-custom_section
+    "! (added 2026-10, third round)
     METHODS render_extension
       IMPORTING
         spot         TYPE string
         io_container TYPE REF TO z2ui5_cl_ui5_view_builder
-        client       TYPE REF TO z2ui5_if_client.
+        client       TYPE REF TO z2ui5_if_client
+        section_id   TYPE string OPTIONAL.
 
     "! let the extension take an event over - abap_true when it did
     METHODS ext_on_event
@@ -609,6 +621,9 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         original      TYPE data OPTIONAL
         "a child entity of a business object - added 2026-10
         context       TYPE ty_s_rap_context OPTIONAL
+        "a child of the draft the object page edits: written into that
+        "draft, committed, not activated (added 2026-10, third round)
+        in_draft      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -698,6 +713,10 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         row           TYPE data
         original      TYPE data
         context       TYPE ty_s_rap_context OPTIONAL
+        "check the record's permissions and field control first, as
+        "write_row does - the rows of a child table, whose cells the browser
+        "sends (added 2026-10, third round)
+        check         TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -957,6 +976,19 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     METHODS read_drafts
       IMPORTING
         entity_name   TYPE string
+        context       TYPE ty_s_rap_context OPTIONAL
+        rows          TYPE REF TO data
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
+    "! the children the association of entity_name leads to from the
+    "! drafts of rows (a table of the entity), read back with READ ENTITIES
+    "! BY association (z2ui5_cl_rap_eml=>read_by_association) - unbound
+    "! when the read could not be made (added 2026-10, third round)
+    METHODS read_draft_children
+      IMPORTING
+        entity_name   TYPE string
+        association   TYPE string
         context       TYPE ty_s_rap_context OPTIONAL
         rows          TYPE REF TO data
       RETURNING
@@ -1246,6 +1278,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-auto_apply    THEN `Automatisch anwenden`
         WHEN cs_text-press_go      THEN `Filter setzen und Start drücken`
         WHEN cs_text-remove        THEN `Entfernen`
+        WHEN cs_text-change_info   THEN `Änderungsinformationen`
+        WHEN cs_text-change_docs   THEN `Änderungen`
         ELSE key ).
     ELSE.
       "the text pool of this class, original language English - translate
@@ -1337,6 +1371,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-auto_apply     THEN 'Apply automatically'(084)
         WHEN cs_text-press_go       THEN 'Set the filters and press Go'(085)
         WHEN cs_text-remove         THEN 'Remove'(086)
+        WHEN cs_text-change_info    THEN 'Change Information'(087)
+        WHEN cs_text-change_docs    THEN 'Changes'(088)
         ELSE key ).
     ENDIF.
 
@@ -1353,10 +1389,11 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD render_extension.
     IF mo_ext IS BOUND.
-      mo_ext->extend_view( floorplan = mv_floorplan
-                           spot      = spot
-                           container = io_container
-                           client    = client ).
+      mo_ext->extend_view( floorplan  = mv_floorplan
+                           spot       = spot
+                           container  = io_container
+                           client     = client
+                           section_id = section_id ).
     ENDIF.
   ENDMETHOD.
 
@@ -2609,16 +2646,25 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN `CREATE`.
           result = z2ui5_cl_rap_eml=>create( entity_name = entity_name
                                              row         = <ls_row>
-                                             context     = context ).
+                                             context     = context
+                                             in_draft    = in_draft ).
         WHEN `UPDATE`.
-          result = z2ui5_cl_rap_eml=>update( entity_name = entity_name
-                                             row         = <ls_row>
-                                             original    = original
-                                             context     = context ).
+          IF in_draft = abap_true.
+            result = z2ui5_cl_rap_eml=>update_draft( entity_name = entity_name
+                                                     row         = <ls_row>
+                                                     original    = original
+                                                     context     = context ).
+          ELSE.
+            result = z2ui5_cl_rap_eml=>update( entity_name = entity_name
+                                               row         = <ls_row>
+                                               original    = original
+                                               context     = context ).
+          ENDIF.
         WHEN `DELETE`.
           result = z2ui5_cl_rap_eml=>delete( entity_name = entity_name
                                              row         = <ls_row>
-                                             context     = context ).
+                                             context     = context
+                                             in_draft    = in_draft ).
       ENDCASE.
     ELSEIF original IS SUPPLIED.
       result = write_table_row( entity_name = entity_name
@@ -2950,6 +2996,16 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                                 context     = context )-can_update = abap_false.
       APPEND get_text( cs_text-read_only ) TO result-messages.
       RETURN.
+    ENDIF.
+    IF check = abap_true.
+      result-messages = check_rap_write( entity_name = entity_name
+                                         operation   = `UPDATE`
+                                         row         = row
+                                         original    = original
+                                         context     = context ).
+      IF result-messages IS NOT INITIAL.
+        RETURN.
+      ENDIF.
     ENDIF.
 
     CREATE DATA lr_row LIKE row.
@@ -3628,6 +3684,18 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                                                context     = context
                                                rows        = rows
                                                is_draft    = abap_true ).
+  ENDMETHOD.
+
+
+  METHOD read_draft_children.
+    IF eml_available( ) = abap_false OR rows IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    result = z2ui5_cl_rap_eml=>read_by_association( entity_name = entity_name
+                                                    association = association
+                                                    context     = context
+                                                    rows        = rows
+                                                    is_draft    = abap_true ).
   ENDMETHOD.
 
 
