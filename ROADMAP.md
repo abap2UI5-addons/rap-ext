@@ -12,7 +12,7 @@ clicked through in an SAP system yet** - that is the first open item, and
    and its findings before anything below. The RAP write path, the draft
    handling, the derived type names (`\ASSOC=` or `\ASSOCIATION=...\TYPE=CREATE`
    for a create by association), the host variables in dynamic WHERE clauses, the
-   DDL source read and the hand-written sidecar of `z2ui5_t_rap_var` were
+   DDL source read and the hand-written sidecar of `z2ui5_t_31` were
    written from documentation.
 2. **The three dynamic EML classes** (`z2ui5_cl_rap_eml_perm`, `_read`,
    `_key`) in a system: their syntax, the absolute names of the
@@ -192,7 +192,7 @@ like the others - is still the better one; the classes go when it lands.
   (`@UI.lineItem.cssDefault.width` the default), grouping by
   `@UI.presentationVariant.groupBy` or the user's choice (ordered in the
   database, a group header per value), all kept in the views.
-- **Views**: public views (`IS_PUBLIC` in `z2ui5_t_rap_var`), "apply
+- **Views**: public views (`IS_PUBLIC` in `z2ui5_t_31`), "apply
   automatically" (`AUTO_APPLY`) apart from the default; the start from
   `@UI.selectionPresentationVariant` - the presentation variant's sort,
   group and qualified `@UI.lineItem` (formerly open item 7, also for the
@@ -324,7 +324,7 @@ like the others - is still the better one; the classes go when it lands.
   suggestions while typing.
 - **Deep links**: `z2ui5_cl_rap_start` opens floorplans from a URL (an
   allow-list per subclass), the object page copies a link to its record.
-- **Views per user** (`z2ui5_cl_rap_variant`, table `z2ui5_t_rap_var`), a
+- **Views per user** (`z2ui5_cl_rap_variant`, table `z2ui5_t_31`), a
   columns dialog, the **CSV export**.
 - **Overview**: shares (`#DONUT`, `#PIE`) and trends (`#LINE`, `#AREA`) next
   to the bars, cards from `@UI.presentationVariant`.

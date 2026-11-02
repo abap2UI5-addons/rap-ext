@@ -15,7 +15,7 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
 
 - [ ] every object activates - in particular `z2ui5_cl_rap_eml` (dynamic
       EML), `z2ui5_cl_rap_query` (the query provider interfaces, see 9a),
-      `z2ui5_cl_rap_variant` and the table `z2ui5_t_rap_var` (its
+      `z2ui5_cl_rap_variant` and the table `z2ui5_t_31` (its
       sidecar was written by hand, after the core's exported `z2ui5_t_01`;
       the columns `IS_PUBLIC` and `AUTO_APPLY` were appended in 2026-10,
       third round - an existing table is adjusted, check SE14)

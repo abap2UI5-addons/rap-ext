@@ -65,6 +65,18 @@ What it is not:
   `sap.uxap.ObjectPageSubSection.showTitle`)
 - for the RAP parts of the demo: the `/DMO/` flight reference scenario
 
+**Renumbered tables (2026-11).** The tables follow the numbering all addons share now: `Z2UI5_T_RAP_VAR` is `Z2UI5_T_31`. The pull creates the new tables empty, and the data stays in the old ones. Copy it once per client before you delete an old table - for each pair, in a scratch report:
+
+```abap
+DATA lr_rows TYPE REF TO data.
+FIELD-SYMBOLS <rows> TYPE STANDARD TABLE.
+CREATE DATA lr_rows TYPE STANDARD TABLE OF ('Z2UI5_T_31').
+ASSIGN lr_rows->* TO <rows>.
+SELECT * FROM ('Z2UI5_T_RAP_VAR') INTO TABLE <rows>.
+MODIFY ('Z2UI5_T_31') FROM TABLE <rows>.
+COMMIT WORK.
+```
+
 **Steps** - with [abapGit](https://abapgit.org), in this order:
 
 1. [abap2UI5](https://github.com/abap2UI5/abap2UI5)
@@ -750,7 +762,7 @@ A view can be **public** (every user sees it with its owner's name; only
 the owner saves or deletes it) and **apply automatically** - the list is
 read as soon as it is chosen; one that does not sets its filters and waits
 for Go. Both need the columns `IS_PUBLIC` and `AUTO_APPLY` of
-`z2ui5_t_rap_var` (added 2026-10, third round); a system whose table lacks
+`z2ui5_t_31` (added 2026-10, third round); a system whose table lacks
 them keeps private views that always apply.
 
 ## CDS Tree
@@ -1093,7 +1105,7 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   `ty_s_chart_row` grew at their end. New optional parameters (`context`,
   `host`, `with_selection`, `value_state`) leave every call as it was.
 - New objects: `z2ui5_cl_rap_start` (deep links), `z2ui5_cl_rap_variant` and
-  the table `z2ui5_t_rap_var` (views), `z2ui5_cl_rap_test_start` (the demo's
+  the table `z2ui5_t_31` (views), `z2ui5_cl_rap_test_start` (the demo's
   deep links).
 - The object page of a draft business object edits in a committed draft; the
   value help of an entity with selection fields is a `sap.m.Dialog`.
@@ -1206,7 +1218,7 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   `z2ui5_cl_rap_variant`'s `ty_s_data` (`filter_fields`, `column_order`,
   `column_widths`, `group_field`) and `ty_s_variant` (`is_public`,
   `auto_apply`, `owner`), `cs_text` (24 texts, text pool 063-086). New:
-  the table columns `IS_PUBLIC` and `AUTO_APPLY` of `z2ui5_t_rap_var`,
+  the table columns `IS_PUBLIC` and `AUTO_APPLY` of `z2ui5_t_31`,
   `z2ui5_cl_rap_variant=>has_public_views`, the util's
   `conditions_to_filter`, `filter_to_conditions`, `split_filter_value`,
   `get_filter_control`, `get_filter_list`, `selection_variant_filters`,
