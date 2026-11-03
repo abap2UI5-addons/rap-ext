@@ -2,7 +2,7 @@
   "name": "abap2ui5-rap-ext",
   "private": true,
   "version": "1.0.0",
-  "description": "Display RAP and CDS artifacts with abap2UI5.",
+  "description": "Fiori-Elements-style floorplans generated at runtime from CDS views and their UI annotations, rendered with abap2UI5.",
   "scripts": {
     "lint": "abaplint abaplint.jsonc",
     "lint:cloud": "abaplint abaplint-cloud.jsonc",
