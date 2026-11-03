@@ -94,7 +94,6 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
 
 
   METHOD z2ui5_if_client~view_model_update.
-    RETURN.
   ENDMETHOD.
 
 

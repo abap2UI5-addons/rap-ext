@@ -570,8 +570,8 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
 
     "! the texts of is_field (@ObjectModel.text.association) for the rows of
     "! data (a table of is_entity): the @Semantics.text field of the
-    "! association's target, in the logon language when it has a
-    "! @Semantics.language field - name the values of the association's
+    "! association's target, in the logon language when it has
+    "! a @Semantics.language field - name the values of the association's
     "! fields in the row joined by |, value the text (added 2026-10, third
     "! round)
     METHODS read_association_texts
@@ -2840,7 +2840,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
           ELSE.
             "the client is the database's - not part of what was seen
             LOOP AT lt_ddic INTO ls_ddic WHERE datatype = `CLNT`.
+              UNASSIGN <lv_from>.
               ASSIGN COMPONENT ls_ddic-fieldname OF STRUCTURE <ls_current> TO <lv_from>.
+              UNASSIGN <lv_to>.
               ASSIGN COMPONENT ls_ddic-fieldname OF STRUCTURE <ls_seen> TO <lv_to>.
               IF <lv_from> IS ASSIGNED AND <lv_to> IS ASSIGNED.
                 <lv_to> = <lv_from>.

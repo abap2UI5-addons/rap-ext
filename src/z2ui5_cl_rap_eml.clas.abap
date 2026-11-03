@@ -1184,8 +1184,9 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
         IF lr_ref IS NOT BOUND.
           CONTINUE.
         ENDIF.
+        UNASSIGN <lt_entries>.
         ASSIGN lr_ref->* TO <lt_entries>.
-        IF sy-subrc <> 0.
+        IF <lt_entries> IS NOT ASSIGNED.
           CONTINUE.
         ENDIF.
         LOOP AT <lt_entries> ASSIGNING FIELD-SYMBOL(<ls_entry>).
@@ -1295,8 +1296,9 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
         IF lr_ref IS NOT BOUND.
           CONTINUE.
         ENDIF.
+        UNASSIGN <lt_entries>.
         ASSIGN lr_ref->* TO <lt_entries>.
-        IF sy-subrc <> 0.
+        IF <lt_entries> IS NOT ASSIGNED.
           CONTINUE.
         ENDIF.
         LOOP AT <lt_entries> REFERENCE INTO entry.
@@ -1693,7 +1695,7 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     "the operation of a function - read by name, so a release without it
     "only loses the defaults
     ASSIGN (`IF_ABAP_BEHV=>OP-R-EXECUTE`) TO <lv_op>.
-    IF sy-subrc <> 0 OR lv_function IS INITIAL.
+    IF <lv_op> IS NOT ASSIGNED OR lv_function IS INITIAL.
       RETURN.
     ENDIF.
 
@@ -1801,7 +1803,7 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     "the operation, read by name - a release without it only loses the
     "children of a draft
     ASSIGN (`IF_ABAP_BEHV=>OP-R-READ_BA`) TO <lv_op>.
-    IF sy-subrc <> 0.
+    IF <lv_op> IS NOT ASSIGNED.
       RETURN.
     ENDIF.
 

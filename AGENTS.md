@@ -22,7 +22,7 @@ views and their UI annotations, rendered with abap2UI5.
 | `z2ui5_cl_rap_query` | the read path of custom entities - the only class implementing the `IF_RAP_QUERY_*` interfaces (the request and response a query provider is called with); not in `npm run unit`, reached only behind `query_available( )` |
 | `z2ui5_if_rap_ext` | the extension points (`set_extension( )`) |
 | `z2ui5_cl_rap_start` | opens a floorplan from a URL (deep links) - opens nothing unless a subclass allows the entity |
-| `z2ui5_cl_rap_variant`, table `z2ui5_t_rap_var` | the views a user saves of a list, reached by table name only |
+| `z2ui5_cl_rap_variant`, table `z2ui5_t_31` | the views a user saves of a list, reached by table name only |
 | `z2ui5_cl_rap_test`, `z2ui5_cl_rap_test_start`, `z2ui5_dd_rap_test_*` | the demo app, its deep links and its abstract entities |
 | `scripts/` | `core-pin.mjs` (the core release abaplint checks against), `unit.mjs` (the transpiled unit run) |
 | `ROADMAP.md` | what is done and what is open |
@@ -62,8 +62,8 @@ as CI does.
   (the steampunk-2305 API set and the abap2UI5 core repo), so the first run
   needs network access. The core is **pinned to a release tag** (the
   `"branch"` key, abap2UI5 CONVENTIONS §9) - read and move it only with
-  `scripts/core-pin.mjs`; `bump-core.yml` moves it weekly after abaplint
-  passed on the new tag, and the scheduled run of `abap-standard.yaml` lints against
+  `scripts/core-pin.mjs`; `bump-deps.yaml` moves it monthly, in its one
+  pull request whose checks lint against the new tag (`bump-core.yml` by hand), and the scheduled run of `abap-standard.yaml` lints against
   the core's `main` as the canary. Do not drop the key: abaplint then clones
   `main` silently.
 - `npm run unit` (`scripts/unit.mjs`) transpiles the classes listed in its
@@ -353,7 +353,7 @@ classes, so those method names and signatures are a **public contract**:
   `get_default_text`, and `'Text'(nnn)` with the next free number - in the
   code and in the sidecar. The literal stands in where a system has no text
   pool.
-- `z2ui5_t_rap_var.tabl.xml` was written by hand after the core's exported
+- `z2ui5_t_31.tabl.xml` was written by hand after the core's exported
   `z2ui5_t_01` - replace it with what abapGit serializes once the table
   exists in a system.
 - Every artifact carries the `Z2UI5_<type>_RAP_` prefix — the same scheme the

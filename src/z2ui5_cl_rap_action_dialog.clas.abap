@@ -104,7 +104,7 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
       IMPORTING
         entity_name   TYPE string
       RETURNING
-        VALUE(result) TYPE REF TO data.
+        VALUE(result) TYPE REF TO data ##CALLED.
 
     "! the label and the control of one field
     METHODS render_dialog_field

@@ -1,6 +1,6 @@
 "! The views a user saved of a list report or worklist: the filter values,
 "! the search, the sort order and the hidden columns, by name, one of them
-"! the default. Kept in table z2ui5_t_rap_var per user and entity.
+"! the default. Kept in table z2ui5_t_31 per user and entity.
 "!
 "! Since 2026-10 (third round) a view also keeps the filter fields, the
 "! order and width of the columns and the group field, it can be public
@@ -48,7 +48,7 @@ CLASS z2ui5_cl_rap_variant DEFINITION
 
     TYPES ty_t_variant TYPE STANDARD TABLE OF ty_s_variant WITH EMPTY KEY.
 
-    CONSTANTS cv_table TYPE string VALUE `Z2UI5_T_RAP_VAR`.
+    CONSTANTS cv_table TYPE string VALUE `Z2UI5_T_31`.
 
     "! the table is there
     CLASS-METHODS is_available
@@ -140,7 +140,8 @@ CLASS z2ui5_cl_rap_variant IMPLEMENTATION.
       RETURN.
     ENDIF.
     DATA(lv_uname) = sy-uname.
-    DATA(lv_entity) = to_upper( entity_name ).
+    "named in the dynamic WHERE only
+    DATA(lv_entity) = to_upper( entity_name ) ##NEEDED.
 
     TRY.
         CREATE DATA lr_rows TYPE STANDARD TABLE OF (cv_table).
@@ -257,9 +258,10 @@ CLASS z2ui5_cl_rap_variant IMPLEMENTATION.
     IF is_available( ) = abap_false.
       RETURN.
     ENDIF.
-    DATA(lv_uname) = sy-uname.
-    DATA(lv_entity) = to_upper( entity_name ).
-    DATA(lv_name) = CONV string( name ).
+    "named in the dynamic WHERE only
+    DATA(lv_uname) = sy-uname ##NEEDED.
+    DATA(lv_entity) = to_upper( entity_name ) ##NEEDED.
+    DATA(lv_name) = CONV string( name ) ##NEEDED.
     DATA(lv_where) = |{ cv_owner_where } AND NAME = @LV_NAME|.
 
     TRY.
