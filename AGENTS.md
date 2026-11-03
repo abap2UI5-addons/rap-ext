@@ -62,8 +62,8 @@ as CI does.
   (the steampunk-2305 API set and the abap2UI5 core repo), so the first run
   needs network access. The core is **pinned to a release tag** (the
   `"branch"` key, abap2UI5 CONVENTIONS §9) - read and move it only with
-  `scripts/core-pin.mjs`; `bump-core.yml` moves it weekly after abaplint
-  passed on the new tag, and the scheduled run of `abap-standard.yaml` lints against
+  `scripts/core-pin.mjs`; `bump-deps.yaml` moves it monthly, in its one
+  pull request whose checks lint against the new tag (`bump-core.yml` by hand), and the scheduled run of `abap-standard.yaml` lints against
   the core's `main` as the canary. Do not drop the key: abaplint then clones
   `main` silently.
 - `npm run unit` (`scripts/unit.mjs`) transpiles the classes listed in its

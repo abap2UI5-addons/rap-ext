@@ -1318,7 +1318,7 @@ npm run check                   # all of them
 ```
 
 abaplint checks against the abap2UI5 release pinned in `abaplint.jsonc`
-(`scripts/core-pin.mjs`, moved weekly by `bump-core.yml`); the weekly run of
+(`scripts/core-pin.mjs`, moved monthly by `bump-deps.yaml`); the weekly run of
 `abap-standard.yaml` is the canary against the core's `main`.
 
 End-to-end still needs a system: install via abapGit and run
