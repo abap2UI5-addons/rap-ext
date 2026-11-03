@@ -354,6 +354,8 @@
         "key",
         "entity_name"
       ]
-    }
+    },
+    // added 2026-11 with its findings fixed: UNASSIGN before an ASSIGN in a loop
+    "is_assigned_in_loop": true
   }
 }

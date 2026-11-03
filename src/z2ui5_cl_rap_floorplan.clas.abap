@@ -2840,7 +2840,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
           ELSE.
             "the client is the database's - not part of what was seen
             LOOP AT lt_ddic INTO ls_ddic WHERE datatype = `CLNT`.
+              UNASSIGN <lv_from>.
               ASSIGN COMPONENT ls_ddic-fieldname OF STRUCTURE <ls_current> TO <lv_from>.
+              UNASSIGN <lv_to>.
               ASSIGN COMPONENT ls_ddic-fieldname OF STRUCTURE <ls_seen> TO <lv_to>.
               IF <lv_from> IS ASSIGNED AND <lv_to> IS ASSIGNED.
                 <lv_to> = <lv_from>.
