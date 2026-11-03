@@ -140,7 +140,8 @@ CLASS z2ui5_cl_rap_variant IMPLEMENTATION.
       RETURN.
     ENDIF.
     DATA(lv_uname) = sy-uname.
-    DATA(lv_entity) = to_upper( entity_name ).
+    "named in the dynamic WHERE only
+    DATA(lv_entity) = to_upper( entity_name ) ##NEEDED.
 
     TRY.
         CREATE DATA lr_rows TYPE STANDARD TABLE OF (cv_table).
@@ -257,9 +258,10 @@ CLASS z2ui5_cl_rap_variant IMPLEMENTATION.
     IF is_available( ) = abap_false.
       RETURN.
     ENDIF.
-    DATA(lv_uname) = sy-uname.
-    DATA(lv_entity) = to_upper( entity_name ).
-    DATA(lv_name) = CONV string( name ).
+    "named in the dynamic WHERE only
+    DATA(lv_uname) = sy-uname ##NEEDED.
+    DATA(lv_entity) = to_upper( entity_name ) ##NEEDED.
+    DATA(lv_name) = CONV string( name ) ##NEEDED.
     DATA(lv_where) = |{ cv_owner_where } AND NAME = @LV_NAME|.
 
     TRY.

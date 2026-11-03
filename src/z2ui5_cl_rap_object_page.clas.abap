@@ -1608,7 +1608,6 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       DATA lt_docs_values TYPE ty_t_name_value.
       DATA lt_docs_names TYPE string_table.
       FIELD-SYMBOLS <lv_docs_value> TYPE any.
-      CLEAR: lt_docs_values, lt_docs_names.
       LOOP AT lt_docs_filter INTO DATA(ls_docs_filter).
         DATA(lv_docs_local) = to_upper( ls_docs_filter-value ).
         DATA(lv_docs_field) = to_upper( ls_docs_filter-name ).
@@ -1985,17 +1984,18 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     "a little before the save - a time stamp in seconds is rounded
     TRY.
         DATA(lv_kind) = cl_abap_typedescr=>describe_by_data( <lv_at> )->type_kind.
-        IF lv_kind = cl_abap_typedescr=>typekind_utclong.
-          <lv_at> = utclong_add( val     = since_utc
-                                 seconds = -2 ).
-        ELSEIF lv_kind = cl_abap_typedescr=>typekind_packed.
-          <lv_at> = cl_abap_tstmp=>add( tstmp = since_ts
-                                        secs  = -2 ).
-        ELSEIF lv_kind = cl_abap_typedescr=>typekind_date.
-          <lv_at> = sy-datum.
-        ELSE.
-          RETURN.
-        ENDIF.
+        CASE lv_kind.
+          WHEN cl_abap_typedescr=>typekind_utclong.
+            <lv_at> = utclong_add( val     = since_utc
+                                   seconds = -2 ).
+          WHEN cl_abap_typedescr=>typekind_packed.
+            <lv_at> = cl_abap_tstmp=>add( tstmp = since_ts
+                                          secs  = -2 ).
+          WHEN cl_abap_typedescr=>typekind_date.
+            <lv_at> = sy-datum.
+          WHEN OTHERS.
+            RETURN.
+        ENDCASE.
       CATCH cx_root.
         RETURN.
     ENDTRY.
@@ -2728,7 +2728,6 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       IF ms_caps-is_rap_bo = abap_true.
         DATA lt_header_actions TYPE z2ui5_cl_rap_util=>ty_t_action.
         DATA lt_header_groups TYPE z2ui5_cl_rap_util=>ty_t_action_group.
-        CLEAR: lt_header_actions, lt_header_groups.
         LOOP AT ms_entity-actions INTO DATA(ls_action)
           WHERE source = `IDENTIFICATION` AND semantic_object IS INITIAL AND qualifier IS INITIAL.
           APPEND ls_action TO lt_header_actions.

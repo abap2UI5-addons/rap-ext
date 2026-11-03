@@ -2991,13 +2991,11 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
       "ADDITIONALBINDING$n$.ELEMENT / .LOCALELEMENT / .USAGE
       DATA lt_binding_annos TYPE ty_t_annotation.
-      CLEAR lt_binding_annos.
       LOOP AT lt_entries INTO ls_entry WHERE idx = lv_idx AND prop CP `ADDITIONALBINDING*`.
         APPEND VALUE #( key = ls_entry-prop value = ls_entry-value ) TO lt_binding_annos.
       ENDLOOP.
       DATA(lt_bindings) = get_entries( it_annos = lt_binding_annos prefix = `ADDITIONALBINDING` ).
       DATA lv_bidx TYPE i.
-      CLEAR lv_bidx.
       LOOP AT lt_bindings INTO DATA(ls_binding).
         IF ls_binding-idx = lv_bidx.
           CONTINUE.
@@ -3413,21 +3411,22 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDIF.
       DATA(lv_rest) = substring( val = lv_key off = lv_len ).
       DATA(ls_entry) = VALUE ty_s_entry( value = ls_anno-value ).
-      IF lv_rest(1) = `$`.
-        "a copy - val is passed by reference and rest is cleared first
-        DATA(lv_indexed) = lv_rest.
-        split_index( EXPORTING val  = lv_indexed
-                     IMPORTING idx  = ls_entry-idx
-                               rest = lv_rest ).
-        IF ls_entry-idx = 0.
+      CASE lv_rest(1).
+        WHEN `$`.
+          "a copy - val is passed by reference and rest is cleared first
+          DATA(lv_indexed) = lv_rest.
+          split_index( EXPORTING val  = lv_indexed
+                       IMPORTING idx  = ls_entry-idx
+                                 rest = lv_rest ).
+          IF ls_entry-idx = 0.
+            CONTINUE.
+          ENDIF.
+        WHEN `.`.
+          ls_entry-idx = 1.
+        WHEN OTHERS.
+          "UI.LINEITEMS... - another annotation that only shares the prefix
           CONTINUE.
-        ENDIF.
-      ELSEIF lv_rest(1) = `.`.
-        ls_entry-idx = 1.
-      ELSE.
-        "UI.LINEITEMS... - another annotation that only shares the prefix
-        CONTINUE.
-      ENDIF.
+      ENDCASE.
       IF lv_rest IS NOT INITIAL AND lv_rest(1) = `.`.
         lv_rest = substring( val = lv_rest off = 1 ).
       ENDIF.
@@ -3676,7 +3675,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         method_not_found    = 2
         OTHERS              = 3 ).
     IF sy-subrc <> 0.
-      RAISE EXCEPTION TYPE cx_sy_dyn_call_param_not_found.
+      RAISE EXCEPTION NEW cx_sy_dyn_call_param_not_found( ).
     ENDIF.
     CREATE DATA result TYPE HANDLE lo_type.
 
@@ -5302,11 +5301,12 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       lv_depth = 0.
       LOOP AT ct_tokens INTO DATA(lv_token).
         lv_index = sy-tabix.
-        IF lv_token = `(`.
-          lv_depth = lv_depth + 1.
-        ELSEIF lv_token = `)`.
-          lv_depth = lv_depth - 1.
-        ENDIF.
+        CASE lv_token.
+          WHEN `(`.
+            lv_depth = lv_depth + 1.
+          WHEN `)`.
+            lv_depth = lv_depth - 1.
+        ENDCASE.
         IF lv_depth = 0 AND lv_index < lv_lines.
           RETURN.
         ENDIF.
@@ -6280,7 +6280,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       RETURN.
     ENDIF.
     ASSIGN data->* TO <lt_rows>.
-    IF sy-subrc <> 0.
+    IF <lt_rows> IS NOT ASSIGNED.
       RETURN.
     ENDIF.
     LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
@@ -7146,14 +7146,15 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
           IF line_exists( lt_stop[ table_line = lv_word ] ) AND lv_depth = 0.
             EXIT.
           ENDIF.
-          IF lv_word = `(`.
-            lv_depth = lv_depth + 1.
-          ELSEIF lv_word = `)`.
-            IF lv_depth = 0.
-              EXIT.
-            ENDIF.
-            lv_depth = lv_depth - 1.
-          ENDIF.
+          CASE lv_word.
+            WHEN `(`.
+              lv_depth = lv_depth + 1.
+            WHEN `)`.
+              IF lv_depth = 0.
+                EXIT.
+              ENDIF.
+              lv_depth = lv_depth - 1.
+          ENDCASE.
           APPEND lt_tokens[ lv_idx ] TO lt_where.
           lv_idx = lv_idx + 1.
         ENDWHILE.

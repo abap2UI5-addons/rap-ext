@@ -21,7 +21,6 @@ ENDCLASS.
 CLASS ltd_client IMPLEMENTATION.
 
   METHOD z2ui5_if_client~view_destroy.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~view_display.
@@ -29,75 +28,57 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~view_model_update.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~set_session_stateful.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~app_state_set_active.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~app_state_get_href.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~hash_set.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~hash_replace.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nest_view_display.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nest_view_destroy.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nest_view_model_update.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nest2_view_display.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nest2_view_destroy.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nest2_view_model_update.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~popup_display.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~popup_model_update.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~popup_destroy.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~popover_model_update.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~popover_display.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~popover_destroy.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get.
@@ -109,19 +90,15 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_event_arg.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_app.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~_event_nav_app_leave.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nav_app_leave.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nav_app_call.
@@ -129,11 +106,9 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~message_box_display.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~message_toast_display.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~_event.
@@ -141,7 +116,6 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~_event_client.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~_bind.
@@ -153,11 +127,9 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~_bind_path.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~follow_up_action.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_on_event.
@@ -169,7 +141,6 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_app_prev_stack.
-    RETURN.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_on_navigated.
@@ -177,7 +148,6 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_app_prev.
-    RETURN.
   ENDMETHOD.
 
 ENDCLASS.

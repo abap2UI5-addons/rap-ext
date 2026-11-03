@@ -586,7 +586,7 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       IMPORTING
         val           TYPE string
       RETURNING
-        VALUE(result) TYPE string.
+        VALUE(result) TYPE string ##CALLED.
 
     "! a filter of the filter bar for is_field: its label, default, value
     "! help and control (z2ui5_cl_rap_util=>get_filter_control) with the
@@ -987,7 +987,6 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   METHOD on_event.
     "subclass hook - the default does nothing: the framework pushes the model
     "by itself whenever a roundtrip changed it
-    RETURN.
   ENDMETHOD.
 
 
@@ -3804,7 +3803,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     IF result = abap_true.
       RETURN.
     ENDIF.
-    LOOP AT get_line_item_intents( ) INTO DATA(ls_intent) WHERE sem_object_bindings IS NOT INITIAL.
+    DATA(lt_intents) = get_line_item_intents( ).
+    LOOP AT lt_intents TRANSPORTING NO FIELDS WHERE sem_object_bindings IS NOT INITIAL.
       result = abap_true.
       RETURN.
     ENDLOOP.

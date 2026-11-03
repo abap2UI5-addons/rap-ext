@@ -273,11 +273,12 @@ CLASS z2ui5_cl_rap_anno_xco IMPLEMENTATION.
 
     TRY.
         DATA(lo_type) = io_entity->get_data_definition( )->get_type( ).
-        IF lo_type->value = xco_cp_data_definition=>type->projection_view->value.
-          result = `PROJECTION`.
-        ELSEIF lo_type->value = xco_cp_data_definition=>type->view_entity->value.
-          result = `VIEW_ENTITY`.
-        ENDIF.
+        CASE lo_type->value.
+          WHEN xco_cp_data_definition=>type->projection_view->value.
+            result = `PROJECTION`.
+          WHEN xco_cp_data_definition=>type->view_entity->value.
+            result = `VIEW_ENTITY`.
+        ENDCASE.
       CATCH cx_root.
         CLEAR result.
     ENDTRY.

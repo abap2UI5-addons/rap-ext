@@ -325,6 +325,35 @@
     "range_row_values": true,
     "redundant_cast": true,
     "smim_consistency": true,
-    "sort_empty_key": true
+    "sort_empty_key": true,
+    // added 2026-11 with their findings fixed.
+    // unused_variables skips client, key and entity_name: parameters of
+    // PROTECTED steps of the floorplans (on_event, render hooks, get_extension,
+    // get_delete_mode) that subclasses redefine - the signatures are public
+    // contract (AGENTS.md, "Public contract"). The locals of z2ui5_cl_rap_variant
+    // that only its dynamic WHERE names carry ##NEEDED.
+    // unused_methods: the PROTECTED normalize_value (list report) and
+    // load_dropdown_data (action dialog) carry ##CALLED - subclasses may call
+    // them, removing them would break callers in other systems.
+    "abapdoc_leading_at": true,
+    "change_if_to_case": true,
+    "clear_after_declaration": true,
+    "prefer_raise_exception_new": true,
+    "subrc_after_assign": true,
+    "unnecessary_return": true,
+    "unused_methods": true,
+    "unused_variables": {
+      "severity": "Error",
+      "skipNames": [
+        "lv_dummy",
+        "lv_dummy2",
+        "lv_dummy3",
+        "lv_dummy4",
+        "<dummy>",
+        "client",
+        "key",
+        "entity_name"
+      ]
+    }
   }
 }

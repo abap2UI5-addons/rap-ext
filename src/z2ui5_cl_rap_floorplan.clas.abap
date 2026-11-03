@@ -570,8 +570,8 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
 
     "! the texts of is_field (@ObjectModel.text.association) for the rows of
     "! data (a table of is_entity): the @Semantics.text field of the
-    "! association's target, in the logon language when it has a
-    "! @Semantics.language field - name the values of the association's
+    "! association's target, in the logon language when it has
+    "! a @Semantics.language field - name the values of the association's
     "! fields in the row joined by |, value the text (added 2026-10, third
     "! round)
     METHODS read_association_texts
