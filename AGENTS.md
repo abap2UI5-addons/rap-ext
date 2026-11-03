@@ -1,6 +1,6 @@
-# AGENTS.md — cds-wrapper
+# AGENTS.md — rap-ext
 
-Single source of truth for agents working on the **abap2UI5 cds-wrapper**
+Single source of truth for agents working on the **abap2UI5 rap-ext**
 addon — Fiori-Elements-style floorplans (List Report, Object Page, Worklist,
 Value Help, Overview Page, Action Dialog) generated at runtime from CDS
 views and their UI annotations, rendered with abap2UI5.
@@ -101,7 +101,7 @@ as CI does.
   through the core's client, and a draft roundtrip through its handler. It
   runs in a system, not in `npm run unit` (it needs the core). It uses the
   same core internals as the core's own app tests (`z2ui5_cl_ui5_action`,
-  `z2ui5_cl_ui5_handler`, `z2ui5_cl_ui5_client`, `z2ui5_cl_ui5_app_cont`), so
+  `z2ui5_cl_ui5_handler`, `z2ui5_cl_ui5_client`), so
   when a core refactor turns `npm run lint` red there, follow what the core's
   tests did.
   Everything else is verified by hand: install via abapGit in a system with
@@ -343,9 +343,9 @@ classes, so those method names and signatures are a **public contract**:
   from a system.
 - Line endings are **LF only** (a CRLF import once broke the `.asddls`
   round-trip — enforced by `.gitattributes`), UTF-8, final newline.
-- `z2ui5_cl_rap_util.clas.xml`, `_list_report` and `_object_page` carry
-  `WITH_UNIT_TESTS` - a class that gets a `.testclasses.abap` needs it in its
-  sidecar too, and a test class that calls a protected member needs `CLASS
+- `z2ui5_cl_rap_util.clas.xml`, `_list_report`, `_object_page`, `_tree`,
+  `_fcl`, `_start` and `_overview_page` carry `WITH_UNIT_TESTS` - a class
+  that gets a `.testclasses.abap` needs it in its sidecar too, and a test class that calls a protected member needs `CLASS
   <class> DEFINITION LOCAL FRIENDS <test class>`.
 - The English built-in texts are the text pool of `z2ui5_cl_rap_floorplan`
   (`TPOOL` in its sidecar, the format of an exported one: `LENGTH` is the
@@ -359,8 +359,10 @@ classes, so those method names and signatures are a **public contract**:
 - Every artifact carries the `Z2UI5_<type>_RAP_` prefix — the same scheme the
   [samples](https://github.com/abap2UI5/samples) repo uses with its `SMP` token
   (`Z2UI5_CL_SMP_…`, `Z2UI5_T_SMP_…`). Here: `Z2UI5_CL_RAP_…` for classes,
-  `Z2UI5_DD_RAP_…` for DDLS, `Z2UI5_IF_RAP_…` for interfaces. New objects follow it; nothing stays on the old
-  `Z2UI5_CDS_` / `Z2UI5_CL_CDS_` names.
+  `Z2UI5_DD_RAP_…` for DDLS, `Z2UI5_IF_RAP_…` for interfaces. New objects
+  follow it; nothing stays on the old `Z2UI5_CDS_` / `Z2UI5_CL_CDS_` names.
+  The one exception is the table: `z2ui5_t_31` follows the shared
+  `z2ui5_t_NN` numbering of the abap2UI5 tables.
   Note that this is the *object* namespace only — the `cds_view_name`
   constructor parameter and the `CDS` wording in descriptions are part of the
   public contract / prose and are deliberately untouched.

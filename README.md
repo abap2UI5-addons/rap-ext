@@ -1311,7 +1311,8 @@ npm run lint                    # abaplint: syntax/style, 0 issues expected
 npm run lint:cloud              # abaplint: ABAP Cloud language version and
                                 # released API set, 0 issues expected
 npm run unit                    # ABAP Unit tests that need no system, transpiled -
-                                # the util and the list report and object page
+                                # util, list report, object page, tree, flexible
+                                # column layout and start (not the overview page)
 npx abap2ui5lint                # every generated view: UI5 metadata + headless render
 npx abap2ui5lint --no-render    # fast loop, no browser
 npm run check                   # all of them
