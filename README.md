@@ -18,7 +18,7 @@ RAP where the entity is a business object. It is for ABAP developers on a
 standard ABAP system who want such a UI with one line of code and can still
 redefine any step of it with plain abap2UI5 view code.
 
-> Part of [abap2UI5-addons](https://github.com/abap2UI5-addons) - addons and apps for [abap2UI5](https://github.com/abap2UI5/abap2UI5), installed with [abapGit](https://abapgit.org).
+> Part of [abap2UI5-addons](https://github.com/abap2UI5-addons) - addons and apps for [abap2UI5](https://github.com/abap2UI5/abap2UI5), installed with [abapGit](https://abapgit.org). Documentation: [abap2ui5-addons.github.io/rap-ext](https://abap2ui5-addons.github.io/rap-ext/).
 
 ## Why
 

@@ -9,7 +9,9 @@
     "unit": "node scripts/unit.mjs",
     "check:abap2ui5": "abap2ui5lint",
     "check": "npm run lint && npm run lint:cloud && npm run unit && npm run check:abap2ui5",
-    "test": "npm run check"
+    "test": "npm run check",
+    "site": "npm run build --prefix site",
+    "site:dev": "npm run dev --prefix site"
   },
   "repository": {
     "type": "git",

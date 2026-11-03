@@ -4,3 +4,7 @@ node_modules/
 # the `badges` branch - never committed here
 .github/badges/
 .unit/
+site/node_modules/
+site/.vitepress/cache/
+site/.vitepress/dist/
+build/
