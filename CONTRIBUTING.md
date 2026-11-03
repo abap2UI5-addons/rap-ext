@@ -19,6 +19,7 @@ so a green run locally is a green run there. `npm test` is an alias for it.
 | Gate | What it proves |
 | --- | --- |
 | `npm run lint` | abaplint: syntax and style, resolved against the abap2UI5 release pinned in `abaplint.jsonc` |
+| `npm run lint:cloud` | the same source against the ABAP Cloud language version (`abaplint-cloud.jsonc`) |
 | `npm run unit` | the ABAP Unit tests that need no SAP system, transpiled with open-abap-core (`scripts/unit.mjs`) |
 | `npm run check:abap2ui5` | [abap2UI5-linter](https://github.com/abap2UI5/linter): the app class and the view it builds, judged together — controls, members, bindings, the UI5 version floor, and a headless render of every view |
 

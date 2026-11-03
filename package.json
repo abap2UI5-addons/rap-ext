@@ -2,14 +2,16 @@
   "name": "abap2ui5-rap-ext",
   "private": true,
   "version": "1.0.0",
-  "description": "Display RAP and CDS artifacts with abap2UI5.",
+  "description": "Fiori-Elements-style floorplans generated at runtime from CDS views and their UI annotations, rendered with abap2UI5.",
   "scripts": {
     "lint": "abaplint abaplint.jsonc",
     "lint:cloud": "abaplint abaplint-cloud.jsonc",
     "unit": "node scripts/unit.mjs",
     "check:abap2ui5": "abap2ui5lint",
     "check": "npm run lint && npm run lint:cloud && npm run unit && npm run check:abap2ui5",
-    "test": "npm run check"
+    "test": "npm run check",
+    "site": "npm run build --prefix site",
+    "site:dev": "npm run dev --prefix site"
   },
   "repository": {
     "type": "git",
