@@ -1,6 +1,7 @@
-# The branch `cloud` - rap-ext for ABAP Cloud, built from main on every push:
-# src/ with the files of cloud/ in place (scripts/cloud.mjs), checked by
-# npm run lint:cloud, then committed to `cloud` when it changed. Nobody
+# The branch `cloud` - rap-ext for ABAP Cloud: main plus one commit that
+# puts the files of cloud/ in place of the ones of the same name in src/,
+# force-pushed on every push to main (the pattern of abap2UI5's 702
+# branch). Checked by npm run lint:cloud before it is published. Nobody
 # commits to `cloud` by hand - README "ABAP Cloud", cloud/README.md.
 name: cloud-branch
 
@@ -30,24 +31,16 @@ jobs:
       # builds build/cloud and checks it - nothing is published when it fails
       - name: Build and check the cloud version (expect 0 issues)
         run: npm run lint:cloud
-      - name: Commit build/cloud to the branch cloud
+      - name: Put the files of cloud/ into src/
+        run: node scripts/cloud.mjs apply
+      # The Source-Commit trailer names the main commit the branch was built
+      # from.
+      - name: Commit on top of main and force-push the branch cloud
         env:
           SHA: ${{ github.sha }}
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          if git fetch --depth 1 origin cloud; then
-            git worktree add -B cloud "$RUNNER_TEMP/cloud" FETCH_HEAD
-          else
-            git worktree add --orphan -b cloud "$RUNNER_TEMP/cloud"
-          fi
-          cd "$RUNNER_TEMP/cloud"
-          git rm -rq --ignore-unmatch .
-          cp -R "$GITHUB_WORKSPACE/build/cloud/." .
-          git add -A
-          if git diff --cached --quiet; then
-            echo 'The branch cloud is up to date.'
-            exit 0
-          fi
-          git commit -q -m "Built from main ${SHA:0:7}"
-          git push origin cloud
+          git add src
+          git commit -q -m 'Cloud version: the files of cloud/ in src/' -m "Source-Commit: $SHA"
+          git push --force origin HEAD:cloud

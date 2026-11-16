@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 /*
  * cloud — builds the ABAP Cloud version of rap-ext into build/cloud and
- * checks it. That tree is what the workflow cloud-branch.yaml publishes to
- * the branch `cloud`, the one to link in an ABAP Cloud system.
+ * checks it; with `apply`, also writes the files of cloud/ into src/ - what
+ * the workflow cloud-branch.yaml commits on top of main and force-pushes as
+ * the branch `cloud` (main plus one commit, like the 702 branch of
+ * abap2UI5), the one to link in an ABAP Cloud system.
  *
  * Why a branch of its own: the ABAP Cloud syntax check reports an
  * unreleased object even where the code only names it by a literal in a
@@ -13,11 +15,9 @@
  * main it is the on-premise version, and here every file in cloud/
  * replaces the file of the same name in src/.
  *
- * The build:
+ * The build (what abaplint-cloud.jsonc checks):
  *   build/cloud/.abapgit.xml   from main
  *   build/cloud/src/           src/ with the files of cloud/ in place
- *   build/cloud/README.md      what the branch is and where it comes from
- *   build/cloud/LICENSE
  *
  * The checks (exit 1 on a finding):
  *   - every file in cloud/ replaces a file in src/ - a stray one is a
@@ -29,9 +29,11 @@
  *     comments left out - the part abaplint cannot see (it checks static
  *     references only; abaplint-cloud.jsonc then checks the build).
  *
- *   node scripts/cloud.mjs      (part of npm run lint:cloud)
+ *   node scripts/cloud.mjs          (part of npm run lint:cloud)
+ *   node scripts/cloud.mjs apply    the same, then cloud/ into src/ - for the
+ *                                   workflow only, never commit that on main
  */
-import { cpSync, mkdirSync, rmSync, writeFileSync, readdirSync, readFileSync, existsSync } from 'node:fs';
+import { cpSync, mkdirSync, rmSync, readdirSync, readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
@@ -69,7 +71,6 @@ rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 cpSync(join(ROOT, 'src'), join(OUT, 'src'), { recursive: true });
 cpSync(join(ROOT, '.abapgit.xml'), join(OUT, '.abapgit.xml'));
-cpSync(join(ROOT, 'LICENSE'), join(OUT, 'LICENSE'));
 
 for (const file of readdirSync(OVERRIDES)) {
   if (file === 'README.md') continue;
@@ -101,27 +102,20 @@ for (const file of readdirSync(join(OUT, 'src'))) {
   });
 }
 
-writeFileSync(join(OUT, 'README.md'), `# rap-ext for ABAP Cloud
-
-This branch is **built** - do not change it here. It is
-[rap-ext](https://github.com/abap2UI5-addons/rap-ext) \`main\` with the files
-of \`cloud/\` in place of the files of the same name in \`src/\`
-(\`scripts/cloud.mjs\`, published by \`.github/workflows/cloud-branch.yaml\`
-on every push to \`main\`).
-
-Link this branch in an ABAP Cloud system (SAP BTP ABAP environment, S/4HANA
-Cloud Public Edition). Link \`main\` on premise.
-
-What differs in ABAP Cloud - the annotations through XCO, a database table
-read-only - is in the README of \`main\`, section "ABAP Cloud".
-`);
-
 if (findings.length > 0) {
   console.log(findings.join('\n'));
   console.log(`\ncloud: ${findings.length} finding(s) - build/cloud is not what the branch cloud may carry`);
   process.exit(1);
 }
 console.log('cloud: build/cloud built and checked - 0 findings');
+
+if (process.argv[2] === 'apply') {
+  for (const file of readdirSync(OVERRIDES)) {
+    if (file === 'README.md') continue;
+    cpSync(join(OVERRIDES, file), join(ROOT, 'src', file));
+  }
+  console.log('cloud: the files of cloud/ written into src/');
+}
 
 // from PUBLIC SECTION to the next section or the end of the definition
 function publicSection(text) {

@@ -59,7 +59,10 @@ as CI does.
   syntax check in a system reports a name in a literal of a dynamic
   statement too, abaplint does not. A new on-premise name goes onto that
   list. `.github/workflows/cloud-branch.yaml` runs `lint:cloud` on every
-  push to `main` and commits `build/cloud` to the branch `cloud`.
+  push to `main`, then `node scripts/cloud.mjs apply` (the files of
+  `cloud/` into `src/`), commits that on top of `main` and force-pushes it
+  as the branch `cloud` - `main` plus one commit, like abap2UI5's 702
+  branch. Never commit the result of `apply` on `main`.
 - `abaplint-cloud.jsonc` checks `build/cloud` with syntax version
   `Cloud` and `errorNamespace: "."` against the steampunk-2305 API set: a
   static reference to anything ABAP Cloud does not release is an error

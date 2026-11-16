@@ -363,8 +363,9 @@ environment, S/4HANA Cloud) link the branch **`cloud`** instead of `main`.
 annotation service, `DDFIELDS`, `DDFIXVALUES`, DD02L, DDDDLSRC,
 `S_TABU_NAM`, `ENQUEUE_E_TABLE` - is read or called in one class,
 `z2ui5_cl_rap_platform`. On `main` it is the on-premise version. The branch
-`cloud` is built from `main` on every push (`scripts/cloud.mjs`,
-`.github/workflows/cloud-branch.yaml`) with the files of
+`cloud` is `main` plus one commit, rebuilt and force-pushed on every push
+(`scripts/cloud.mjs`, `.github/workflows/cloud-branch.yaml`), that puts the
+files of
 [`cloud/`](cloud/README.md) in place of the ones of the same name: a
 `z2ui5_cl_rap_platform` with the same public section and nothing
 on-premise behind it, and the demo popup without a value help on an
