@@ -8,7 +8,8 @@ has not been clicked through yet. Run it once per release, on a system with
 the /DMO/ flight reference scenario, and note in the PR what was and was not
 verified.
 
-Install with abapGit (the package, then the pinned abap2UI5 release), start
+Install with abapGit (the package, then the pinned abap2UI5 version - `main`
+for now, see README "Changes", 2026-11), start
 `z2ui5_cl_rap_test`.
 
 ## 1 · Install

@@ -60,7 +60,10 @@ What it is not:
   [ABAP Cloud](#abap-cloud) (checked against the ABAP Cloud language
   version, `npm run lint:cloud`)
 - [abap2UI5](https://github.com/abap2UI5/abap2UI5) - the checks run against
-  the release pinned in `abaplint.jsonc`
+  the version pinned in `abaplint.jsonc`; for now (2026-11) that is `main`,
+  not a release: the flexible column layout implements the client methods
+  `window_bind_tab` and `window_get_row`, which are not in 1.148.0 - with an
+  older core `z2ui5_cl_rap_fcl_client` does not activate
 - UI5 1.77 or higher in the browser (the object page uses
   `sap.uxap.ObjectPageSubSection.showTitle`)
 - for the RAP parts of the demo: the `/DMO/` flight reference scenario
@@ -1328,6 +1331,11 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   branch `cloud` carries a version of it without them (see
   [ABAP Cloud](#abap-cloud)). `get_environment( )` is fixed per branch now
   instead of asked from RTTI. Public signatures are unchanged.
+- **abap2UI5 `main` needed for now.** The flexible column layout's client
+  implements the client methods `window_bind_tab` and `window_get_row` that
+  abap2UI5 `main` added after 1.148.0, and `abaplint.jsonc` pins the core to
+  `main` until a release has them. On a system with an older core, pull
+  abap2UI5 `main` first.
 
 ## Development
 
@@ -1349,7 +1357,8 @@ npx abap2ui5lint --no-render    # fast loop, no browser
 npm run check                   # all of them
 ```
 
-abaplint checks against the abap2UI5 release pinned in `abaplint.jsonc`
+abaplint checks against the abap2UI5 version pinned in `abaplint.jsonc` (a
+release tag; `main` for now, see Changes 2026-11)
 (`scripts/core-pin.mjs`, moved monthly by `bump-deps.yaml`); the weekly run of
 `abap-standard.yaml` is the canary against the core's `main`.
 

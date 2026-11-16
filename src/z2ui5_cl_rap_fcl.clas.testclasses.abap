@@ -129,6 +129,13 @@ CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~_bind_path.
   ENDMETHOD.
 
+  METHOD z2ui5_if_client~window_bind_tab.
+    result = `{/BOUND}`.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~window_get_row.
+  ENDMETHOD.
+
   METHOD z2ui5_if_client~follow_up_action.
   ENDMETHOD.
 
