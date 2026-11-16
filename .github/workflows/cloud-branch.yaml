@@ -1,0 +1,53 @@
+# The branch `cloud` - rap-ext for ABAP Cloud, built from main on every push:
+# src/ with the files of cloud/ in place (scripts/cloud.mjs), checked by
+# npm run lint:cloud, then committed to `cloud` when it changed. Nobody
+# commits to `cloud` by hand - README "ABAP Cloud", cloud/README.md.
+name: cloud-branch
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: cloud-branch
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      # builds build/cloud and checks it - nothing is published when it fails
+      - name: Build and check the cloud version (expect 0 issues)
+        run: npm run lint:cloud
+      - name: Commit build/cloud to the branch cloud
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git fetch --depth 1 origin cloud; then
+            git worktree add -B cloud "$RUNNER_TEMP/cloud" FETCH_HEAD
+          else
+            git worktree add --orphan -b cloud "$RUNNER_TEMP/cloud"
+          fi
+          cd "$RUNNER_TEMP/cloud"
+          git rm -rq --ignore-unmatch .
+          cp -R "$GITHUB_WORKSPACE/build/cloud/." .
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'The branch cloud is up to date.'
+            exit 0
+          fi
+          git commit -q -m "Built from main ${SHA:0:7}"
+          git push origin cloud

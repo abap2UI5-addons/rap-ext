@@ -19,6 +19,12 @@ Install with abapGit (the package, then the pinned abap2UI5 release), start
       sidecar was written by hand, after the core's exported `z2ui5_t_01`;
       the columns `IS_PUBLIC` and `AUTO_APPLY` were appended in 2026-10,
       third round - an existing table is adjusted, check SE14)
+- [ ] `z2ui5_cl_rap_platform` activates (2026-11 - the DDIC reads are
+      static calls now: `GET_DDIC_FIELD_LIST` into `DDFIELDS`,
+      `GET_DDIC_FIXED_VALUES` into `DDFIXVALUES`, `SELECT` from DD02L,
+      DDDDLSRC and DDLDEPENDENCY, `AUTHORITY-CHECK OBJECT 'S_TABU_NAM'`,
+      `ENQUEUE_E_TABLE`); the annotation service is still called dynamically
+      there. Then section 2 and a table write (section 6) once more
 - [ ] the text pool of `z2ui5_cl_rap_floorplan` arrived (SE24 > Goto > Text
       Elements, 98 entries); an English logon shows its texts
 - [ ] **unverified syntax**: `z2ui5_cl_rap_eml_perm` (`GET PERMISSIONS
@@ -502,17 +508,20 @@ one with `@Aggregation.default` fields.
 ## 12 · ABAP Cloud (2026-10, third round)
 
 In an SAP BTP ABAP environment (or S/4HANA Cloud with developer
-extensibility), with the abap2UI5 core and this repository pulled by
-abapGit and a RAP business object with UI annotations in metadata
-extensions (e.g. the flight reference scenario).
+extensibility), with the abap2UI5 core and the branch `cloud` of this
+repository pulled by abapGit and a RAP business object with UI annotations
+in metadata extensions (e.g. the flight reference scenario).
 
 - [ ] every class activates under ABAP for Cloud Development - note the
       syntax warnings (the system fields `sy-uname`, `sy-datum`,
-      `sy-zonlo`) and every error
+      `sy-zonlo`) and every error. The first pull of `main` (2026-11) failed
+      on the on-premise names in dynamic statements, on `AUTHORITY-CHECK
+      OBJECT` with a variable and on `Z2UI5_DD_RAP_TEST_POPUP` (its value
+      help on `I_MessageSeverity`, not released) - all of that is not on
+      `cloud`
 - [ ] `z2ui5_cl_rap_util=>get_environment( )` answers `CLOUD`
-      (`CL_DD_DDL_ANNOTATION_SERVICE` unknown to RTTI, or
-      `CX_SY_RTTI_TYPE_NOT_RELEASED`), `read_raw_annotations( ... )-reader`
-      is `XCO`
+      (`z2ui5_cl_rap_platform` of the branch `cloud`),
+      `read_raw_annotations( ... )-reader` is `XCO`
 - [ ] the keys: `UI.LINEITEM$1$.POSITION` / `10`, `UI.HEADERINFO.TYPENAME`
       / `'Travel'`, `UI.LINEITEM$2$.TYPE` / `#FOR_ACTION` - i.e. the
       visitor reports `visit_name` before each member of a record and the

@@ -38,6 +38,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const WORK = join(ROOT, '.unit');
 const UNITS = [
   'z2ui5_cl_rap_util',
+  'z2ui5_cl_rap_platform',
   'z2ui5_if_rap_ext',
   'z2ui5_cl_rap_floorplan',
   'z2ui5_cl_rap_list_report',
@@ -67,6 +68,15 @@ mkdirSync(join(WORK, 'src'), { recursive: true });
 for (const file of readdirSync(join(ROOT, 'src'))) {
   if (UNITS.some((u) => file.startsWith(`${u}.`))) {
     cpSync(join(ROOT, 'src', file), join(WORK, 'src', file));
+  }
+}
+
+// z2ui5_cl_rap_platform in its cloud version (cloud/): it names no
+// on-premise object, so the tests run as they did before the split -
+// get_environment( ) answers CLOUD and nothing reads the dictionary
+for (const file of readdirSync(join(ROOT, 'cloud'))) {
+  if (UNITS.some((u) => file.startsWith(`${u}.`))) {
+    cpSync(join(ROOT, 'cloud', file), join(WORK, 'src', file));
   }
 }
 

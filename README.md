@@ -55,10 +55,10 @@ What it is not:
 
 **Requirements**
 
-- Standard ABAP 7.58 or higher - the release the code is checked against;
-  ABAP Cloud as an additional path with the limits in
-  [ABAP Cloud](#abap-cloud) (the sources are also checked against the ABAP
-  Cloud language version, `npm run lint:cloud`)
+- Standard ABAP 7.58 or higher - the release the code is checked against
+  (branch `main`); ABAP Cloud from the branch `cloud`, with the limits in
+  [ABAP Cloud](#abap-cloud) (checked against the ABAP Cloud language
+  version, `npm run lint:cloud`)
 - [abap2UI5](https://github.com/abap2UI5/abap2UI5) - the checks run against
   the release pinned in `abaplint.jsonc`
 - UI5 1.77 or higher in the browser (the object page uses
@@ -80,7 +80,8 @@ COMMIT WORK.
 **Steps** - with [abapGit](https://abapgit.org), in this order:
 
 1. [abap2UI5](https://github.com/abap2UI5/abap2UI5)
-2. this repository (branch `main`)
+2. this repository - branch `main` on premise, branch `cloud` in ABAP Cloud
+   (SAP BTP ABAP environment, S/4HANA Cloud Public Edition)
 
 **Start** - run the demo app like any abap2UI5 app,
 `?app_start=z2ui5_cl_rap_test`; it shows every floorplan. Its deep links
@@ -350,17 +351,32 @@ same way (see [ABAP Cloud](#abap-cloud)).
 
 On premise nothing changes: the annotations come from
 `CL_DD_DDL_ANNOTATION_SERVICE`, the keys and labels from the DDIC field
-list, the associations from the DDL source. The same classes also activate
-in ABAP Cloud (SAP BTP ABAP environment, S/4HANA Cloud) - every
-on-premise object is named only dynamically, and `npm run lint:cloud`
-checks the sources against the ABAP Cloud language version and the
-released API set - and there they take another path. **Written without an
-ABAP Cloud system** - the checklist is [docs/system-test.md](docs/system-test.md),
-section 12.
+list, the associations from the DDL source. In ABAP Cloud (SAP BTP ABAP
+environment, S/4HANA Cloud) link the branch **`cloud`** instead of `main`.
+**Written without an ABAP Cloud system** - the checklist is
+[docs/system-test.md](docs/system-test.md), section 12.
+
+**Two branches, one code.** Everything ABAP Cloud does not release - the
+annotation service, `DDFIELDS`, `DDFIXVALUES`, DD02L, DDDDLSRC,
+`S_TABU_NAM`, `ENQUEUE_E_TABLE` - is read or called in one class,
+`z2ui5_cl_rap_platform`. On `main` it is the on-premise version. The branch
+`cloud` is built from `main` on every push (`scripts/cloud.mjs`,
+`.github/workflows/cloud-branch.yaml`) with the files of
+[`cloud/`](cloud/README.md) in place of the ones of the same name: a
+`z2ui5_cl_rap_platform` with the same public section and nothing
+on-premise behind it, and the demo popup without a value help on an
+unreleased CDS view. Every other class is the same on both branches. Why
+not one branch: the ABAP Cloud syntax check also reports an unreleased
+object that is only named by a literal in a dynamic statement
+(``CALL METHOD (`CL_DD_DDL_ANNOTATION_SERVICE`)=>...``,
+``CREATE DATA ... TYPE (`DDFIELDS`)``), and it does not allow an
+`AUTHORITY-CHECK OBJECT` with a variable at all - up to 2026-10 every
+on-premise object was named that way, and the classes did not activate
+there. Do not change the branch `cloud` by hand.
 
 **How the reader is chosen.** `z2ui5_cl_rap_util=>get_environment( )`
-answers `ON_PREMISE` when RTTI knows `CL_DD_DDL_ANNOTATION_SERVICE`, else
-`CLOUD` - once per session. `get_annotation_reader( )` follows it (AUTO):
+answers what `z2ui5_cl_rap_platform` says - `ON_PREMISE` on `main`,
+`CLOUD` on `cloud`. `get_annotation_reader( )` follows it (AUTO):
 the annotation service on premise, `z2ui5_cl_rap_anno_xco` in ABAP Cloud.
 `z2ui5_cl_rap_util=>set_annotation_reader( z2ui5_cl_rap_util=>cs_anno_reader-xco )`
 (or `-ddic`, `-auto`) chooses for the rest of the session - for example to
@@ -392,7 +408,8 @@ annotation cache.
 | associations of other entity kinds | XCO describes associations for view entities and projection views here - a classic DDIC-based view, an abstract or a custom entity has none (`resolve_association` still can name them) |
 | layer of a single metadata extension | the 2305 API set gives the merged annotations of all extensions, not each extension with its layer; `merge_annotation_layers` takes single layers as soon as a release offers them |
 
-**Hooks**: `z2ui5_cl_rap_util=>get_environment`, `set_annotation_reader`,
+**Hooks**: `z2ui5_cl_rap_platform` (one version per branch, see above),
+`z2ui5_cl_rap_util=>get_environment`, `set_annotation_reader`,
 `get_annotation_reader`, `flatten_annotation`, `merge_annotation_layers`,
 `get_layer_priority`, `get_ddic_fields` (public now, typed
 `ty_t_ddic_field`); the class `z2ui5_cl_rap_anno_xco` (`read_annotations`,
@@ -1300,6 +1317,18 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   `DDFIELDS`; appended `ty_s_raw_annotations-reader` and `-ddic_fields`.
   `npm run lint:cloud` (`abaplint-cloud.jsonc`) is part of `npm run check`.
 
+### 2026-11
+
+- **ABAP Cloud from a branch of its own.** The classes did not activate in
+  ABAP Cloud: its syntax check reports unreleased objects named by a literal
+  in a dynamic statement too. Everything on-premise moved into the new class
+  `z2ui5_cl_rap_platform` (from `z2ui5_cl_rap_util`: the annotation service
+  calls, the DDIC field list, the fixed values, the DDL source; from
+  `z2ui5_cl_rap_floorplan`: DD02L, `S_TABU_NAM`, `ENQUEUE_E_TABLE`); the
+  branch `cloud` carries a version of it without them (see
+  [ABAP Cloud](#abap-cloud)). `get_environment( )` is fixed per branch now
+  instead of asked from RTTI. Public signatures are unchanged.
+
 ## Development
 
 Three gates run offline, no SAP system needed (CI runs the same on every push
@@ -1308,7 +1337,9 @@ and PR):
 ```bash
 npm ci                          # the pinned toolchain, linter and render runtime
 npm run lint                    # abaplint: syntax/style, 0 issues expected
-npm run lint:cloud              # abaplint: ABAP Cloud language version and
+npm run lint:cloud              # builds the branch cloud into build/cloud,
+                                # looks for on-premise names in it, then
+                                # abaplint: ABAP Cloud language version and
                                 # released API set, 0 issues expected
 npm run unit                    # ABAP Unit tests that need no system, transpiled -
                                 # util, list report, object page, tree, flexible
