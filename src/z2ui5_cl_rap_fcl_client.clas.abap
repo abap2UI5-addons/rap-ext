@@ -326,6 +326,20 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD z2ui5_if_client~window_bind_tab.
+    result = mi_client->window_bind_tab( val      = val
+                                         window   = window
+                                         t_sort   = t_sort
+                                         t_filter = t_filter ).
+  ENDMETHOD.
+
+
+  METHOD z2ui5_if_client~window_get_row.
+    result = mi_client->window_get_row( val = val
+                                        row = row ).
+  ENDMETHOD.
+
+
   METHOD z2ui5_if_client~follow_up_action.
     result = mi_client->follow_up_action( val   = val
                                           view  = view

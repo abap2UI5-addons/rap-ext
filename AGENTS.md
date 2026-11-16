@@ -15,7 +15,9 @@ views and their UI annotations, rendered with abap2UI5.
 | `z2ui5_cl_rap_floorplan` | superclass of every floorplan: reading, filter/search, input controls, value help, writing, texts, extension calls |
 | `z2ui5_cl_rap_list_report`, `_worklist` and `_tree` (subclasses of it), `_object_page`, `_overview_page`, `_value_help`, `_action_dialog` | the floorplans - each an abap2UI5 app |
 | `z2ui5_cl_rap_fcl`, `z2ui5_cl_rap_fcl_client` | the flexible column layout: a host app that calls the floorplans with a client of its own and puts their views into the columns of one view (README, "Flexible Column Layout") - the client implements every method of the pinned core's `z2ui5_if_client` |
-| `z2ui5_cl_rap_util` | the metadata: RTTI, DDIC keys/texts, annotations (`read_entity`, `apply_annotations`), the associations of the DDL source (`read_associations`, `parse_ddl_associations`), the filter/search syntax, CSV/UTF-8/Base64/URL helpers - no UI, needs no other class of the addon, unit-tested |
+| `z2ui5_cl_rap_util` | the metadata: RTTI, DDIC keys/texts, annotations (`read_entity`, `apply_annotations`), the associations of the DDL source (`read_associations`, `parse_ddl_associations`), the filter/search syntax, CSV/UTF-8/Base64/URL helpers - no UI, needs no other class of the addon but `z2ui5_cl_rap_platform`, unit-tested |
+| `z2ui5_cl_rap_platform` | everything ABAP Cloud does not release, and nothing else: the annotation service calls, the DDIC field list and fixed values, DDDDLSRC, DD02L, `S_TABU_NAM`, `ENQUEUE_E_TABLE` - the on-premise version in `src/`, the cloud version (same public section, nothing behind it) in `cloud/` |
+| `cloud/` | the files the branch `cloud` carries in place of the ones of the same name in `src/` (`cloud/README.md`) |
 | `z2ui5_cl_rap_anno_xco` | the annotation reader for ABAP Cloud: the released XCO API (`XCO_CP_CDS`, `XCO_CP_ABAP_DICTIONARY`) - the annotations of an entity and its fields, its associations written as DDL for the parser, domain fixed values; named by a literal in `z2ui5_cl_rap_util` and called dynamically, not in `npm run unit` |
 | `z2ui5_cl_rap_eml` | the RAP write path - the only class with EML abaplint parses |
 | `z2ui5_cl_rap_eml_perm`, `_read`, `_key` | one dynamic EML statement each (`GET PERMISSIONS OPERATIONS`, `READ ENTITIES OPERATIONS`, `CONVERT KEY`) - in `global.noIssues`, called dynamically from `z2ui5_cl_rap_eml`, unverified syntax |
@@ -24,7 +26,7 @@ views and their UI annotations, rendered with abap2UI5.
 | `z2ui5_cl_rap_start` | opens a floorplan from a URL (deep links) - opens nothing unless a subclass allows the entity |
 | `z2ui5_cl_rap_variant`, table `z2ui5_t_31` | the views a user saves of a list, reached by table name only |
 | `z2ui5_cl_rap_test`, `z2ui5_cl_rap_test_start`, `z2ui5_dd_rap_test_*` | the demo app, its deep links and its abstract entities |
-| `scripts/` | `core-pin.mjs` (the core release abaplint checks against), `unit.mjs` (the transpiled unit run) |
+| `scripts/` | `core-pin.mjs` (the core release abaplint checks against), `unit.mjs` (the transpiled unit run), `cloud.mjs` (builds and checks the branch `cloud` in `build/cloud`) |
 | `ROADMAP.md` | what is done and what is open |
 | `docs/system-test.md` | what to click through in a system - the part no gate can show |
 
@@ -37,8 +39,9 @@ SAP system needed):
 npm ci                          # @abaplint/cli, the transpiler, @abap2ui5/linter
                                 # and its render runtime, from the lockfile
 npm run lint                    # abaplint - expect 0 issues
-npm run lint:cloud              # abaplint, ABAP Cloud language version and
-                                # released API set (abaplint-cloud.jsonc) - 0 issues
+npm run lint:cloud              # builds the branch cloud (scripts/cloud.mjs, 0
+                                # findings), then abaplint on it: ABAP Cloud language
+                                # version, released API set (abaplint-cloud.jsonc) - 0 issues
 npm run unit                    # ABAP Unit tests that need no system, transpiled
 npx abap2ui5lint                # views: metadata + headless render
 npx abap2ui5lint --no-render    # fast loop, no browser
@@ -47,7 +50,17 @@ npx abap2ui5lint --no-render    # fast loop, no browser
 `npm run check` runs all three (abaplint in both configurations), exactly
 as CI does.
 
-- `abaplint-cloud.jsonc` checks the same sources with syntax version
+- `scripts/cloud.mjs` writes `build/cloud` - `src/` with the files of
+  `cloud/` in place, `.abapgit.xml`, a README - and fails when a file in
+  `cloud/` replaces nothing, when a replaced class's PUBLIC SECTION differs
+  from its on-premise version, or when ABAP code or a DDL source in the
+  build names an on-premise object of its `FORBIDDEN` list outside a
+  comment. That last check is what abaplint cannot do: the ABAP Cloud
+  syntax check in a system reports a name in a literal of a dynamic
+  statement too, abaplint does not. A new on-premise name goes onto that
+  list. `.github/workflows/cloud-branch.yaml` runs `lint:cloud` on every
+  push to `main` and commits `build/cloud` to the branch `cloud`.
+- `abaplint-cloud.jsonc` checks `build/cloud` with syntax version
   `Cloud` and `errorNamespace: "."` against the steampunk-2305 API set: a
   static reference to anything ABAP Cloud does not release is an error
   there, where `abaplint.jsonc` (`^Z`) treats it as void. It holds the
@@ -65,7 +78,13 @@ as CI does.
   `scripts/core-pin.mjs`; `bump-deps.yaml` moves it monthly, in its one
   pull request whose checks lint against the new tag (`bump-core.yml` by hand), and the scheduled run of `abap-standard.yaml` lints against
   the core's `main` as the canary. Do not drop the key: abaplint then clones
-  `main` silently.
+  `main` silently. **Exception, 2026-11:** the pin is `main` (maintainer
+  decision) - `z2ui5_cl_rap_fcl_client` and the test double in
+  `z2ui5_cl_rap_fcl.clas.testclasses.abap` implement `window_bind_tab` and
+  `window_get_row` of `z2ui5_if_client`, which no release has yet, and an
+  interface method that is not implemented is a syntax warning in a system
+  with a newer core. Move it back to a tag with the first release that has
+  them; until then a monthly bump to an older release turns `lint` red.
 - `npm run unit` (`scripts/unit.mjs`) transpiles the classes listed in its
   `UNITS` with open-abap-core, together with the public API (`src/02`) of the
   abap2UI5 release `abaplint.jsonc` pins (cloned at that tag), and runs their
@@ -126,23 +145,35 @@ as CI does.
   and the DDIC (DDFIELDS, DD02L, DDDDLSRC) - not released for ABAP Cloud,
   which is why `abaplint.jsonc` sets `errorNamespace: "^Z"` (unknown
   SAP-standard objects are void; the own namespace stays fully checked).
-- **ABAP Cloud is an additional path** (maintainer decision, 2026-10, third
-  round). Every on-premise object is named **dynamically only** - by a
-  literal, a variable or RTTI - so every class activates in ABAP Cloud
-  (`npm run lint:cloud` proves no static reference is left), and
-  `z2ui5_cl_rap_util=>get_environment( )` decides once per session which
-  path runs: `ON_PREMISE` when RTTI knows `CL_DD_DDL_ANNOTATION_SERVICE`,
-  else `CLOUD`. In ABAP Cloud the annotations, associations, data element
+- **ABAP Cloud is an additional path, from the branch `cloud`**
+  (maintainer decision, 2026-11 - it replaces the "dynamic only" rule of
+  2026-10, third round, which did not activate: the ABAP Cloud syntax
+  check reports an unreleased object named by a literal in a dynamic
+  statement too, and allows no `AUTHORITY-CHECK OBJECT` with a variable).
+  Every on-premise object is used in **`z2ui5_cl_rap_platform` only** -
+  statically where its signature is known (DDFIELDS, DDFIXVALUES, DD02L,
+  DDDDLSRC, `S_TABU_NAM`, `ENQUEUE_E_TABLE`), dynamically for the
+  annotation service (below). No other class names one, not even in a
+  literal. The branch `cloud` is built, never edited: `cloud/` holds a
+  `z2ui5_cl_rap_platform` with the same public section and nothing behind
+  it, and `scripts/cloud.mjs` puts it in place. `get_environment( )`
+  answers what the platform class says - `ON_PREMISE` on `main`, `CLOUD`
+  on `cloud`. In ABAP Cloud the annotations, associations, data element
   labels, key flags and domain fixed values come from
   `z2ui5_cl_rap_anno_xco` (the released XCO API), and the database-table
-  write path (DD02L, `S_TABU_NAM`, `ENQUEUE_E_TABLE`) and the DDDDLSRC read
-  are off. Keep a new on-premise dependency the same way: dynamic, behind
-  `get_environment( )`, with what ABAP Cloud does instead (or "off") in the
-  README's "ABAP Cloud" section - a static one is a red `lint:cloud`.
+  write path and the DDDDLSRC read are off. A new on-premise dependency:
+  a public method in both versions of `z2ui5_cl_rap_platform` (the cloud
+  one answers "nothing" or "off"), its name on the `FORBIDDEN` list of
+  `scripts/cloud.mjs`, what ABAP Cloud does instead in the README's "ABAP
+  Cloud" section. Any other file that must differ in ABAP Cloud gets a
+  copy in `cloud/` (the demo popup, whose value help names an unreleased
+  view). `npm run unit` transpiles the cloud version of the platform
+  class, so the tests never reach an on-premise object.
 - Annotations are read with `CL_DD_DDL_ANNOTATION_SERVICE=>GET_ANNOS`
   (metadata extensions included), called **dynamically** with its parameter
-  types taken from RTTI (`read_annos_effective`); when that fails, the
-  direct annotations are read the same way (`read_annos_direct`). Keep the
+  types taken from RTTI (`z2ui5_cl_rap_platform=>read_annos_effective`);
+  when that fails, the direct annotations are read the same way
+  (`read_annos_direct`). Keep the
   dynamic calls - a static one would pin the service's type names, which
   are not released. `get_annotation_reader( )` chooses: AUTO (the default)
   is this service on premise and XCO in ABAP Cloud;

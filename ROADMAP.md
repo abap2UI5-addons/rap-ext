@@ -106,8 +106,10 @@ clicked through in an SAP system yet** - that is the first open item, and
     see: the system fields ABAP Cloud's syntax check warns about
     (`sy-uname`, `sy-datum`, `sy-zonlo` in the floorplans and the variant
     store - `CL_ABAP_CONTEXT_INFO` is the released way) and whether a
-    method of a released class is released itself (the DDIC field list and
-    the fixed values are reached dynamically for that reason).
+    method of a released class is released itself. Since 2026-11 the
+    branch `cloud` carries no on-premise object at all (README "ABAP
+    Cloud"): the first system check after the split showed that literals in
+    dynamic statements count as uses too.
 
 ### How the dynamic EML statements were unblocked
 
@@ -296,6 +298,9 @@ like the others - is still the better one; the classes go when it lands.
   XCO; every other on-premise dependency (the annotation service, DDFIELDS,
   DD02L, `S_TABU_NAM`, `ENQUEUE_E_TABLE`, DDDDLSRC) named dynamically and
   off in ABAP Cloud; the environment decided once (`get_environment`).
+  Since 2026-11 these live in `z2ui5_cl_rap_platform`, and ABAP Cloud
+  links the built branch `cloud`, which carries a version of it without
+  them - the dynamic names did not activate there.
   Checked by `npm run lint:cloud` (ABAP Cloud language version, released
   API set), part of `npm run check`; open item 14 is what is left.
 

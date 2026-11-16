@@ -1158,21 +1158,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     "a transparent table - what the object page wrote before RAP support.
     "A CDS view is never writable with ABAP SQL, so it ends here read-only,
     "and so does a table until get_entity_capabilities( ) is told otherwise.
-    "DD02L is named dynamically and not read in ABAP Cloud, which releases
-    "neither it nor the write path of write_table_row (S_TABU_NAM,
-    "ENQUEUE_E_TABLE) - a table is read-only there
+    "DD02L is read in z2ui5_cl_rap_platform - not in ABAP Cloud, which
+    "releases neither it nor the write path of write_table_row (S_TABU_NAM,
+    "ENQUEUE_E_TABLE): a table is read-only there
     IF z2ui5_cl_rap_util=>get_environment( ) = z2ui5_cl_rap_util=>cs_environment-cloud.
       RETURN.
     ENDIF.
     TRY.
-        DATA lv_tabclass TYPE c LENGTH 8.
-        DATA(lv_dd02l) = `DD02L`.
-        DATA(lv_dd02l_where) = |TABNAME = @LV_ENTITY AND AS4LOCAL = 'A'|.
-        SELECT SINGLE ('TABCLASS') FROM (lv_dd02l)
-          WHERE (lv_dd02l_where)
-          INTO @lv_tabclass.
         "read-only until the extension allows the writes
-        result-is_table = xsdbool( sy-subrc = 0 AND lv_tabclass = `TRANSP` ).
+        result-is_table = z2ui5_cl_rap_platform=>is_transparent_table( lv_entity ).
       CATCH cx_root ##NO_HANDLER.
     ENDTRY.
 
@@ -2750,11 +2744,6 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     DATA lv_tabname TYPE c LENGTH 30.
     DATA lv_varkey TYPE c LENGTH 120.
     DATA lt_ddic TYPE z2ui5_cl_rap_util=>ty_t_ddic_field.
-    "the authorization object and the lock function modules by name - none
-    "of them is released for ABAP Cloud, where this path is off
-    DATA lv_auth_object TYPE c LENGTH 10 VALUE 'S_TABU_NAM'.
-    DATA lv_enqueue TYPE c LENGTH 30 VALUE 'ENQUEUE_E_TABLE'.
-    DATA lv_dequeue TYPE c LENGTH 30 VALUE 'DEQUEUE_E_TABLE'.
     DATA lt_keys TYPE string_table.
     DATA lr_current TYPE REF TO data.
     DATA lr_seen TYPE REF TO data.
@@ -2773,11 +2762,10 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ENDIF.
 
     "the authorization of table maintenance by table name - what SM30 and
-    "SE16 ask before a change
-    AUTHORITY-CHECK OBJECT lv_auth_object
-      ID 'ACTVT' FIELD '02'
-      ID 'TABLE' FIELD lv_tabname.
-    IF sy-subrc <> 0.
+    "SE16 ask before a change (S_TABU_NAM, in z2ui5_cl_rap_platform: none
+    "of the authorization object and the lock function modules is released
+    "for ABAP Cloud, where this path is off)
+    IF z2ui5_cl_rap_platform=>check_table_authority( lv_tabname ) = abap_false.
       APPEND |{ get_text( cs_text-no_authority ) }: { lv_tabname }| TO result-messages.
       RETURN.
     ENDIF.
@@ -2799,19 +2787,12 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     lv_varkey = get_table_varkey( row        = row
                                   key_fields = lt_ddic ).
-    CALL FUNCTION lv_enqueue
-      EXPORTING
-        mode_rstable   = 'E'
-        tabname        = lv_tabname
-        varkey         = lv_varkey
-      EXCEPTIONS
-        foreign_lock   = 1
-        system_failure = 2
-        OTHERS         = 3.
-    IF sy-subrc = 1.
-      APPEND |{ get_text( cs_text-locked ) } ({ sy-msgv1 })| TO result-messages.
+    DATA(ls_lock) = z2ui5_cl_rap_platform=>enqueue_table( tabname = lv_tabname
+                                                          varkey  = lv_varkey ).
+    IF ls_lock-subrc = 1.
+      APPEND |{ get_text( cs_text-locked ) } ({ ls_lock-user })| TO result-messages.
       RETURN.
-    ELSEIF sy-subrc <> 0.
+    ELSEIF ls_lock-subrc <> 0.
       APPEND get_text( cs_text-locked ) TO result-messages.
       RETURN.
     ENDIF.
@@ -2879,11 +2860,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         APPEND lx->get_text( ) TO result-messages.
     ENDTRY.
 
-    CALL FUNCTION lv_dequeue
-      EXPORTING
-        mode_rstable = 'E'
-        tabname      = lv_tabname
-        varkey       = lv_varkey.
+    z2ui5_cl_rap_platform=>dequeue_table( tabname = lv_tabname
+                                          varkey  = lv_varkey ).
 
   ENDMETHOD.
 
