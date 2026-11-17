@@ -23,10 +23,10 @@ home, and a find-and-replace of the `uses:` lines in the callers.
 
 | Workflow | What it runs | Permissions the calling job grants |
 |---|---|---|
-| [`addon-check.yaml`](../workflows/addon-check.yaml) | abaplint per config, npm scripts, `npm run unit`, `npm run rename`, `npx abap2ui5lint` + badges | `contents: write` - only `publish-badges` uses it (on main, never for a pull request), but GitHub refuses the whole run when a called job asks for more than the caller grants, so every caller grants it |
+| [`addon-check.yaml`](../workflows/addon-check.yaml) | abaplint per config, npm scripts, `npm run unit`, `npm run rename`, `npx abap2ui5lint` + badges | `contents: write` - only `publish-badges` uses it (on the `branch` input, `main` by default, never for a pull request), but GitHub refuses the whole run when a called job asks for more than the caller grants, so every caller grants it |
 | [`addon-702.yaml`](../workflows/addon-702.yaml) | the downport to the branch `702`, then abaplint on that branch | `contents: write` |
 | [`addon-build-rename.yaml`](../workflows/addon-build-rename.yaml) | the branch `rename_<name>` for a parallel installation | `contents: write` |
-| [`addon-pages.yaml`](../workflows/addon-pages.yaml) | the VitePress site from `site/`, deployed from main | `contents: read`, `pages: write`, `id-token: write` |
+| [`addon-pages.yaml`](../workflows/addon-pages.yaml) | the VitePress site from `site/`, deployed from the `branch` input (`main` by default) | `contents: read`, `pages: write`, `id-token: write` |
 | [`addon-bump-deps.yaml`](../workflows/addon-bump-deps.yaml) | the monthly pull request: npm, pinned actions, `extra`, `.github/deps.json` | `contents: write`, `pull-requests: write`; secret `DEPS_TOKEN` passed explicitly |
 
 Every job inside declares its own permissions; a job that runs the code of a
@@ -43,7 +43,8 @@ need none.
 | `unit` | `false` | `npm run unit` |
 | `unit-setup` | `''` | shell run before it (a checkout the tests need) |
 | `rename` | `false` | `npm run rename`, the siblings taken from their pin (`RENAME_DEPS_FROM`) |
-| `abap2ui5lint` | `true` | `npx abap2ui5lint`, its Markdown summary, and on main the badges it writes, pushed to the branch `badges` |
+| `branch` | `main` | the branch the badges are published from - set it where the default branch is not `main` (http-connector, launchpad-kpi: `standard`); `addon-pages` takes the same input for the deploy |
+| `abap2ui5lint` | `true` | `npx abap2ui5lint`, its Markdown summary, and on `branch` the badges it writes, pushed to the branch `badges` |
 | `abap2ui5lint-render` | `true` | installs the browser of the render gate - `false` for an addon without views |
 | `canary` | `false` | pass `${{ github.event_name == 'schedule' }}`: the siblings at the tip of their branch instead of the pin, and `canary-setup` before the lint jobs |
 | `canary-setup` | `''` | e.g. `node scripts/core-pin.mjs set main` for an addon that pins the core to a release |

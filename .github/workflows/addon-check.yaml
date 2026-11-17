@@ -23,6 +23,10 @@ name: addon-check
 on:
   workflow_call:
     inputs:
+      branch:
+        description: 'the branch the badges are published from and the site deployed from - the default branch of a repository whose default is not main (e.g. standard)'
+        type: string
+        default: 'main'
       node-version:
         type: string
         default: '22'
@@ -227,7 +231,7 @@ jobs:
       run: npx abap2ui5lint --no-render --advisory --no-progress --no-badge --format markdown >> "$GITHUB_STEP_SUMMARY"
     - name: Check for badge files
       id: badges
-      if: success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      if: success() && github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', inputs.branch)
       run: |
         if ls .github/badges/*.json >/dev/null 2>&1; then
           echo "found=true" >> "$GITHUB_OUTPUT"
@@ -253,7 +257,7 @@ jobs:
   # state rather than a wrong one.
   publish-badges:
     needs: abap2ui5lint
-    if: needs.abap2ui5lint.outputs.badges == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: needs.abap2ui5lint.outputs.badges == 'true' && github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', inputs.branch)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

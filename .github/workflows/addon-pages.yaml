@@ -11,6 +11,10 @@ name: addon-pages
 on:
   workflow_call:
     inputs:
+      branch:
+        description: 'the branch the badges are published from and the site deployed from - the default branch of a repository whose default is not main (e.g. standard)'
+        type: string
+        default: 'main'
       node-version:
         type: string
         default: '22'
@@ -57,7 +61,7 @@ jobs:
         path: ${{ inputs.path }}
 
   deploy:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', inputs.branch)
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
