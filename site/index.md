@@ -30,7 +30,7 @@ features:
 
 ## What it does
 
-rap-ext reads a CDS entity and its UI annotations, metadata extensions included, and builds a list report, worklist, tree, flexible column layout, object page, overview page, value help or action dialog from them, writing through RAP where the entity is a business object. It is for ABAP developers on a standard ABAP system who want such a UI with one line of code and can still redefine any step of it with plain abap2UI5 view code, since every floorplan is a non-final class with protected methods. It is not for plain internal tables. The README states that none of it has been clicked through in an SAP system yet.
+rap-ext reads a CDS entity and its UI annotations, metadata extensions included, and builds a list report, worklist, tree, flexible column layout, object page, overview page, value help or action dialog from them, writing through RAP where the entity is a business object. It is for ABAP developers on a standard ABAP system who want such a UI with one line of code and can still redefine any step of it with plain abap2UI5 view code, since every floorplan is a non-final class with protected methods. It is not for plain internal tables. It passes the offline checks and was tested successfully in an SAP system by the maintainer.
 
 ## Requirements
 
