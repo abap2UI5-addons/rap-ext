@@ -1,0 +1,126 @@
+name: addon-bump-deps
+
+# Every dependency update of an abap2UI5 addon, once a month, in ONE pull
+# request (.github/ci/README.md) - on the last Sunday of the month. The caller
+# schedules it every Sunday; the first step goes on only when a week later is
+# another month (GitHub's cron cannot say "the last Sunday"). A manual
+# dispatch always goes on.
+#
+#   - npm and pinned GitHub Actions: the addon's .github/scripts/update-deps.mjs
+#     (the same file in every repository of abap2UI5 and abap2UI5-addons);
+#     with the DEPS_TOKEN secret also `--actions`, which moves every
+#     `uses: owner/repo...@<sha> # <tag>` - this template's own pin included -
+#     to the latest release of owner/repo
+#   - `extra`: what else the addon pins (e.g. the abap2UI5 release tag:
+#     node scripts/core-pin.mjs set "$(node scripts/core-pin.mjs latest)")
+#   - .github/deps.json: every sibling to the tip of its branch
+#     (.github/ci/pin-deps.mjs bump)
+#
+# The checks of the pull request are the gate: they run against the new pins.
+# The default token may not change files under .github/workflows/ and a pull
+# request it opens starts no workflow, so the caller passes DEPS_TOKEN (a
+# token that may push workflow files) when it has one. The caller grants
+# contents: write and pull-requests: write to the job that calls this.
+
+on:
+  workflow_call:
+    inputs:
+      repository:
+        description: 'owner/repo that opens the pull request - a fork does nothing'
+        type: string
+        required: true
+      node-version:
+        type: string
+        default: '22'
+      extra:
+        description: 'shell run after the npm and Actions update'
+        type: string
+        default: ''
+    secrets:
+      DEPS_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    if: github.repository == inputs.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+    - name: Only on the last Sunday of the month
+      id: when
+      run: |
+        if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ "$(date -u -d '+7 days' +%m)" = "$(date -u +%m)" ]; then
+          echo "not the last Sunday of the month - nothing to do"
+          echo "go=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "go=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      if: steps.when.outputs.go == 'true'
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      if: steps.when.outputs.go == 'true'
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: npm dependencies and GitHub Actions
+      if: steps.when.outputs.go == 'true'
+      env:
+        DEPS_TOKEN: ${{ secrets.DEPS_TOKEN }}
+        GH_TOKEN: ${{ secrets.DEPS_TOKEN || github.token }}
+      run: |
+        flags=""
+        if [ -n "$DEPS_TOKEN" ]; then flags="--actions"; fi
+        node .github/scripts/update-deps.mjs $flags --summary "$RUNNER_TEMP/summary.md"
+
+    - name: What else the addon pins
+      if: steps.when.outputs.go == 'true' && inputs.extra != ''
+      run: ${{ inputs.extra }}
+
+    # outside the workspace would be cleaner, but actions/checkout writes
+    # only below it - removed again before the pull request is made
+    - name: The CI template's scripts, at the commit the caller pinned
+      if: steps.when.outputs.go == 'true'
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ job.workflow_repository }}
+        ref: ${{ job.workflow_sha }}
+        path: .ci-template
+        sparse-checkout: .github/ci
+        persist-credentials: false
+    - name: Sibling repositories to the tip of their branch
+      if: steps.when.outputs.go == 'true'
+      run: |
+        node .ci-template/.github/ci/pin-deps.mjs bump --summary "$RUNNER_TEMP/summary.md"
+        rm -rf .ci-template
+
+    # without DEPS_TOKEN such changes (this template's pin among them) wait
+    # for a run that has it
+    - name: Without DEPS_TOKEN, leave workflow files out
+      if: steps.when.outputs.go == 'true'
+      env:
+        DEPS_TOKEN: ${{ secrets.DEPS_TOKEN }}
+      run: |
+        if [ -z "$DEPS_TOKEN" ] && ! git diff --quiet -- .github/workflows; then
+          git checkout -- .github/workflows
+          printf -- '- left out: changes to .github/workflows (they need the DEPS_TOKEN secret)\n' >> "$RUNNER_TEMP/summary.md"
+        fi
+
+    - name: Open the monthly pull request
+      if: steps.when.outputs.go == 'true'
+      uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+      with:
+        token: ${{ secrets.DEPS_TOKEN || github.token }}
+        branch: bump-deps
+        delete-branch: true
+        title: Monthly dependency update
+        commit-message: Monthly dependency update
+        body-path: ${{ runner.temp }}/summary.md

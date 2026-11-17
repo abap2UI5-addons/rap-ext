@@ -5,10 +5,9 @@
 [![abap2UI5](https://img.shields.io/badge/requires-abap2UI5-blue)](https://github.com/abap2UI5/abap2UI5)
 [![License](https://img.shields.io/github/license/abap2UI5-addons/rap-ext)](LICENSE)
 <br>
-[![ABAP Standard](https://img.shields.io/github/actions/workflow/status/abap2UI5-addons/rap-ext/abap-standard.yaml?branch=main&label=ABAP%20Standard)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/abap-standard.yaml)
-[![ABAP Unit](https://img.shields.io/github/actions/workflow/status/abap2UI5-addons/rap-ext/unit.yaml?branch=main&label=ABAP%20Unit)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/unit.yaml)
-[![check-abap2UI5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fabap2UI5-addons%2Frap-ext%2Fbadges%2Fcheck-abap2ui5.json)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check-abap2ui5.yaml)
-[![abap2UI5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fabap2UI5-addons%2Frap-ext%2Fbadges%2Fabap2ui5.json)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/check-abap2ui5.yaml)
+[![CI](https://img.shields.io/github/actions/workflow/status/abap2UI5-addons/rap-ext/ci.yaml?branch=main&label=CI)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/ci.yaml)
+[![check-abap2UI5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fabap2UI5-addons%2Frap-ext%2Fbadges%2Fcheck-abap2ui5.json)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/ci.yaml)
+[![abap2UI5](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fabap2UI5-addons%2Frap-ext%2Fbadges%2Fabap2ui5.json)](https://github.com/abap2UI5-addons/rap-ext/actions/workflows/ci.yaml)
 
 **Fiori-Elements-style apps for your CDS views, generated at runtime and
 rendered with abap2UI5.** rap-ext reads a CDS entity and its UI annotations
@@ -1361,7 +1360,7 @@ npm run check                   # all of them
 abaplint checks against the abap2UI5 version pinned in `abaplint.jsonc` (a
 release tag; `main` for now, see Changes 2026-11)
 (`scripts/core-pin.mjs`, moved monthly by `bump-deps.yaml`); the weekly run of
-`abap-standard.yaml` is the canary against the core's `main`.
+`ci.yaml` is the canary against the core's `main`.
 
 End-to-end still needs a system: install via abapGit and run
 `z2ui5_cl_rap_test`.

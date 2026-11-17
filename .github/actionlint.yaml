@@ -1,0 +1,9 @@
+# actionlint (https://github.com/rhysd/actionlint) for the workflows here.
+# job.workflow_repository / job.workflow_sha - the repository and commit of
+# the reusable workflow that defines the job (GitHub changelog 2026-09-03) -
+# are newer than actionlint 1.7.12, the latest release; drop this once
+# actionlint knows them.
+paths:
+  .github/workflows/addon-*.yaml:
+    ignore:
+      - 'property "workflow_(repository|sha)" is not defined in object type'
