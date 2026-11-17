@@ -23,7 +23,7 @@ home, and a find-and-replace of the `uses:` lines in the callers.
 
 | Workflow | What it runs | Permissions the calling job grants |
 |---|---|---|
-| [`addon-check.yaml`](../workflows/addon-check.yaml) | abaplint per config, npm scripts, `npm run unit`, `npm run rename`, `npx abap2ui5lint` + badges | `contents: write` (only `publish-badges` uses it, on main, never for a pull request; `contents: read` if the addon has no badges) |
+| [`addon-check.yaml`](../workflows/addon-check.yaml) | abaplint per config, npm scripts, `npm run unit`, `npm run rename`, `npx abap2ui5lint` + badges | `contents: write` - only `publish-badges` uses it (on main, never for a pull request), but GitHub refuses the whole run when a called job asks for more than the caller grants, so every caller grants it |
 | [`addon-702.yaml`](../workflows/addon-702.yaml) | the downport to the branch `702`, then abaplint on that branch | `contents: write` |
 | [`addon-build-rename.yaml`](../workflows/addon-build-rename.yaml) | the branch `rename_<name>` for a parallel installation | `contents: write` |
 | [`addon-pages.yaml`](../workflows/addon-pages.yaml) | the VitePress site from `site/`, deployed from main | `contents: read`, `pages: write`, `id-token: write` |
