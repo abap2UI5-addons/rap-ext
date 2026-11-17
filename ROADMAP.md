@@ -2,18 +2,16 @@
 
 What the 2026-09 and the three 2026-10 rounds implemented, and what is still
 open. Everything marked **done** passes the three offline gates (abaplint,
-the transpiled unit tests, the abap2UI5-linter); **none of it has been
-clicked through in an SAP system yet** - that is the first open item, and
-[docs/system-test.md](docs/system-test.md) is the checklist for it.
+the transpiled unit tests, the abap2UI5-linter), and the maintainer tested
+the addon successfully in an SAP system on 2026-11-17.
+[docs/system-test.md](docs/system-test.md) is the checklist for running that
+test again per release.
 
 ## Open
 
-1. **The system test** ([docs/system-test.md](docs/system-test.md)) - first,
-   and its findings before anything below. The RAP write path, the draft
-   handling, the derived type names (`\ASSOC=` or `\ASSOCIATION=...\TYPE=CREATE`
-   for a create by association), the host variables in dynamic WHERE clauses, the
-   DDL source read and the hand-written sidecar of `z2ui5_t_31` were
-   written from documentation.
+1. **The system test** ([docs/system-test.md](docs/system-test.md)) - run
+   successfully by the maintainer on 2026-11-17. It stays on this list as a
+   step of every release, not as an open finding.
 2. **The three dynamic EML classes** (`z2ui5_cl_rap_eml_perm`, `_read`,
    `_key`) in a system: their syntax, the absolute names of the
    permission types (`\TYPE=PERMISSIONS_K` / `_Q` / `_R` are guesses, see

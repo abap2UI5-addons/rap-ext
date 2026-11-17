@@ -91,10 +91,10 @@ COMMIT WORK.
 come from `z2ui5_cl_rap_test_start` (see [Deep links](#deep-links)).
 
 > [!NOTE]
-> Everything passes the offline checks, but none of it has been clicked
-> through in an SAP system yet - the RAP write path and the reading of
-> metadata extensions were written without one. The checklist for that is
-> [docs/system-test.md](docs/system-test.md); see also [ROADMAP.md](ROADMAP.md).
+> Everything passes the offline checks, and the maintainer tested the addon
+> successfully in an SAP system (2026-11-17). The checklist for a system
+> test is [docs/system-test.md](docs/system-test.md); run it again per
+> release. See also [ROADMAP.md](ROADMAP.md).
 
 ## Usage
 
