@@ -1,0 +1,292 @@
+name: addon-check
+
+# The checks of an abap2UI5 addon, shared by every addon of abap2UI5-addons
+# (.github/ci/README.md). An addon calls this from its own ci.yaml with the
+# checks it has; a fix made here reaches every addon with the next bump of the
+# pin in its `uses:` line.
+#
+#   abaplint      one job per config: npx abaplint <config>
+#   npm-scripts   one job per script: npm run <script> - for a check that is
+#                 more than one abaplint call (a downported scratch copy, a
+#                 cloud branch built first, a regex scan)
+#   unit          npm run unit - the transpiled ABAP Unit tests
+#   rename        npm run rename - the namespace rename check
+#   abap2ui5lint  npx abap2ui5lint, and on main the badges it writes,
+#                 published to the branch `badges`
+#
+# Sibling repositories (.github/deps.json) are resolved at the commit pinned
+# there, not at the tip of their main (.github/ci/pin-deps.mjs, checked out
+# at the commit of this workflow the caller pinned). `canary: true` resolves
+# them at the tip instead and runs `canary-setup` before the lint - for the
+# scheduled run, which is what notices an upstream rename between two bumps.
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: '22'
+      abaplint:
+        description: 'JSON array of abaplint configs, one job each - [] for none'
+        type: string
+        default: '["./abaplint.jsonc"]'
+      npm-scripts:
+        description: 'JSON array of npm scripts, one job each - [] for none'
+        type: string
+        default: '[]'
+      unit:
+        description: 'npm run unit'
+        type: boolean
+        default: false
+      unit-setup:
+        description: 'shell run before npm run unit (e.g. a checkout the tests need)'
+        type: string
+        default: ''
+      rename:
+        description: 'npm run rename (.github/scripts/rename.mjs)'
+        type: boolean
+        default: false
+      abap2ui5lint:
+        description: 'npx abap2ui5lint (settings in abap2ui5lint.jsonc)'
+        type: boolean
+        default: true
+      abap2ui5lint-render:
+        description: 'install the browser the render gate drives - false for an addon without views'
+        type: boolean
+        default: true
+      canary:
+        description: 'resolve the siblings at the tip of their branch and run canary-setup - pass github.event_name == ''schedule'''
+        type: boolean
+        default: false
+      canary-setup:
+        description: 'shell run before the lint jobs of a canary run (e.g. node scripts/core-pin.mjs set main)'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  abaplint:
+    if: inputs.abaplint != '[]' && inputs.abaplint != ''
+    name: abaplint (${{ matrix.config }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJSON(inputs.abaplint) }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+    - run: npm ci
+    - name: The CI template's scripts, at the commit the caller pinned
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ job.workflow_repository }}
+        ref: ${{ job.workflow_sha }}
+        path: .ci-template
+        sparse-checkout: .github/ci
+        persist-credentials: false
+    - name: Sibling repositories at their pin (.github/deps.json)
+      run: node .ci-template/.github/ci/pin-deps.mjs ${{ inputs.canary && '--tip' || '' }}
+    - name: Canary setup
+      if: inputs.canary && inputs.canary-setup != ''
+      run: ${{ inputs.canary-setup }}
+    - run: npx abaplint "$CONFIG"
+      env:
+        CONFIG: ${{ matrix.config }}
+
+  npm-script:
+    if: inputs.npm-scripts != '[]' && inputs.npm-scripts != ''
+    name: npm run ${{ matrix.script }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        script: ${{ fromJSON(inputs.npm-scripts) }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+    - run: npm ci
+    - name: The CI template's scripts, at the commit the caller pinned
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ job.workflow_repository }}
+        ref: ${{ job.workflow_sha }}
+        path: .ci-template
+        sparse-checkout: .github/ci
+        persist-credentials: false
+    - name: Sibling repositories at their pin (.github/deps.json)
+      run: node .ci-template/.github/ci/pin-deps.mjs ${{ inputs.canary && '--tip' || '' }}
+    - name: Canary setup
+      if: inputs.canary && inputs.canary-setup != ''
+      run: ${{ inputs.canary-setup }}
+    - run: npm run "$SCRIPT"
+      env:
+        SCRIPT: ${{ matrix.script }}
+
+  # the addon's unit.mjs reads .github/deps.json itself (the same pins on a
+  # laptop); DEPS_TIP=1 makes it take the tips
+  unit:
+    if: inputs.unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+    - run: npm ci
+    - name: Unit setup
+      if: inputs.unit-setup != ''
+      run: ${{ inputs.unit-setup }}
+    - run: npm run unit
+      env:
+        DEPS_TIP: ${{ inputs.canary && '1' || '' }}
+
+  rename:
+    if: inputs.rename
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+    - run: npm ci
+    - name: The CI template's scripts, at the commit the caller pinned
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ job.workflow_repository }}
+        ref: ${{ job.workflow_sha }}
+        path: .ci-template
+        sparse-checkout: .github/ci
+        persist-credentials: false
+    # sets RENAME_DEPS_FROM: rename.mjs copies the siblings from there
+    # instead of cloning their main
+    - name: Sibling repositories at their pin (.github/deps.json)
+      run: node .ci-template/.github/ci/pin-deps.mjs ${{ inputs.canary && '--tip' || '' }}
+    - run: npm run rename
+
+  # The abap2UI5-specific lint, as opposed to the jobs above, which lint ABAP
+  # itself: the app classes and the views they build. The badges it rewrites
+  # (abap2ui5lint.jsonc "badge") travel to publish-badges below - this job
+  # runs pull request code and keeps the read-only token.
+  abap2ui5lint:
+    if: inputs.abap2ui5lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      badges: ${{ steps.badges.outputs.found }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+    - run: npm ci
+    # the render gate drives a headless browser
+    - if: inputs.abap2ui5lint-render
+      run: npx playwright install chromium --with-deps
+    - run: npx abap2ui5lint
+    # the same run once more as markdown, into the run's own page. --no-render
+    # because whether the views load was decided above; --no-badge so a pass
+    # that skipped a gate cannot overwrite what the real run wrote.
+    - name: Job summary
+      if: always()
+      run: npx abap2ui5lint --no-render --advisory --no-progress --no-badge --format markdown >> "$GITHUB_STEP_SUMMARY"
+    - name: Check for badge files
+      id: badges
+      if: success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      run: |
+        if ls .github/badges/*.json >/dev/null 2>&1; then
+          echo "found=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "No badge files written - nothing to publish."
+        fi
+    # include-hidden-files: .github/ is a dot directory, which upload-artifact
+    # skips by default
+    - name: Hand the badges over
+      if: steps.badges.outputs.found == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: badges
+        path: .github/badges/*.json
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 1
+
+  # Pushes the badge files to the orphan branch `badges` the README badges
+  # read. Only on main, never for a pull request, only after a green gate. The
+  # caller grants contents: write to the job that calls this workflow; without
+  # it the push fails, which is a warning - the README keeps the previous
+  # state rather than a wrong one.
+  publish-badges:
+    needs: abap2ui5lint
+    if: needs.abap2ui5lint.outputs.badges == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: badges
+        path: .github/badges
+    - name: Publish the badges
+      run: |
+        ls .github/badges/*.json >/dev/null 2>&1 || { echo "::warning::No badge files - nothing to publish."; exit 0; }
+        dir="$RUNNER_TEMP/badges"
+        if git ls-remote --exit-code --heads origin badges >/dev/null; then
+          git fetch -q --depth=1 origin badges
+          git worktree add -q "$dir" FETCH_HEAD
+          git -C "$dir" checkout -q -B badges
+        else
+          git worktree add -q --detach "$dir"
+          git -C "$dir" switch -q --orphan badges
+        fi
+        cp .github/badges/*.json "$dir/"
+        cd "$dir"
+        git add -A
+        if git diff --cached --quiet; then
+          echo "The badges branch is up to date."
+          exit 0
+        fi
+        git -c user.name='github-actions[bot]' -c user.email='github-actions[bot]@users.noreply.github.com' \
+          commit -qm "Badges for ${GITHUB_SHA::7}"
+        if git push -q origin badges; then
+          echo "Badges published to the badges branch."
+        else
+          echo "::warning::The badges could not be pushed to the badges branch - the README keeps showing the previous state."
+        fi

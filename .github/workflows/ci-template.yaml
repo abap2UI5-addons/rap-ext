@@ -1,0 +1,42 @@
+# The shared CI template itself (.github/ci/README.md): actionlint over every
+# workflow here, and the tests of .github/ci/pin-deps.mjs. ci.yaml runs the
+# template's checks on this repository.
+name: ci-template
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/ci/**'
+      - '.github/workflows/**'
+      - '.github/actionlint.yaml'
+  pull_request:
+    paths:
+      - '.github/ci/**'
+      - '.github/workflows/**'
+      - '.github/actionlint.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-template-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci-template:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: '22'
+    # through the Go module proxy, so the checksum database vouches for the
+    # version (Go is on the runner image); settings in .github/actionlint.yaml
+    - name: actionlint
+      run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+    - run: node --test ".github/ci/*.test.mjs"

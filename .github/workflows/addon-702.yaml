@@ -1,0 +1,82 @@
+name: addon-702
+
+# The downported branch `702` of an abap2UI5 addon (.github/ci/README.md):
+# `publish` runs the addon's downport script on main and force-pushes the
+# result to `702`, `lint` then lints that branch. Both in one run - the push
+# is made with the GITHUB_TOKEN and so starts no workflow of its own, which
+# is why the separate abap-702 workflow needed a workflow_run trigger.
+#
+# The caller grants contents: write to the job that calls this workflow.
+# Nobody commits to `702` by hand.
+
+on:
+  workflow_call:
+    inputs:
+      repository:
+        description: 'owner/repo that publishes - a fork runs neither job'
+        type: string
+        required: true
+      node-version:
+        type: string
+        default: '22'
+      publish:
+        description: 'false: lint the branch as it is, publish nothing'
+        type: boolean
+        default: true
+      downport-script:
+        description: 'the npm script that downports main in place'
+        type: string
+        default: 'auto_downport'
+      config:
+        description: 'the abaplint config linted on the branch 702'
+        type: string
+        default: '.github/abaplint/abap_702.jsonc'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: inputs.publish && github.repository == inputs.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+    - run: npm ci
+    - run: npm run "$SCRIPT"
+      env:
+        SCRIPT: ${{ inputs.downport-script }}
+    - name: Commit and force-push the branch 702
+      run: |
+        git config user.name 'github-actions[bot]'
+        git config user.email 'github-actions[bot]@users.noreply.github.com'
+        git add .
+        git diff --staged --quiet || git commit -m "Downport changes"
+        git push --force origin HEAD:702
+
+  lint:
+    needs: publish
+    if: ${{ !cancelled() && github.repository == inputs.repository && (needs.publish.result == 'success' || !inputs.publish) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: '702'
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+    - run: npm ci
+    - run: npx abaplint "$CONFIG"
+      env:
+        CONFIG: ${{ inputs.config }}
