@@ -381,8 +381,7 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
             )->a( n = `growing`
                   b = abap_true
             )->a( n = `items`
-                  v = `{path:'` && client->_bind( val  = <lt_data>
-                                                  path = abap_true ) && `'}` ).
+                  v = `{path:'` && client->_bind_path( <lt_data> ) && `'}` ).
 
     DATA(lo_columns) = lo_dialog->ele( `columns` ).
     DATA(lo_cells) = lo_dialog->ele( `items`
@@ -497,8 +496,7 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
     DATA(lo_table) = lo_dialog->ele( `content`
         )->ele( `Table`
             )->a( n = `items`
-                  v = `{path:'` && client->_bind( val  = <lt_data>
-                                                  path = abap_true ) && `'}`
+                  v = `{path:'` && client->_bind_path( <lt_data> ) && `'}`
             )->a( n = `mode`
                   v = lv_mode
             )->a( n = `growing`

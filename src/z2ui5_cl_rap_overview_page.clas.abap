@@ -773,8 +773,7 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
     "table inside the card
     DATA(lo_table) = lo_content->ele( `Table`
         )->a( n = `items`
-              v = `{path:'` && client->_bind( val  = <lt_data>
-                                              path = abap_true ) && `'}`
+              v = `{path:'` && client->_bind_path( <lt_data> ) && `'}`
         )->a( n = `mode`
               v = `None` ).
 
@@ -897,8 +896,7 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
 
     DATA(lo_bars) = lo_content->ele( `VBox`
         )->a( n = `items`
-              v = `{path:'` && client->_bind( val  = <lt_data>
-                                              path = abap_true ) && `'}` ).
+              v = `{path:'` && client->_bind_path( <lt_data> ) && `'}` ).
 
     IF is_card-chart_type = `TREND`.
       "one line per dimension value: its measure and the trend against

@@ -2504,8 +2504,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     "grouped by the group field: a group header row per value - the rows
     "come ordered by it from the database (since 2026-10, third round)
-    DATA(lv_items) = `{path:'` && client->_bind( val  = <lt_data>
-                                                 path = abap_true ) && `'`.
+    DATA(lv_items) = `{path:'` && client->_bind_path( <lt_data> ) && `'`.
     "- an analytical list has group rows of its own
     DATA(lv_summary) = xsdbool( mv_analytical = abap_true AND has_row_column( cs_row_column-row_kind ) = abap_true ).
     IF mv_group_field IS NOT INITIAL AND line_exists( mt_sort_field[ name = mv_group_field ] )
@@ -3873,8 +3872,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     DATA(lo_grid) = io_page->ele( n  = `Table`
                                   ns = `table`
         )->a( n = `rows`
-              v = `{` && client->_bind( val  = <lt_grid_data>
-                                        path = abap_true ) && `}`
+              v = `{` && client->_bind_path( <lt_grid_data> ) && `}`
         )->a( n = `noData`
               v = client->_bind( mv_no_data )
         )->a( n = `selectionMode`

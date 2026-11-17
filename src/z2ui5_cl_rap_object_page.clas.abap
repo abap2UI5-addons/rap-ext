@@ -3561,8 +3561,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
     DATA(lo_table) = io_parent->ele( `Table`
         )->a( n = `items`
-              v = `{path:'` && client->_bind( val  = <lt_rows>
-                                              path = abap_true ) && `'}`
+              v = `{path:'` && client->_bind_path( <lt_rows> ) && `'}`
         )->a( n = `growing`
               v = `true`
         )->a( n = `mode`
