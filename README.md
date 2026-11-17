@@ -91,7 +91,8 @@ come from `z2ui5_cl_rap_test_start` (see [Deep links](#deep-links)).
 
 > [!NOTE]
 > Everything passes the offline checks, and the maintainer tested the addon
-> successfully in an SAP system (2026-11-17). The checklist for a system
+> successfully on an ABAP Cloud system (2026-11-17), feature control
+> (`GET PERMISSIONS`) included. The checklist for a system
 > test is [docs/system-test.md](docs/system-test.md); run it again per
 > release. See also [ROADMAP.md](ROADMAP.md).
 
@@ -355,7 +356,8 @@ On premise nothing changes: the annotations come from
 `CL_DD_DDL_ANNOTATION_SERVICE`, the keys and labels from the DDIC field
 list, the associations from the DDL source. In ABAP Cloud (SAP BTP ABAP
 environment, S/4HANA Cloud) link the branch **`cloud`** instead of `main`.
-**Written without an ABAP Cloud system** - the checklist is
+**Tested on an ABAP Cloud system** by the maintainer (2026-11-17, branch
+`cloud`, everything passed) - the checklist is
 [docs/system-test.md](docs/system-test.md), section 12.
 
 **Two branches, one code.** Everything ABAP Cloud does not release - the

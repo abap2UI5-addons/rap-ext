@@ -3,7 +3,7 @@
 What the 2026-09 and the three 2026-10 rounds implemented, and what is still
 open. Everything marked **done** passes the three offline gates (abaplint,
 the transpiled unit tests, the abap2UI5-linter), and the maintainer tested
-the addon successfully in an SAP system on 2026-11-17.
+the addon successfully on an ABAP Cloud system on 2026-11-17.
 [docs/system-test.md](docs/system-test.md) is the checklist for running that
 test again per release.
 
@@ -13,11 +13,10 @@ test again per release.
    successfully by the maintainer on 2026-11-17. It stays on this list as a
    step of every release, not as an open finding.
 2. **The three dynamic EML classes** (`z2ui5_cl_rap_eml_perm`, `_read`,
-   `_key`) in a system: their syntax, the absolute names of the
-   permission types (`\TYPE=PERMISSIONS_K` / `_Q` / `_R` are guesses, see
-   `z2ui5_cl_rap_util=>get_permission_type_names`), the components of the
-   permission result (`GLOBAL`, `INSTANCES`, `%ACTION`, `%FIELD`, `%ASSOC`).
-   The features are written; whether they work is the system test's.
+   `_key`) - **done**: verified by the maintainer's system test on an ABAP
+   Cloud system on 2026-11-17 (their syntax, the permission type names of
+   `z2ui5_cl_rap_util=>get_permission_type_names`, the components of the
+   permission result). Not yet confirmed on an on-premise system.
 3. **The etag master field of the BDEF**: the optimistic check compares the
    local last-changed field, not the field the BDEF names as `etag master` -
    no table to read a BDEF source from is known here, and `GET PERMISSIONS`

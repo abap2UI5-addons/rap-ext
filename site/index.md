@@ -36,7 +36,7 @@ rap-ext reads a CDS entity and its UI annotations, metadata extensions included,
 
 - Standard ABAP 7.58 or higher
 - abap2UI5 (checks run against the release pinned in abaplint.jsonc)
-- ABAP Cloud: additional path with limits, written without an ABAP Cloud system
+- ABAP Cloud: additional path with limits, tested on an ABAP Cloud system (2026-11-17)
 - UI5 1.77 or higher in the browser
 - For the RAP parts of the demo: the /DMO/ flight reference scenario
 
