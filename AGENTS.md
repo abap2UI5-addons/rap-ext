@@ -20,7 +20,7 @@ views and their UI annotations, rendered with abap2UI5.
 | `cloud/` | the files the branch `cloud` carries in place of the ones of the same name in `src/` (`cloud/README.md`) |
 | `z2ui5_cl_rap_anno_xco` | the annotation reader for ABAP Cloud: the released XCO API (`XCO_CP_CDS`, `XCO_CP_ABAP_DICTIONARY`) - the annotations of an entity and its fields, its associations written as DDL for the parser, domain fixed values; named by a literal in `z2ui5_cl_rap_util` and called dynamically, not in `npm run unit` |
 | `z2ui5_cl_rap_eml` | the RAP write path - the only class with EML abaplint parses |
-| `z2ui5_cl_rap_eml_perm`, `_read`, `_key` | one dynamic EML statement each (`GET PERMISSIONS OPERATIONS`, `READ ENTITIES OPERATIONS`, `CONVERT KEY`) - in `global.noIssues`, called dynamically from `z2ui5_cl_rap_eml`, unverified syntax |
+| `z2ui5_cl_rap_eml_perm`, `_read`, `_key` | one dynamic EML statement each (`GET PERMISSIONS OPERATIONS`, `READ ENTITIES OPERATIONS`, `CONVERT KEY`) - in `global.noIssues`, called dynamically from `z2ui5_cl_rap_eml`, syntax verified on an ABAP Cloud system (2026-11-17) |
 | `z2ui5_cl_rap_query` | the read path of custom entities - the only class implementing the `IF_RAP_QUERY_*` interfaces (the request and response a query provider is called with); not in `npm run unit`, reached only behind `query_available( )` |
 | `z2ui5_if_rap_ext` | the extension points (`set_extension( )`) |
 | `z2ui5_cl_rap_start` | opens a floorplan from a URL (deep links) - opens nothing unless a subclass allows the entity |
@@ -140,8 +140,9 @@ as CI does.
   PR what was and was not verified that way - **the RAP write path
   (`z2ui5_cl_rap_eml`, actions, capabilities), the metadata-extension
   reading (`GET_ANNOS`) and the XCO reader (`z2ui5_cl_rap_anno_xco`, ABAP
-  Cloud) were written without a system** and are the first things to
-  verify.
+  Cloud) were written without a system**; the maintainer's system test
+  on an ABAP Cloud system (2026-11-17) passed them, and they stay the first
+  things to verify after a change.
 
 ## Target platform — do not "modernize"
 
@@ -198,8 +199,8 @@ as CI does.
   (by `get_layer_priority`: CUSTOMER > PARTNER > INDUSTRY > LOCALIZATION >
   CORE > the merged metadata extensions > the entity's own > propagated; a
   whole array or a single value replaced). `z2ui5_cl_rap_anno_xco` itself
-  only asks XCO, is not transpiled and was written without a system
-  (docs/system-test.md, 12).
+  only asks XCO, is not transpiled and was verified only by the system test
+  on an ABAP Cloud system, 2026-11-17 (docs/system-test.md, 12).
 - **`z2ui5_cl_rap_eml` is the only class with EML statements abaplint
   parses** (dynamic `MODIFY ENTITIES OPERATIONS`, `COMMIT ENTITIES
   RESPONSES`, `ROLLBACK ENTITIES`). abaplint parses only the static forms of
@@ -210,7 +211,8 @@ as CI does.
   OPERATIONS`), `z2ui5_cl_rap_eml_key` (`COMMIT ENTITIES BEGIN`, `CONVERT
   KEY`, `COMMIT ENTITIES END`). Their `.abap` files are in `global.noIssues`
   of `abaplint.jsonc` (their `.clas.xml` stay checked), they are not in the
-  transpiled unit run, no gate reads them, and their syntax is unverified
+  transpiled unit run and no gate reads them; their syntax was verified only
+  by the system test, on an ABAP Cloud system on 2026-11-17
   (docs/system-test.md, 1). `z2ui5_cl_rap_eml` names them only as literals
   (`cs_dynamic`) and calls them with `CALL METHOD (class)=>(method)` inside
   `TRY ... CATCH cx_root`, so a system where one does not activate only loses

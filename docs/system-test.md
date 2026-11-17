@@ -4,7 +4,8 @@ What no offline gate can show: the three gates (abaplint, the transpiled unit
 tests, the abap2UI5-linter) prove that the code parses, that the logic on
 plain data is right and that every view renders - not that a system answers
 the way the code expects. Everything below was written from documentation; the
-maintainer ran a system test successfully on 2026-11-17. Run it once per release, on a system with
+maintainer ran a system test successfully on an ABAP Cloud system on
+2026-11-17 (everything passed, `GET PERMISSIONS` included). Run it once per release, on a system with
 the /DMO/ flight reference scenario, and note in the PR what was and was not
 verified.
 
