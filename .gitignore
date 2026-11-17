@@ -8,3 +8,7 @@ site/node_modules/
 site/.vitepress/cache/
 site/.vitepress/dist/
 build/
+
+# the shared CI template: the sibling checkouts of .github/ci/pin-deps.mjs
+.deps/
+.ci-template/

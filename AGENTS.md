@@ -79,7 +79,7 @@ as CI does.
   needs network access. The core is **pinned to a release tag** (the
   `"branch"` key, abap2UI5 CONVENTIONS §9) - read and move it only with
   `scripts/core-pin.mjs`; `bump-deps.yaml` moves it monthly, in its one
-  pull request whose checks lint against the new tag (`bump-core.yml` by hand), and the scheduled run of `abap-standard.yaml` lints against
+  pull request whose checks lint against the new tag (`bump-core.yml` by hand), and the scheduled run of `ci.yaml` lints against
   the core's `main` as the canary. Do not drop the key: abaplint then clones
   `main` silently. **Exception, 2026-11:** the pin is `main` (maintainer
   decision) - `z2ui5_cl_rap_fcl_client` and the test double in
@@ -115,9 +115,17 @@ as CI does.
   `abap2ui5lint-baseline.json` records the one accepted finding (the
   overview page's public `mt_card_data`, kept for the public contract and
   explained in `abap2ui5lint.jsonc`), and only shrinks.
-- CI runs the three gates on every push and PR, one workflow each
-  (`.github/workflows/abap-standard.yaml`, `unit.yaml`, `check-abap2ui5.yaml`)
+- CI runs the three gates on every push and PR in one workflow,
+  `.github/workflows/ci.yaml`, which calls the shared CI template of the
+  addons (`addon-check.yaml`: abaplint, `lint:cloud`, unit, abap2UI5-linter)
   - a local clean run means CI passes.
+- **This repository hosts the shared CI template of abap2UI5-addons**
+  (`.github/ci/README.md`): the reusable `addon-*.yaml` workflows every addon
+  calls, `.github/ci/pin-deps.mjs`, and `ci-template.yaml`, which checks
+  them. The GitHub releases of rap-ext (`ci-vX.Y.Z`) are releases of that
+  template - the addons' monthly bump moves their pin to the latest one. A
+  change there reaches every addon: run `node --test ".github/ci/*.test.mjs"`
+  and actionlint, and keep the inputs backwards compatible.
 - The overview page's ABAP Unit test
   (`z2ui5_cl_rap_overview_page.clas.testclasses.abap`) drives a table card
   through the core's client, and a draft roundtrip through its handler. It
