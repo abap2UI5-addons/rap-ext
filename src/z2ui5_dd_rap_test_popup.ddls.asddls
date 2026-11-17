@@ -11,7 +11,6 @@ define abstract entity z2ui5_dd_rap_test_popup
   NewDate       : abap.dats;
 
   @EndUserText.label: 'Message Type'
-  @Consumption.valueHelpDefinition: [{ entity: { name: 'I_MessageSeverity', element: 'Severity' } }]
   MessageType   : abap.int4;
 
   @EndUserText.label: 'Update data'

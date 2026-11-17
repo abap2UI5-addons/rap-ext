@@ -5,7 +5,7 @@
    <VSEOCLASS>
     <CLSNAME>Z2UI5_CL_RAP_PLATFORM</CLSNAME>
     <LANGU>E</LANGU>
-    <DESCRIPT>abap2UI5 - what ABAP Cloud does not release (on premise)</DESCRIPT>
+    <DESCRIPT>abap2UI5 - what ABAP Cloud does not release (ABAP Cloud)</DESCRIPT>
     <STATE>1</STATE>
     <CLSCCINCL>X</CLSCCINCL>
     <FIXPT>X</FIXPT>
