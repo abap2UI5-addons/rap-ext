@@ -1057,7 +1057,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     "the suggestions of an input with a value help, while the user types
     IF client->check_on_event( cv_event_suggest ).
       load_suggestions( client    = client
-                        it_fields = ms_entity-fields ).
+                        it_fields = ms_entity-fields
+                        record    = ms_data->* ).
       RETURN.
     ENDIF.
 
@@ -4429,11 +4430,14 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     LOOP AT it_values INTO DATA(ls_value).
       APPEND ls_value-name TO lt_names.
     ENDLOOP.
+    "in the order of the child's presentation variant, else its keys - the
+    "same order on every read (since 2026-11)
     result = select_rows( entity_name    = is_child-entity-name
                           where          = build_key_condition( lt_names )
                           host           = create_host( entity_name = is_child-entity-name
                                                         values      = it_values )
-                          with_selection = abap_true ).
+                          with_selection = abap_true
+                          order_by       = z2ui5_cl_rap_util=>get_default_order_by( is_child-entity ) ).
 
   ENDMETHOD.
 

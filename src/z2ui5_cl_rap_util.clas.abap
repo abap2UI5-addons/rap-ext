@@ -47,6 +47,9 @@ CLASS z2ui5_cl_rap_util DEFINITION
         element       TYPE string,
         local_element TYPE string,
         usage         TYPE string,
+        "added 2026-11: localConstant - a fixed value instead of a local
+        "element (a FILTER binding: the value help is restricted to it)
+        local_constant TYPE string,
       END OF ty_s_additional_binding.
 
     TYPES ty_t_additional_binding TYPE STANDARD TABLE OF ty_s_additional_binding WITH DEFAULT KEY.
@@ -1246,6 +1249,18 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! The ORDER BY of a read the user does not sort (added 2026-11): first
+    "! (a value help's element), the sort of the entity's presentation
+    "! variant, then every key - a stable order, so UP TO n ROWS reads the
+    "! same n rows each time. Only fields the entity has; no STRING, no
+    "! virtual element
+    CLASS-METHODS get_default_order_by
+      IMPORTING
+        is_entity     TYPE ty_s_entity_info
+        first         TYPE string OPTIONAL
+      RETURNING
+        VALUE(result) TYPE string.
+
     "! a field the user may sort by: no STRING or RAW, and a virtual
     "! element only with @ObjectModel.sort.transformedBy
     CLASS-METHODS is_sortable
@@ -1865,6 +1880,31 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result)   TYPE string.
 
+    "! The restriction of a value help by its additional bindings with usage
+    "! FILTER (or none, which is both), added 2026-11: the value of the
+    "! local element in source - left out when empty - or the local
+    "! constant. name the value help's element
+    CLASS-METHODS get_value_help_filters
+      IMPORTING
+        it_bindings   TYPE ty_t_additional_binding
+        source        TYPE data OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
+
+    "! The order of the rows of a chart card (added 2026-11): the first
+    "! sort of the presentation variant on the dimension or the measure,
+    "! else the largest measures first - a trend (chart_type TREND) along
+    "! its dimension. field is DIMENSION or MEASURE, the columns the card
+    "! reads
+    CLASS-METHODS get_chart_order
+      IMPORTING
+        chart_type    TYPE string
+        dimension     TYPE string
+        measure       TYPE string
+        sort_order    TYPE ty_t_sort OPTIONAL
+      RETURNING
+        VALUE(result) TYPE ty_s_sort.
+
     "! The layout of a flexible column layout (sap.f.LayoutType) for the
     "! number of columns shown (1-3), full_screen the last one alone
     CLASS-METHODS get_fcl_layout
@@ -2217,8 +2257,9 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE ty_t_annotation.
 
-    "! the bindings (LOCALELEMENT, ELEMENT, USAGE) of the entries of an
-    "! array of bindings - additionalBinding, semanticObjectBinding
+    "! the bindings (LOCALELEMENT, ELEMENT, USAGE, LOCALCONSTANT) of the
+    "! entries of an array of bindings - additionalBinding,
+    "! semanticObjectBinding
     CLASS-METHODS get_entry_bindings
       IMPORTING
         it_entries    TYPE ty_t_entry
@@ -5548,6 +5589,39 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD get_default_order_by.
+
+    DATA lt_sort TYPE ty_t_sort.
+    DATA lt_used TYPE string_table.
+
+    IF first IS NOT INITIAL.
+      APPEND VALUE #( field = to_upper( first ) ) TO lt_sort.
+    ENDIF.
+    APPEND LINES OF is_entity-sort_order TO lt_sort.
+    LOOP AT is_entity-keys INTO DATA(lv_key).
+      APPEND VALUE #( field = to_upper( lv_key ) ) TO lt_sort.
+    ENDLOOP.
+
+    LOOP AT lt_sort ASSIGNING FIELD-SYMBOL(<ls_sort>).
+      <ls_sort>-field = to_upper( <ls_sort>-field ).
+      READ TABLE is_entity-fields INTO DATA(ls_field) WITH KEY name = <ls_sort>-field.
+      "no string - a LOB in an ORDER BY is invalid SQL; a RAW of a fixed
+      "length (a UUID) sorts, a RAWSTRING (length 0) does not
+      IF sy-subrc <> 0 OR ls_field-type_kind = `STRING`
+        OR ( ls_field-type_kind = `RAW` AND ls_field-length = 0 )
+        OR ls_field-is_virtual = abap_true OR line_exists( lt_used[ table_line = <ls_sort>-field ] ).
+        CONTINUE.
+      ENDIF.
+      APPEND <ls_sort>-field TO lt_used.
+      IF result IS NOT INITIAL.
+        result = result && `, `.
+      ENDIF.
+      result = result && <ls_sort>-field && COND #( WHEN <ls_sort>-descending = abap_true THEN ` DESCENDING` ELSE `` ).
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
   METHOD is_sortable.
     result = xsdbool( is_field-type_kind <> `STRING` AND is_field-type_kind <> `RAW`
                       AND ( is_field-is_virtual = abap_false OR is_field-sort_transform_class IS NOT INITIAL ) ).
@@ -6198,9 +6272,10 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDIF.
       lv_idx = ls_entry-idx.
       DATA(ls_binding) = VALUE ty_s_additional_binding(
-        element       = to_upper( strip_quotes( get_entry_value( it_entries = it_entries idx = lv_idx prop = `ELEMENT` ) ) )
-        local_element = to_upper( strip_quotes( get_entry_value( it_entries = it_entries idx = lv_idx prop = `LOCALELEMENT` ) ) )
-        usage         = strip_quotes( get_entry_value( it_entries = it_entries idx = lv_idx prop = `USAGE` ) ) ).
+        element        = to_upper( strip_quotes( get_entry_value( it_entries = it_entries idx = lv_idx prop = `ELEMENT` ) ) )
+        local_element  = to_upper( strip_quotes( get_entry_value( it_entries = it_entries idx = lv_idx prop = `LOCALELEMENT` ) ) )
+        usage          = strip_quotes( get_entry_value( it_entries = it_entries idx = lv_idx prop = `USAGE` ) )
+        local_constant = strip_quotes( get_entry_value( it_entries = it_entries idx = lv_idx prop = `LOCALCONSTANT` ) ) ).
       IF ls_binding-local_element IS NOT INITIAL OR ls_binding-element IS NOT INITIAL.
         APPEND ls_binding TO result.
       ENDIF.
@@ -7296,6 +7371,56 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDCASE.
     ENDLOOP.
     result = concat_lines_of( table = lt_parts sep = `, ` ).
+
+  ENDMETHOD.
+
+
+  METHOD get_value_help_filters.
+
+    FIELD-SYMBOLS <lv_value> TYPE any.
+
+    LOOP AT it_bindings INTO DATA(ls_bind) WHERE element IS NOT INITIAL.
+      IF ls_bind-usage IS NOT INITIAL AND to_upper( ls_bind-usage ) NS `FILTER`.
+        CONTINUE.
+      ENDIF.
+      IF ls_bind-local_element IS INITIAL.
+        IF ls_bind-local_constant IS NOT INITIAL.
+          APPEND VALUE #( name = ls_bind-element value = ls_bind-local_constant ) TO result.
+        ENDIF.
+        CONTINUE.
+      ENDIF.
+      IF source IS NOT SUPPLIED.
+        CONTINUE.
+      ENDIF.
+      ASSIGN COMPONENT ls_bind-local_element OF STRUCTURE source TO <lv_value>.
+      IF sy-subrc = 0 AND <lv_value> IS NOT INITIAL.
+        APPEND VALUE #( name = ls_bind-element value = |{ <lv_value> }| ) TO result.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_chart_order.
+
+    DATA(lv_dimension) = to_upper( dimension ).
+    DATA(lv_measure) = to_upper( measure ).
+    LOOP AT sort_order INTO DATA(ls_sort).
+      DATA(lv_sort_field) = to_upper( ls_sort-field ).
+      CASE lv_sort_field.
+        WHEN lv_dimension.
+          result = VALUE #( field = `DIMENSION` descending = ls_sort-descending ).
+          RETURN.
+        WHEN lv_measure.
+          result = VALUE #( field = `MEASURE` descending = ls_sort-descending ).
+          RETURN.
+      ENDCASE.
+    ENDLOOP.
+    IF chart_type = `TREND`.
+      result = VALUE #( field = `DIMENSION` ).
+    ELSE.
+      result = VALUE #( field = `MEASURE` descending = abap_true ).
+    ENDIF.
 
   ENDMETHOD.
 

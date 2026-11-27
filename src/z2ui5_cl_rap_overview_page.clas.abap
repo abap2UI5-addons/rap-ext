@@ -386,6 +386,11 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
           load_chart_rows( EXPORTING is_card      = ls_card
                            CHANGING  cs_card_data = ls_cd ).
         WHEN OTHERS.
+          "without a variant's sort: the entity's own, else its keys - the
+          "same rows each time (since 2026-11)
+          IF lv_order_by IS INITIAL.
+            lv_order_by = z2ui5_cl_rap_util=>get_default_order_by( ls_cd-entity ).
+          ENDIF.
           ls_cd-data_ref = select_rows( entity_name = lv_view
                                         max_rows    = lv_max
                                         order_by    = lv_order_by ).
@@ -499,40 +504,97 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
     DATA(lv_select) = |{ cs_card_data-chart_dimension } AS dimension, SUM( { cs_card_data-chart_measure } ) AS measure|.
     DATA(lv_max) = COND i( WHEN is_card-max_rows > 0 THEN is_card-max_rows ELSE 8 ).
     DATA(lv_where) = get_ext_where( lv_view ).
+
+    "which rows: the presentation variant's sort, else the largest values
+    "(a trend along its dimension) - not the first values of the
+    "dimension. And a share is one of the total of every row, not of the
+    "rows shown (since 2026-11)
+    DATA lv_total TYPE decfloat34.
+    DATA lt_chart_sort TYPE z2ui5_cl_rap_util=>ty_t_sort.
+    IF is_card-presentation_variant IS NOT INITIAL.
+      READ TABLE cs_card_data-entity-presentation_variants INTO DATA(ls_chart_variant)
+        WITH KEY qualifier = is_card-presentation_variant.
+      IF sy-subrc = 0.
+        lt_chart_sort = ls_chart_variant-sort_order.
+      ENDIF.
+    ENDIF.
+    DATA(ls_order) = z2ui5_cl_rap_util=>get_chart_order( chart_type = cs_card_data-chart_type
+                                                         dimension  = cs_card_data-chart_dimension
+                                                         measure    = cs_card_data-chart_measure
+                                                         sort_order = lt_chart_sort ).
+    "the measure by its alias - the sum is no column of the entity
+    DATA(lv_order) = |{ COND #( WHEN ls_order-field = `MEASURE` THEN `measure` ELSE cs_card_data-chart_dimension ) }|
+                  && |{ COND #( WHEN ls_order-descending = abap_true THEN ` DESCENDING` ELSE `` ) }|.
+
     IF get_read_info( lv_view )-query_class IS NOT INITIAL
       OR cs_card_data-entity-fields[ name = cs_card_data-chart_dimension ]-is_virtual = abap_true
       OR cs_card_data-entity-fields[ name = cs_card_data-chart_measure ]-is_virtual = abap_true.
       "a custom entity or a virtual element: ABAP SQL cannot group it, the
-      "rows read are - sorted by the dimension like the SELECT
+      "rows read are - sorted like the SELECT
       LOOP AT aggregate_rows( entity_name = lv_view
                               group_by    = cs_card_data-chart_dimension
                               measure     = cs_card_data-chart_measure ) INTO DATA(ls_aggregate).
-        IF lines( lt_rows ) >= lv_max.
-          EXIT.
-        ENDIF.
         APPEND VALUE #( dimension = ls_aggregate-group_key
                         measure   = ls_aggregate-value ) TO lt_rows.
+        lv_total = lv_total + ls_aggregate-value.
       ENDLOOP.
+      IF ls_order-field = `MEASURE` AND ls_order-descending = abap_true.
+        SORT lt_rows BY measure DESCENDING dimension ASCENDING.
+      ELSEIF ls_order-field = `MEASURE`.
+        SORT lt_rows BY measure ASCENDING dimension ASCENDING.
+      ELSEIF ls_order-descending = abap_true.
+        SORT lt_rows BY dimension DESCENDING.
+      ELSE.
+        SORT lt_rows BY dimension ASCENDING.
+      ENDIF.
+      IF lines( lt_rows ) > lv_max.
+        DELETE lt_rows FROM lv_max + 1.
+      ENDIF.
     ELSE.
       TRY.
           SELECT (lv_select) FROM (lv_view)
             WHERE (lv_where)
             GROUP BY (cs_card_data-chart_dimension)
-            ORDER BY (cs_card_data-chart_dimension)
+            ORDER BY (lv_order)
             INTO CORRESPONDING FIELDS OF TABLE @lt_rows
             UP TO @lv_max ROWS.
         CATCH cx_root.
-          RETURN.
+          "a sort the database refuses: the dimension's order, as before
+          TRY.
+              SELECT (lv_select) FROM (lv_view)
+                WHERE (lv_where)
+                GROUP BY (cs_card_data-chart_dimension)
+                ORDER BY (cs_card_data-chart_dimension)
+                INTO CORRESPONDING FIELDS OF TABLE @lt_rows
+                UP TO @lv_max ROWS.
+            CATCH cx_root.
+              RETURN.
+          ENDTRY.
       ENDTRY.
+      IF cs_card_data-chart_type = `SHARE`.
+        DATA(lv_sum) = |SUM( { cs_card_data-chart_measure } )|.
+        TRY.
+            SELECT SINGLE (lv_sum) FROM (lv_view)
+              WHERE (lv_where)
+              INTO @lv_total.
+          CATCH cx_root.
+            CLEAR lv_total.
+        ENDTRY.
+      ENDIF.
     ENDIF.
 
-    DATA lv_total TYPE decfloat34.
+    "the total of the rows shown, where the total of all is not known
+    DATA(lv_total_all) = lv_total.
+    CLEAR lv_total.
     LOOP AT lt_rows INTO DATA(ls_row).
       IF ls_row-measure > cs_card_data-chart_max.
         cs_card_data-chart_max = ls_row-measure.
       ENDIF.
       lv_total = lv_total + ls_row-measure.
     ENDLOOP.
+    IF lv_total_all > lv_total.
+      lv_total = lv_total_all.
+    ENDIF.
     DATA lv_previous TYPE decfloat34.
     LOOP AT lt_rows ASSIGNING FIELD-SYMBOL(<ls_row>).
       IF cs_card_data-chart_max > 0.

@@ -337,6 +337,20 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     "! its entries (prepare_value_lists; added 2026-10, third round)
     DATA mt_dropdown_text TYPE ty_t_name_value.
 
+    " what load_suggestions( ) needs of a value help entity, kept by
+    " prepare_value_lists( ) so a keystroke reads no metadata (added
+    " 2026-11): the field with the value help, the element and the search
+    " fields of the entity, the fields its FILTER bindings name, the order
+    TYPES:
+      BEGIN OF ty_s_suggest_meta,
+        name          TYPE string,
+        fields        TYPE z2ui5_cl_rap_util=>ty_t_field_info,
+        filter_fields TYPE z2ui5_cl_rap_util=>ty_t_field_info,
+        order_by      TYPE string,
+      END OF ty_s_suggest_meta.
+    TYPES ty_t_suggest_meta TYPE STANDARD TABLE OF ty_s_suggest_meta WITH EMPTY KEY.
+    DATA mt_suggest_meta TYPE ty_t_suggest_meta.
+
     "! the name select_rows( ) gives the host structure - a dynamic WHERE
     "! compares with its components as @&lt;LS_HOST&gt;-name
     CONSTANTS cv_host TYPE string VALUE `<LS_HOST>`.
@@ -512,7 +526,11 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     METHODS load_suggestions
       IMPORTING
         client    TYPE REF TO z2ui5_if_client
-        it_fields TYPE z2ui5_cl_rap_util=>ty_t_field_info.
+        it_fields TYPE z2ui5_cl_rap_util=>ty_t_field_info
+        "the structure being edited - the additional bindings with usage
+        "FILTER restrict the suggestions by it, as the value help (added
+        "2026-11)
+        record    TYPE data OPTIONAL.
 
     "! the input control for one field, bound to value (a component of a
     "! public attribute): CheckBox, DatePicker, TimePicker, TextArea,
@@ -2031,12 +2049,17 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         ASSIGN lr_rows->* TO <lt_fixed>.
         <lt_fixed> = ls_field-value_help-fixed_values.
       ELSE.
-        lr_rows = select_rows( entity_name = ls_field-value_help-entity_name ).
+        "in the order of the element - a stable list, the same each time
+        "(since 2026-11)
+        DATA(ls_list_entity) = z2ui5_cl_rap_util=>read_entity( ls_field-value_help-entity_name ).
+        lr_rows = select_rows( entity_name = ls_field-value_help-entity_name
+                               order_by    = z2ui5_cl_rap_util=>get_default_order_by(
+                                               is_entity = ls_list_entity
+                                               first     = ls_field-value_help-element ) ).
         IF lr_rows IS NOT BOUND.
           CONTINUE.
         ENDIF.
         "the entries' text: the text element of the value help's element
-        DATA(ls_list_entity) = z2ui5_cl_rap_util=>read_entity( ls_field-value_help-entity_name ).
         READ TABLE ls_list_entity-fields INTO DATA(ls_list_element) WITH KEY name = ls_field-value_help-element.
         IF sy-subrc = 0 AND ls_list_element-text_element IS NOT INITIAL
           AND line_exists( ls_list_entity-fields[ name = ls_list_element-text_element ] ).
@@ -2062,7 +2085,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     "the suggestions: an empty table per field with a value help that is
     "no dropdown - filled while the user types
-    CLEAR: mr_suggestions, mt_suggest_text, lt_comp.
+    CLEAR: mr_suggestions, mt_suggest_text, mt_suggest_meta, lt_comp.
     LOOP AT it_fields INTO ls_field
       WHERE value_help-is_dropdown = abap_false AND value_help-entity_name IS NOT INITIAL
         AND value_help-element IS NOT INITIAL AND is_hidden = abap_false.
@@ -2083,6 +2106,22 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         AND line_exists( ls_vh_entity-fields[ name = ls_element-text_element ] ).
         APPEND VALUE #( name = ls_field-name value = ls_element-text_element ) TO mt_suggest_text.
       ENDIF.
+      "what a keystroke needs, so it reads no metadata
+      DATA(ls_meta) = VALUE ty_s_suggest_meta( name     = ls_field-name
+                                               order_by = z2ui5_cl_rap_util=>get_default_order_by(
+                                                            is_entity = ls_vh_entity
+                                                            first     = ls_field-value_help-element ) ).
+      DATA(lt_search_names) = z2ui5_cl_rap_util=>get_search_fields( ls_vh_entity-fields ).
+      LOOP AT ls_vh_entity-fields INTO DATA(ls_vh_field).
+        IF ls_vh_field-name = ls_field-value_help-element
+          OR line_exists( lt_search_names[ table_line = ls_vh_field-name ] ).
+          APPEND ls_vh_field TO ls_meta-fields.
+        ENDIF.
+        IF line_exists( ls_field-value_help-additional_binding[ element = ls_vh_field-name ] ).
+          APPEND ls_vh_field TO ls_meta-filter_fields.
+        ENDIF.
+      ENDLOOP.
+      APPEND ls_meta TO mt_suggest_meta.
     ENDLOOP.
     IF lt_comp IS NOT INITIAL.
       DATA(lo_suggest) = cl_abap_structdescr=>create( lt_comp ).
@@ -2114,10 +2153,25 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    "the element starts with the text, or a text field contains it
-    DATA(ls_vh_entity) = z2ui5_cl_rap_util=>read_entity( ls_field-value_help-entity_name ).
+    "the element starts with the text, or a text field contains it - the
+    "fields as prepare_value_lists( ) kept them, else read
     DATA lt_or TYPE string_table.
-    READ TABLE ls_vh_entity-fields INTO DATA(ls_element) WITH KEY name = ls_field-value_help-element.
+    DATA lt_vh_fields TYPE z2ui5_cl_rap_util=>ty_t_field_info.
+    DATA lt_filter_fields TYPE z2ui5_cl_rap_util=>ty_t_field_info.
+    DATA lv_suggest_order TYPE string.
+    READ TABLE mt_suggest_meta INTO DATA(ls_meta) WITH KEY name = lv_field.
+    IF sy-subrc = 0.
+      lt_vh_fields = ls_meta-fields.
+      lt_filter_fields = ls_meta-filter_fields.
+      lv_suggest_order = ls_meta-order_by.
+    ELSE.
+      DATA(ls_vh_entity) = z2ui5_cl_rap_util=>read_entity( ls_field-value_help-entity_name ).
+      lt_vh_fields = ls_vh_entity-fields.
+      lt_filter_fields = ls_vh_entity-fields.
+      lv_suggest_order = z2ui5_cl_rap_util=>get_default_order_by( is_entity = ls_vh_entity
+                                                                 first     = ls_field-value_help-element ).
+    ENDIF.
+    READ TABLE lt_vh_fields INTO DATA(ls_element) WITH KEY name = ls_field-value_help-element.
     IF sy-subrc = 0.
       "the user's own * and ; are text here, not the filter syntax
       DATA(lv_prefix) = replace( val = lv_text sub = `*` with = `` occ = 0 ).
@@ -2127,7 +2181,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                                        value    = |{ lv_prefix }*| ) TO lt_or.
       ENDIF.
     ENDIF.
-    DATA(lv_search) = build_search_condition( it_fields = ls_vh_entity-fields
+    DATA(lv_search) = build_search_condition( it_fields = lt_vh_fields
                                               search    = lv_text ).
     IF lv_search IS NOT INITIAL.
       APPEND lv_search TO lt_or.
@@ -2136,10 +2190,34 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     IF lt_or IS INITIAL.
       RETURN.
     ENDIF.
+    DATA(lv_suggest_where) = |( { concat_lines_of( table = lt_or sep = ` OR ` ) } )|.
+
+    "restricted like the value help: the FILTER bindings, by the record
+    "being edited and by constants (since 2026-11)
+    DATA lt_vh_filters TYPE z2ui5_cl_rap_util=>ty_t_name_value.
+    IF record IS SUPPLIED.
+      lt_vh_filters = z2ui5_cl_rap_util=>get_value_help_filters( it_bindings = ls_field-value_help-additional_binding
+                                                                source      = record ).
+    ELSE.
+      lt_vh_filters = z2ui5_cl_rap_util=>get_value_help_filters( ls_field-value_help-additional_binding ).
+    ENDIF.
+    LOOP AT lt_vh_filters INTO DATA(ls_vh_filter).
+      READ TABLE lt_filter_fields INTO DATA(ls_filter_field) WITH KEY name = ls_vh_filter-name.
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_filter_cond) = build_filter_condition( is_field = ls_filter_field
+                                                     value    = ls_vh_filter-value
+                                                     exact    = abap_true ).
+      IF lv_filter_cond IS NOT INITIAL.
+        lv_suggest_where = |{ lv_suggest_where } AND { lv_filter_cond }|.
+      ENDIF.
+    ENDLOOP.
 
     DATA(lr_rows) = select_rows( entity_name = ls_field-value_help-entity_name
-                                 where       = |( { concat_lines_of( table = lt_or sep = ` OR ` ) } )|
-                                 max_rows    = 20 ).
+                                 where       = lv_suggest_where
+                                 max_rows    = 20
+                                 order_by    = lv_suggest_order ).
     IF lr_rows IS NOT BOUND.
       RETURN.
     ENDIF.
@@ -2378,22 +2456,16 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD open_value_help.
 
-    FIELD-SYMBOLS <lv_value> TYPE any.
     DATA lt_filter TYPE ty_t_name_value.
 
     "additional bindings with usage FILTER (or no usage, which is both)
-    "restrict the value help by what is already entered
+    "restrict the value help by what is already entered - and, since
+    "2026-11, by a localConstant
     IF source IS SUPPLIED.
-      LOOP AT is_field-value_help-additional_binding INTO DATA(ls_bind)
-        WHERE local_element IS NOT INITIAL AND element IS NOT INITIAL.
-        IF ls_bind-usage IS NOT INITIAL AND ls_bind-usage NS `FILTER`.
-          CONTINUE.
-        ENDIF.
-        ASSIGN COMPONENT ls_bind-local_element OF STRUCTURE source TO <lv_value>.
-        IF sy-subrc = 0 AND <lv_value> IS NOT INITIAL.
-          APPEND VALUE #( name = ls_bind-element value = |{ <lv_value> }| ) TO lt_filter.
-        ENDIF.
-      ENDLOOP.
+      lt_filter = z2ui5_cl_rap_util=>get_value_help_filters( it_bindings = is_field-value_help-additional_binding
+                                                            source      = source ).
+    ELSE.
+      lt_filter = z2ui5_cl_rap_util=>get_value_help_filters( is_field-value_help-additional_binding ).
     ENDIF.
 
     mv_vh_target = is_field-name.
