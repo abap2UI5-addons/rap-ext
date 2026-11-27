@@ -2181,6 +2181,16 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE ty_t_additional_binding.
 
+    "! the bindings of the array prop (ADDITIONALBINDING,
+    "! SEMANTICOBJECTBINDING) inside the entry idx of it_entries
+    CLASS-METHODS get_nested_bindings
+      IMPORTING
+        it_entries    TYPE ty_t_entry
+        idx           TYPE i
+        prop          TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_t_additional_binding.
+
     "! the criticality, its representation, the importance and hidden of
     "! the entry idx of a @UI.fieldGroup or @UI.identification
     CLASS-METHODS set_entry_display
@@ -2825,7 +2835,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     "variant, get_line_item_columns), an entry hidden: true is none
     DATA(lt_entries) = get_entries( it_annos = it_annos prefix = `UI.LINEITEM` ).
     DATA lv_idx TYPE i.
-    DATA lt_entry_parts TYPE ty_t_entry.
+    DATA ls_line_display TYPE ty_s_field_group.
     LOOP AT lt_entries INTO DATA(ls_entry).
       IF ls_entry-idx = lv_idx.
         CONTINUE.
@@ -2844,22 +2854,20 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         qualifier           = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) )
         position            = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) )
         label               = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) )
-        importance          = to_upper( replace( val  = strip_quotes( get_entry_value( it_entries = lt_entries
-                                                                                       idx        = lv_idx
-                                                                                       prop       = `IMPORTANCE` ) )
-                                                 sub  = `#`
-                                                 with = `` ) )
-        criticality         = to_upper( strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `CRITICALITY` ) ) )
-        crit_representation = to_upper( replace( val  = strip_quotes( get_entry_value( it_entries = lt_entries
-                                                                                       idx        = lv_idx
-                                                                                       prop       = `CRITICALITYREPRESENTATION` ) )
-                                                 sub  = `#`
-                                                 with = `` ) )
         type                = to_upper( replace( val = strip_quotes( lv_type ) sub = `#` with = `` ) )
         value_qualifier     = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `VALUEQUALIFIER` ) )
-        hidden              = hidden_value( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `HIDDEN` ) )
         width               = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `CSSDEFAULT.WIDTH` ) )
         icon_url            = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `ICONURL` ) ) ).
+      "criticality, its representation, importance and hidden as every
+      "entry has them (set_entry_display)
+      CLEAR ls_line_display.
+      set_entry_display( EXPORTING it_entries = lt_entries
+                                   idx        = lv_idx
+                         CHANGING  cs_entry   = ls_line_display ).
+      ls_line_item-criticality = ls_line_display-criticality.
+      ls_line_item-crit_representation = ls_line_display-crit_representation.
+      ls_line_item-importance = ls_line_display-importance.
+      ls_line_item-hidden = ls_line_display-hidden.
       IF ls_line_item-hidden = `TRUE` OR line_exists( cs_field-line_items[ qualifier = ls_line_item-qualifier ] ).
         CONTINUE.
       ENDIF.
@@ -2877,24 +2885,16 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       cs_field-line_item_hidden = ls_line_item-hidden.
       cs_field-line_item_icon_url = ls_line_item-icon_url.
       "semanticObjectBinding of a #WITH_INTENT_BASED_NAVIGATION column
-      CLEAR lt_entry_parts.
-      LOOP AT lt_entries INTO DATA(ls_binding_part) WHERE idx = lv_idx AND prop CP `SEMANTICOBJECTBINDING*`.
-        APPEND ls_binding_part TO lt_entry_parts.
-      ENDLOOP.
-      APPEND LINES OF get_entry_bindings( get_entries( it_annos = entries_to_annos( lt_entry_parts )
-                                                       prefix   = `SEMANTICOBJECTBINDING` ) )
-        TO cs_field-sem_object_bindings.
-      cs_field-line_item_pos = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) ).
-      IF cs_field-line_item_pos = 0.
-        "an entry without a position still makes a column - behind the others
-        cs_field-line_item_pos = 9999.
-      ENDIF.
+      APPEND LINES OF get_nested_bindings( it_entries = lt_entries
+                                           idx        = lv_idx
+                                           prop       = `SEMANTICOBJECTBINDING` ) TO cs_field-sem_object_bindings.
+      "the entry read above - only the importance keeps its # here
+      cs_field-line_item_pos = ls_line_item-position.
       cs_field-line_item_importance = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `IMPORTANCE` ) ).
       cs_field-is_high_importance = xsdbool( cs_field-line_item_importance CS `HIGH` ).
-      cs_field-line_item_label = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) ).
-      cs_field-line_item_crit_field = to_upper( strip_quotes(
-          get_entry_value( it_entries = lt_entries idx = lv_idx prop = `CRITICALITY` ) ) ).
-      cs_field-line_item_type = replace( val = strip_quotes( lv_type ) sub = `#` with = `` ).
+      cs_field-line_item_label = ls_line_item-label.
+      cs_field-line_item_crit_field = ls_line_item-criticality.
+      cs_field-line_item_type = ls_line_item-type.
       cs_field-line_item_url = to_upper( strip_quotes(
           get_entry_value( it_entries = lt_entries idx = lv_idx prop = `URL` ) ) ).
       cs_field-line_item_target = to_upper( strip_quotes(
@@ -3002,24 +3002,11 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       cs_field-value_help-element = to_upper( strip_quotes(
           get_entry_value( it_entries = lt_entries idx = lv_idx prop = `ENTITY.ELEMENT` ) ) ).
 
-      "ADDITIONALBINDING$n$.ELEMENT / .LOCALELEMENT / .USAGE
-      DATA lt_binding_annos TYPE ty_t_annotation.
-      LOOP AT lt_entries INTO ls_entry WHERE idx = lv_idx AND prop CP `ADDITIONALBINDING*`.
-        APPEND VALUE #( key = ls_entry-prop value = ls_entry-value ) TO lt_binding_annos.
-      ENDLOOP.
-      DATA(lt_bindings) = get_entries( it_annos = lt_binding_annos prefix = `ADDITIONALBINDING` ).
-      DATA lv_bidx TYPE i.
-      LOOP AT lt_bindings INTO DATA(ls_binding).
-        IF ls_binding-idx = lv_bidx.
-          CONTINUE.
-        ENDIF.
-        lv_bidx = ls_binding-idx.
-        APPEND VALUE ty_s_additional_binding(
-          element       = to_upper( strip_quotes( get_entry_value( it_entries = lt_bindings idx = lv_bidx prop = `ELEMENT` ) ) )
-          local_element = to_upper( strip_quotes( get_entry_value( it_entries = lt_bindings idx = lv_bidx prop = `LOCALELEMENT` ) ) )
-          usage         = strip_quotes( get_entry_value( it_entries = lt_bindings idx = lv_bidx prop = `USAGE` ) ) )
-          TO cs_field-value_help-additional_binding.
-      ENDLOOP.
+      "ADDITIONALBINDING$n$.ELEMENT / .LOCALELEMENT / .USAGE - one without
+      "either element binds nothing
+      cs_field-value_help-additional_binding = get_nested_bindings( it_entries = lt_entries
+                                                                    idx        = lv_idx
+                                                                    prop       = `ADDITIONALBINDING` ).
     ENDIF.
 
   ENDMETHOD.
@@ -3057,7 +3044,6 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
   METHOD parse_actions.
 
-    DATA lt_binding_parts TYPE ty_t_entry.
     DATA(lt_entries) = get_entries( it_annos = it_annos prefix = prefix ).
     DATA lv_idx TYPE i.
     LOOP AT lt_entries INTO DATA(ls_entry).
@@ -3120,12 +3106,9 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         ENDIF.
         ls_action-name = to_upper( |INTENT~{ ls_action-semantic_object }~{ ls_action-semantic_action }| ).
         "semanticObjectBinding: the parameters the selected rows fill
-        CLEAR lt_binding_parts.
-        LOOP AT lt_entries INTO DATA(ls_binding_part) WHERE idx = lv_idx AND prop CP `SEMANTICOBJECTBINDING*`.
-          APPEND ls_binding_part TO lt_binding_parts.
-        ENDLOOP.
-        ls_action-sem_object_bindings = get_entry_bindings( get_entries( it_annos = entries_to_annos( lt_binding_parts )
-                                                                         prefix   = `SEMANTICOBJECTBINDING` ) ).
+        ls_action-sem_object_bindings = get_nested_bindings( it_entries = lt_entries
+                                                             idx        = lv_idx
+                                                             prop       = `SEMANTICOBJECTBINDING` ).
       ENDIF.
       IF ls_action-name IS INITIAL
         OR line_exists( ct_action[ name = ls_action-name source = source qualifier = lv_qualifier ] ).
@@ -6050,6 +6033,20 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         APPEND ls_binding TO result.
       ENDIF.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_nested_bindings.
+
+    DATA lt_parts TYPE ty_t_entry.
+    DATA(lv_idx) = idx.
+    DATA(lv_pattern) = |{ prop }*|.
+    LOOP AT it_entries INTO DATA(ls_entry) WHERE idx = lv_idx AND prop CP lv_pattern.
+      APPEND ls_entry TO lt_parts.
+    ENDLOOP.
+    result = get_entry_bindings( get_entries( it_annos = entries_to_annos( lt_parts )
+                                              prefix   = prop ) ).
 
   ENDMETHOD.
 
