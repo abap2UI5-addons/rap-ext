@@ -398,6 +398,9 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
           ls_cd-data_ref = select_rows( entity_name = lv_view
                                         max_rows    = lv_max
                                         order_by    = lv_order_by ).
+          "the files stay on the server, as in the list report
+          z2ui5_cl_rap_util=>clear_large_objects( data      = ls_cd-data_ref
+                                                  it_fields = ls_cd-entity-fields ).
       ENDCASE.
 
       APPEND ls_cd TO mt_card_data.
