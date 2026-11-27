@@ -2352,6 +2352,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD on_child_action.
 
+    DATA lr_child_rows TYPE REF TO data.
     FIELD-SYMBOLS <ls_children> TYPE any.
     FIELD-SYMBOLS <lt_children> TYPE any.
 
@@ -2369,6 +2370,28 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     DATA(ls_context) = get_child_context( ls_child-association ).
     CLEAR: ls_context-association, ls_context-parent_fields.
+
+    "the selected rows - an action on rows without one is refused before
+    "its parameter dialog opens, not after it was filled in (since 2026-11)
+    IF mr_child_rows IS BOUND.
+      ASSIGN mr_child_rows->* TO <ls_children>.
+      ASSIGN COMPONENT ls_child-component OF STRUCTURE <ls_children> TO <lt_children>.
+      IF sy-subrc = 0.
+        lr_child_rows = REF #( <lt_children> ).
+        lr_child_rows = get_selected_rows( entity_name = ls_child-entity-name
+                                           data        = lr_child_rows ).
+      ENDIF.
+    ENDIF.
+    IF lacks_action_rows( entity_name = ls_child-entity-name
+                          action      = mv_pending_action
+                          context     = ls_context
+                          rows        = lr_child_rows ) = abap_true.
+      CLEAR: mv_pending_action, mv_pending_child.
+      show_messages( client   = client
+                     messages = VALUE #( ( get_text( cs_text-no_selection ) ) ) ).
+      RETURN.
+    ENDIF.
+
     DATA(lr_param) = create_action_parameter( entity_name = ls_child-entity-name
                                               action      = mv_pending_action
                                               context     = ls_context ).
@@ -2377,16 +2400,6 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       "function fills it for the first selected row (since 2026-10, third
       "round)
       ASSIGN lr_param->* TO FIELD-SYMBOL(<ls_param>).
-      DATA lr_child_rows TYPE REF TO data.
-      IF mr_child_rows IS BOUND.
-        ASSIGN mr_child_rows->* TO <ls_children>.
-        ASSIGN COMPONENT ls_child-component OF STRUCTURE <ls_children> TO <lt_children>.
-        IF sy-subrc = 0.
-          lr_child_rows = REF #( <lt_children> ).
-          lr_child_rows = get_selected_rows( entity_name = ls_child-entity-name
-                                             data        = lr_child_rows ).
-        ENDIF.
-      ENDIF.
       apply_action_defaults( EXPORTING entity_name = ls_child-entity-name
                                        action      = mv_pending_action
                                        rows        = lr_child_rows

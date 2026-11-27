@@ -720,6 +720,18 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
+    "! action is one on rows (no static action) and rows (a table of the
+    "! entity) holds none - what run_action( ) refuses; asked before a
+    "! parameter dialog opens and for the toolbar buttons (added 2026-11)
+    METHODS lacks_action_rows
+      IMPORTING
+        entity_name   TYPE string
+        action        TYPE string
+        context       TYPE ty_s_rap_context OPTIONAL
+        rows          TYPE REF TO data OPTIONAL
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
     "! an operation hidden by @UI.createHidden / .updateHidden /
     "! .deleteHidden (ty_s_entity_info-create_hidden, ...): TRUE hides it,
     "! a field hides it when the field of row is true - without a row a
@@ -3321,6 +3333,27 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       CATCH cx_root.
         result = abap_false.
     ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD lacks_action_rows.
+
+    FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
+
+    "without RAP run_action( ) says why itself
+    IF eml_available( ) = abap_false
+      OR is_static_action( entity_name = entity_name
+                           action      = action
+                           context     = context ) = abap_true.
+      RETURN.
+    ENDIF.
+    IF rows IS NOT BOUND.
+      result = abap_true.
+      RETURN.
+    ENDIF.
+    ASSIGN rows->* TO <lt_rows>.
+    result = xsdbool( <lt_rows> IS INITIAL ).
 
   ENDMETHOD.
 

@@ -2147,6 +2147,17 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       APPEND lv_key TO mt_pending_keys.
     ENDDO.
 
+    "an action on rows without one is refused before its parameter dialog
+    "opens, not after it was filled in (since 2026-11)
+    IF lacks_action_rows( entity_name = mv_cds_view
+                          action      = mv_pending_action
+                          rows        = get_action_rows( ) ) = abap_true.
+      CLEAR: mv_pending_action, mt_pending_keys.
+      show_messages( client   = client
+                     messages = VALUE #( ( get_text( cs_text-no_selection ) ) ) ).
+      RETURN.
+    ENDIF.
+
     DATA(lr_param) = create_action_parameter( entity_name = mv_cds_view
                                               action      = mv_pending_action ).
     IF lr_param IS BOUND.
@@ -3251,6 +3262,14 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     LOOP AT lt_actions INTO DATA(ls_action).
       DATA(lv_enabled) = z2ui5_cl_rap_util=>is_permitted( ops  = ms_perm-global-actions
                                                           name = ls_action-name ).
+      "an action on rows waits for a selection - the table reports every
+      "change of it where permissions are answered (since 2026-11)
+      IF lv_enabled = abap_true AND ms_perm-answered = abap_true
+        AND lacks_action_rows( entity_name = mv_cds_view
+                               action      = ls_action-name
+                               rows        = lr_selected ) = abap_true.
+        lv_enabled = abap_false.
+      ENDIF.
       IF lv_enabled = abap_true AND ms_perm-answered = abap_true AND lr_selected IS BOUND.
         ASSIGN lr_selected->* TO <lt_selected>.
         LOOP AT <lt_selected> ASSIGNING FIELD-SYMBOL(<ls_selected>).
