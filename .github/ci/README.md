@@ -32,10 +32,15 @@ home, and a find-and-replace of the `uses:` lines in the callers.
 Every job inside declares its own permissions; a job that runs the code of a
 pull request has `contents: read` whatever the caller grants. Secrets are
 never inherited: `addon-bump-deps.yaml` takes `DEPS_TOKEN` by name, the others
-need none. Inside it, the token reaches two steps only - the npm/Actions
-update (for its `gh` calls; npm itself runs without it) and
-create-pull-request, the one step that pushes. No checkout keeps credentials
-in `.git/config` (`persist-credentials: false`).
+need none. Inside it, the token reaches one job only, and that job runs no
+npm and no script of the addon: the job `update` (npm, `update-deps.mjs
+--actions`, `extra`, `pin-deps.mjs bump`) has `contents: read` and no secret
+at all - `--actions` reads the latest releases, public data, with the job's
+own read-only token - and hands what it changed to the job `pr` as a patch
+artifact; `pr` lays it over a fresh checkout and runs create-pull-request
+with `DEPS_TOKEN`. A just-bumped package can therefore not reach the token
+through `$GITHUB_ENV`, `$GITHUB_PATH` or a file a later step runs. No
+checkout keeps credentials in `.git/config` (`persist-credentials: false`).
 
 ### `addon-check.yaml` inputs
 
@@ -143,10 +148,11 @@ abap2UI5, never in an addon: a local edit is pulled over next month.
   uses: abap2UI5-addons/rap-ext/.github/workflows/addon-check.yaml@<sha> # ci-v1.0.0
   ```
 
-  `update-deps.mjs --actions` (the monthly pull request, when the addon has
-  the `DEPS_TOKEN` secret) moves every `uses: owner/repo...@<sha> # <tag>` to
-  the latest release of `owner/repo` - for these lines, the latest release of
-  rap-ext. A fix here is therefore: merge, publish a release `ci-vX.Y.Z` of
+  `update-deps.mjs --actions` (the monthly pull request) moves every
+  `uses: owner/repo...@<sha> # <tag>` to the latest release of `owner/repo` -
+  for these lines, the latest release of rap-ext; the moves under
+  `.github/workflows` reach the pull request only when the addon has the
+  `DEPS_TOKEN` secret. A fix here is therefore: merge, publish a release `ci-vX.Y.Z` of
   rap-ext, and every addon picks it up in its next monthly pull request (or
   at once: dispatch its `bump-deps`).
 
