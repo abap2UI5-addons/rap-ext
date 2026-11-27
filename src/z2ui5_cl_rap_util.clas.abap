@@ -3936,16 +3936,8 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     "@Search.defaultSearchElement is searched also when it is @UI.hidden
     "(added 2026-10, third round: STRING fields and hidden search
     "elements; @Search.fuzzinessThreshold is read, the search stays a LIKE)
-    DATA(lv_only_searchable) = xsdbool( line_exists( it_fields[ is_searchable = abap_true is_virtual = abap_false ] ) ).
-    LOOP AT it_fields INTO DATA(ls_field)
-      WHERE ( type_kind = `CHAR` OR type_kind = `STRING` ) AND is_virtual = abap_false.
-      IF lv_only_searchable = abap_true AND ls_field-is_searchable = abap_false.
-        CONTINUE.
-      ENDIF.
-      IF lv_only_searchable = abap_false AND ls_field-is_hidden = abap_true.
-        CONTINUE.
-      ENDIF.
-      APPEND |UPPER( { ls_field-name } ) LIKE '%{ lv_search }%' ESCAPE '#'| TO lt_or.
+    LOOP AT get_search_fields( it_fields ) INTO DATA(lv_name).
+      APPEND |UPPER( { lv_name } ) LIKE '%{ lv_search }%' ESCAPE '#'| TO lt_or.
     ENDLOOP.
 
     IF lt_or IS NOT INITIAL.
