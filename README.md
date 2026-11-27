@@ -222,9 +222,21 @@ ENDCLASS.
 CLASS zcl_my_ext IMPLEMENTATION.
 
   METHOD z2ui5_if_rap_ext~adjust_entity.
-    "hide a field, rename another - without touching the CDS view
-    entity-fields[ name = `CREATEDBY` ]-is_hidden = abap_true.
-    entity-fields[ name = `COUNTRY` ]-label = `Land`.
+    "hide a field, rename another - without touching the CDS view. Every
+    "entity passes here (value helps, child tables, dialogs), so look at
+    "the entity first, and change a field only where it exists: a table
+    "expression on a missing row raises CX_SY_ITAB_LINE_NOT_FOUND
+    IF entity-name <> `/DMO/C_TRAVEL_PROCESSOR_M`.
+      RETURN.
+    ENDIF.
+    ASSIGN entity-fields[ name = `CREATEDBY` ] TO FIELD-SYMBOL(<ls_created_by>).
+    IF sy-subrc = 0.
+      <ls_created_by>-is_hidden = abap_true.
+    ENDIF.
+    ASSIGN entity-fields[ name = `DESCRIPTION` ] TO FIELD-SYMBOL(<ls_description>).
+    IF sy-subrc = 0.
+      <ls_description>-label = `Beschreibung`.
+    ENDIF.
   ENDMETHOD.
 
   METHOD z2ui5_if_rap_ext~adjust_where.
