@@ -2708,7 +2708,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     io_toolbar->tag( `Title`
         )->a( n = `text`
-              v = mv_title && ` (` && client->_bind( mv_count ) && `)` ).
+              v = z2ui5_cl_ui5_view_builder=>escape_literal( mv_title ) && ` (` && client->_bind( mv_count ) && `)` ).
 
     io_toolbar->tag( `ToolbarSpacer` ).
 

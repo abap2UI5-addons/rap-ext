@@ -326,7 +326,7 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
 
     lo_toolbar->tag( `Title`
         )->a( n = `text`
-              v = mv_title && ` (` && client->_bind( mv_count ) && `)` ).
+              v = z2ui5_cl_ui5_view_builder=>escape_literal( mv_title ) && ` (` && client->_bind( mv_count ) && `)` ).
 
     lo_toolbar->tag( `ToolbarSpacer` ).
 
