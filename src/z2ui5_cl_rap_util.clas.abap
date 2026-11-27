@@ -2042,6 +2042,11 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE ty_t_name_value.
 
+    "! the kernel's Base64 class, called dynamically: released for ABAP
+    "! Cloud and there on 7.58, so base64_encode and base64_decode fall back
+    "! to their own loop only where it cannot be called
+    CONSTANTS gc_base64_class TYPE string VALUE `CL_WEB_HTTP_UTILITY`.
+
     TYPES:
       BEGIN OF ty_s_cache,
         name TYPE string,
@@ -4761,6 +4766,27 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     DATA lv_b2 TYPE i.
     DATA lv_b3 TYPE i.
 
+    IF val IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    "the kernel first - one call instead of a loop over every byte (a file
+    "of some MB is millions of steps in ABAP); the loop below only where
+    "the class cannot be called
+    TRY.
+        CALL METHOD (gc_base64_class)=>(`ENCODE_X_BASE64`)
+          EXPORTING
+            unencoded = val
+          RECEIVING
+            encoded   = result.
+        IF result IS NOT INITIAL.
+          RETURN.
+        ENDIF.
+      CATCH cx_root ##NO_HANDLER.
+        "the loop below
+    ENDTRY.
+    CLEAR result.
+
     DATA(lv_length) = xstrlen( val ).
     DATA(lv_offset) = 0.
     WHILE lv_offset < lv_length.
@@ -5883,6 +5909,32 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     DATA lv_bits TYPE i.
     DATA lv_count TYPE i.
     DATA lv_value TYPE i.
+    DATA lv_encoded TYPE string.
+
+    "the kernel first (see base64_encode), on the text without blanks and
+    "line breaks, which the loop below skips too; the loop only where the
+    "class cannot be called or answers nothing
+    lv_encoded = val.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf(1) IN lv_encoded WITH ``.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN lv_encoded WITH ``.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab IN lv_encoded WITH ``.
+    REPLACE ALL OCCURRENCES OF ` ` IN lv_encoded WITH ``.
+    IF lv_encoded IS INITIAL.
+      RETURN.
+    ENDIF.
+    TRY.
+        CALL METHOD (gc_base64_class)=>(`DECODE_X_BASE64`)
+          EXPORTING
+            encoded = lv_encoded
+          RECEIVING
+            decoded = result.
+        IF result IS NOT INITIAL.
+          RETURN.
+        ENDIF.
+      CATCH cx_root ##NO_HANDLER.
+        "the loop below
+    ENDTRY.
+    CLEAR result.
 
     "6 bits per character, a byte as soon as 8 are there; = and anything
     "outside the alphabet (blanks, line breaks) carries no bits
