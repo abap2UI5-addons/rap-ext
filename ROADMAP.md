@@ -108,6 +108,38 @@ test again per release.
     Cloud"): the first system check after the split showed that literals in
     dynamic statements count as uses too.
 
+15. **Open from the 2026-11 review of the object page, the value help and
+    the column layout** (the rest of that review is done - see "Done,
+    2026-11"):
+    - **Deep create**: a draft business object is created root first -
+      Create runs the draft create and Activate in one step
+      (`z2ui5_cl_rap_eml=>create`), so the create page shows no child
+      tables, and a business object whose activation wants at least one
+      item cannot be created here. Fiori Elements creates the draft first
+      (`NEW`) and opens it in edit mode. The way: let Create run a
+      committed draft create like `start_draft`, take the keys from
+      `MAPPED` and continue on the existing draft edit path
+      (`read_draft_children`, `save_draft`, Cancel = Discard) - it needs a
+      system to verify, no gate reaches the draft path.
+    - **One LUW for a save without draft**: the record and each child row
+      are written by their own `write_row`, each committed (open item 13).
+      A root validation over the items runs before they exist, and a
+      refused item leaves the record and the items before it saved. The
+      way: collect the record's UPDATE and the children's creates,
+      updates and deletes as steps of one `run_steps` call - again only
+      verifiable in a system.
+    - **The children of a draft** come in the order `READ ENTITIES`
+      answers (the database's are sorted by the presentation variant,
+      else the keys, since 2026-11), and a child table reads at most 500
+      rows without saying so - no "More", no count.
+    - **Value help bindings**: the FILTER bindings restrict the value help
+      and, since 2026-11, the suggestions (a `localConstant` too) - not a
+      dropdown (`sizeCategory #XS`), whose list is read once when the page
+      opens, without the record; a suggestion picked in the browser fills
+      no RESULT binding.
+    - **The annotation reader** (`set_annotation_reader`) is chosen per
+      roundtrip, not per app (README, "How the reader is chosen").
+
 ### How the dynamic EML statements were unblocked
 
 `GET PERMISSIONS ... OPERATIONS`, `READ ENTITIES OPERATIONS` and
@@ -123,6 +155,38 @@ grammar contributed to abaplint, then the statements in `z2ui5_cl_rap_eml`
 like the others - is still the better one; the classes go when it lands.
 
 ## Done
+
+### 2026-11, review of the object page, the value help and the column layout
+
+- **No silent loss of changes**: without draft, Back and Cancel ask
+  "discard your changes?" when the record, a child row or a token waits
+  for Save (`z2ui5_cl_rap_object_page->is_dirty`); the column layout asks
+  the same before a row replaces such a page, and tells the list when the
+  page it replaces was saved.
+- **Draft**: a value chosen in the value help goes into the draft at once
+  (determinations run, a kept draft has it); `GET PERMISSIONS` asks about
+  the draft (`%is_draft`), not the active instance; a refused Edit offers
+  Resume and Discard only for the user's own draft, else shows the
+  business object's message (and "Locked by").
+- **Actions on rows** are disabled until a row is selected (where the
+  permissions are answered) and refused before their parameter dialog
+  opens.
+- **Order**: value help, dropdowns, suggestions, child tables and table
+  cards read in a stable order (`z2ui5_cl_rap_util=>get_default_order_by`);
+  chart cards show the largest values (a trend along its dimension, or the
+  presentation variant's sort), and a share is one of the total of all
+  rows.
+- **Metadata**: field groups no facet names are sections only without
+  `@UI.facet`; `localConstant` of an additional binding is read and
+  restricts the value help and the suggestions, which also follow the
+  FILTER bindings now; the child entities' metadata and what a suggestion
+  needs are read once per page.
+- **Tree**: children found by key, not by a scan of every row; a row whose
+  node value repeats or is empty stays in the list.
+- **Deep links** open the object page by default only when the parameters
+  name every key field, and refuse an object page by a part of the key.
+- The CSV export says when it was cut at `cv_export_max`; the column
+  layout's skeleton declares `sap.f` under a prefix of its own.
 
 ### 2026-10, third round
 
