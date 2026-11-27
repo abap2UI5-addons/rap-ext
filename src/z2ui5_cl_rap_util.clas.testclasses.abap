@@ -3113,6 +3113,11 @@ CLASS ltcl_tree_layout IMPLEMENTATION.
       exp = `SUM( PRICE ) AS PRICE, COUNT( DISTINCT CUSTOMER ) AS CUSTOMER, MAX( STATUS ) AS STATUS`
       act = z2ui5_cl_rap_util=>build_aggregate_select( lt_agg ) ).
     cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>build_aggregate_select( VALUE #( ) ) ).
+    "per currency too: the group fields separated by commas
+    cl_abap_unit_assert=>assert_equals(
+      exp = `STATUS, CURRENCY, SUM( PRICE ) AS PRICE, COUNT( DISTINCT CUSTOMER ) AS CUSTOMER`
+      act = z2ui5_cl_rap_util=>build_aggregate_select( it_aggregations = lt_agg
+                                                       group_by        = `status, currency` ) ).
   ENDMETHOD.
 
 

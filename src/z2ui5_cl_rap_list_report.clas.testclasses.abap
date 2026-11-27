@@ -38,6 +38,8 @@ CLASS ltcl_list_report DEFINITION FINAL
     METHODS adaptable_fields           FOR TESTING RAISING cx_static_check.
     METHODS variant_keys               FOR TESTING RAISING cx_static_check.
     METHODS analytics_group_rows       FOR TESTING RAISING cx_static_check.
+    METHODS editing_status_in_where    FOR TESTING RAISING cx_static_check.
+    METHODS aggregate_units            FOR TESTING RAISING cx_static_check.
     METHODS table_type_and_columns     FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
@@ -100,6 +102,49 @@ CLASS ltcl_list_report IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_equals( act = lv_where
                                         exp = |STATUS = 'O' AND AGENCY LIKE '70%' ESCAPE '#'| ).
+
+  ENDMETHOD.
+
+
+  METHOD editing_status_in_where.
+
+    " own drafts are selected in the SQL - before UP TO max_rows - where the
+    " entity has its draft fields; without them the rows read are filtered
+    mo_cut->mv_is_draft_bo = abap_true.
+    mo_cut->mv_editing_status = z2ui5_cl_rap_util=>cs_editing_status-own_draft.
+    cl_abap_unit_assert=>assert_initial( mo_cut->get_editing_status_where( ) ).
+
+    APPEND VALUE #( name = `HASDRAFTENTITY` type_kind = `CHAR` ) TO mo_cut->ms_entity-fields.
+    APPEND VALUE #( name = `DRAFTENTITYLASTCHANGEDBY` type_kind = `CHAR` ) TO mo_cut->ms_entity-fields.
+    DATA(lv_where) = mo_cut->get_where_clause( ).
+    cl_abap_unit_assert=>assert_char_cp( act = lv_where
+                                         exp = |( HASDRAFTENTITY <> ' ' AND ( DRAFTENTITYLASTCHANGEDBY = '*' OR DRAFTENTITYLASTCHANGEDBY = ' ' ) )| ).
+
+    mo_cut->mv_editing_status = z2ui5_cl_rap_util=>cs_editing_status-unchanged.
+    cl_abap_unit_assert=>assert_equals( act = mo_cut->get_editing_status_where( )
+                                        exp = |HASDRAFTENTITY = ' '| ).
+    mo_cut->mv_editing_status = z2ui5_cl_rap_util=>cs_editing_status-all.
+    cl_abap_unit_assert=>assert_initial( mo_cut->get_where_clause( ) ).
+
+  ENDMETHOD.
+
+
+  METHOD aggregate_units.
+
+    " a total of an amount is per currency, of a quantity per unit; a count
+    " counts whatever the currency
+    APPEND VALUE #( name = `PRICE` type_kind = `CURR` semantics_currency_code = `currencycode` ) TO mo_cut->ms_entity-fields.
+    APPEND VALUE #( name = `CURRENCYCODE` type_kind = `CUKY` ) TO mo_cut->ms_entity-fields.
+    APPEND VALUE #( name = `WEIGHT` type_kind = `QUAN` semantics_unit_of_measure = `UNIT` ) TO mo_cut->ms_entity-fields.
+    APPEND VALUE #( name = `UNIT` type_kind = `UNIT` ) TO mo_cut->ms_entity-fields.
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_cut->get_aggregate_units( VALUE #( ( field = `PRICE`  method = `SUM` )
+                                                  ( field = `WEIGHT` method = `AVG` )
+                                                  ( field = `PRICE`  method = `MAX` ) ) )
+      exp = VALUE string_table( ( `CURRENCYCODE` ) ( `UNIT` ) ) ).
+    cl_abap_unit_assert=>assert_initial(
+      mo_cut->get_aggregate_units( VALUE #( ( field = `PRICE` method = `COUNT_DISTINCT` )
+                                            ( field = `STATUS` method = `SUM` ) ) ) ).
 
   ENDMETHOD.
 
