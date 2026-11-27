@@ -98,6 +98,9 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         adapt_filters_ok    TYPE string VALUE `ADAPT_FILTERS_OK`,
         column_up           TYPE string VALUE `COLUMN_UP`,
         column_down         TYPE string VALUE `COLUMN_DOWN`,
+        "added 2026-11: an action pressed in a row (args: the action, the
+        "row's keys) - an empty key is a key, not "the selected rows"
+        inline_action       TYPE string VALUE `INLINE_ACTION`,
       END OF cs_event.
 
     " when the list is read at the start (constructor initial_load; added
@@ -981,7 +984,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    IF client->check_on_event( cs_event-action ).
+    IF client->check_on_event( cs_event-action )
+      OR client->check_on_event( cs_event-inline_action ).
       on_action( client ).
       RETURN.
     ENDIF.
@@ -2047,10 +2051,14 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       CLEAR mv_pending_action.
       RETURN.
     ENDIF.
+    "an inline action names its row by all its keys, empty ones included;
+    "ACTION without keys is one of the toolbar (an empty first key there
+    "stays "no row" for buttons built before INLINE_ACTION)
     CLEAR mt_pending_keys.
+    DATA(lv_inline) = client->check_on_event( cs_event-inline_action ).
     DO lines( mt_row_key ) TIMES.
       DATA(lv_key) = client->get_event_arg( sy-index + 1 ).
-      IF lv_key IS INITIAL AND sy-index = 1.
+      IF lv_inline = abap_false AND lv_key IS INITIAL AND sy-index = 1.
         EXIT.
       ENDIF.
       APPEND lv_key TO mt_pending_keys.
@@ -2665,7 +2673,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           )->a( n = `enabled`
                 v = lv_inline_enabled
           )->a( n = `press`
-                v = client->_event( val   = cs_event-action
+                v = client->_event( val   = cs_event-inline_action
                                     t_arg = lt_action_arg ) ).
     ENDLOOP.
 
@@ -3993,7 +4001,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                   )->a( n = `enabled`
                         v = lv_grid_enabled
                   )->a( n = `press`
-                        v = client->_event( val   = cs_event-action
+                        v = client->_event( val   = cs_event-inline_action
                                             t_arg = lt_grid_action_arg ) ).
     ENDLOOP.
 
