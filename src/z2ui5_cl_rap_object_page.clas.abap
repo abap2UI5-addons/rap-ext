@@ -3713,6 +3713,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
     IF lv_child_delete = abap_true.
+      "the keys and the row's position: rows not saved yet can share keys
+      DATA(lt_delete_arg) = lt_arg.
+      APPEND `$event.getSource().getBindingContext().getPath().split('/').pop()` TO lt_delete_arg.
       lo_cells->tag( `Button`
           )->a( n = `icon`
                 v = `sap-icon://delete`
@@ -3724,7 +3727,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                 v = |\{{ cs_row_flag-deletable }\}|
           )->a( n = `press`
                 v = client->_event( val   = cs_event-child_row_delete
-                                    t_arg = lt_arg ) ).
+                                    t_arg = lt_delete_arg ) ).
     ENDIF.
 
   ENDMETHOD.
@@ -4543,10 +4546,18 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     IF sy-subrc <> 0.
       RETURN.
     ENDIF.
+    "the last argument is the row's position (0-based) - the row there
+    "when it has the keys
+    DATA(lv_position) = condense( client->get_event_arg( lines( ls_child-entity-keys ) + 2 ) ).
+    IF lv_position IS NOT INITIAL AND lv_position CO `0123456789`.
+      lv_index = lv_position + 1.
+    ENDIF.
     DATA(lr_row) = find_row_by_event_keys( data       = REF #( <lt_del_rows> )
                                            key_fields = ls_child-entity-keys
                                            client     = client
-                                           arg_offset = 1 ).
+                                           arg_offset = 1
+                                           index      = lv_index ).
+    CLEAR lv_index.
     IF lr_row IS NOT BOUND.
       RETURN.
     ENDIF.

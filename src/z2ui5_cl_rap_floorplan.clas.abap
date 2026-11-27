@@ -542,22 +542,27 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         VALUE(result) TYPE abap_bool.
 
     "! the row of data (a table) whose key fields equal the event arguments
-    "! arg_offset + 1 ... - how a row press identifies its row
+    "! arg_offset + 1 ... - how a row press identifies its row; index as
+    "! in find_row_by_keys
     METHODS find_row_by_event_keys
       IMPORTING
         data          TYPE REF TO data
         key_fields    TYPE string_table
         client        TYPE REF TO z2ui5_if_client
         arg_offset    TYPE i DEFAULT 0
+        index         TYPE i DEFAULT 0
       RETURNING
         VALUE(result) TYPE REF TO data.
 
-    "! the row of data (a table) whose key fields equal key_values
+    "! the row of data (a table) whose key fields equal key_values - the
+    "! one at index when it has them (rows not saved yet can share their
+    "! keys, added 2026-11), else the first
     METHODS find_row_by_keys
       IMPORTING
         data          TYPE REF TO data
         key_fields    TYPE string_table
         key_values    TYPE string_table
+        index         TYPE i DEFAULT 0
       RETURNING
         VALUE(result) TYPE REF TO data.
 
@@ -2348,7 +2353,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ENDDO.
     result = find_row_by_keys( data       = data
                                key_fields = key_fields
-                               key_values = lt_values ).
+                               key_values = lt_values
+                               index      = index ).
 
   ENDMETHOD.
 
@@ -2357,6 +2363,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lv_val> TYPE any.
+    DATA lv_row_index TYPE i.
 
     IF data IS NOT BOUND OR key_fields IS INITIAL OR lines( key_values ) < lines( key_fields ).
       RETURN.
@@ -2364,6 +2371,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ASSIGN data->* TO <lt_data>.
 
     LOOP AT <lt_data> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      lv_row_index = sy-tabix.
       DATA(lv_match) = abap_true.
       LOOP AT key_fields INTO DATA(lv_key).
         DATA(lv_idx) = sy-tabix.
@@ -2375,8 +2383,13 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
       IF lv_match = abap_true.
-        result = REF #( <ls_row> ).
-        RETURN.
+        IF index <= 0 OR lv_row_index = index.
+          result = REF #( <ls_row> ).
+          RETURN.
+        ENDIF.
+        IF result IS NOT BOUND.
+          result = REF #( <ls_row> ).
+        ENDIF.
       ENDIF.
     ENDLOOP.
 

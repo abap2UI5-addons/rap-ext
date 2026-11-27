@@ -15,6 +15,7 @@ CLASS ltcl_object_page DEFINITION FINAL
         traveluuid TYPE c LENGTH 32,
         status     TYPE c LENGTH 1,
       END OF ty_s_travel.
+    TYPES ty_t_travel_rows TYPE STANDARD TABLE OF ty_s_travel WITH EMPTY KEY.
 
     DATA mo_cut TYPE REF TO z2ui5_cl_rap_object_page.
 
@@ -45,6 +46,7 @@ CLASS ltcl_object_page DEFINITION FINAL
     METHODS path_children              FOR TESTING RAISING cx_static_check.
     METHODS token_keys                 FOR TESTING RAISING cx_static_check.
     METHODS change_info_section        FOR TESTING RAISING cx_static_check.
+    METHODS row_by_keys_and_index      FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -480,6 +482,38 @@ CLASS ltcl_object_page IMPLEMENTATION.
     CLEAR mo_cut->ms_entity-fields[ name = `CREATEDBY` ]-field_groups.
     mo_cut->mv_is_create = abap_true.
     cl_abap_unit_assert=>assert_initial( mo_cut->get_admin_fields( ) ).
+
+  ENDMETHOD.
+
+  METHOD row_by_keys_and_index.
+
+    "two new rows share their initial keys - the position decides
+    DATA(lt_rows) = VALUE ty_t_travel_rows( ( travelid = '' status = 'A' )
+                                            ( travelid = '' status = 'B' )
+                                            ( travelid = '00000042' status = 'C' ) ).
+    DATA(lt_keys) = VALUE string_table( ( `TRAVELID` ) ).
+    DATA lr_row TYPE REF TO data.
+    FIELD-SYMBOLS <ls_row> TYPE ty_s_travel.
+
+    lr_row = mo_cut->find_row_by_keys( data       = REF #( lt_rows )
+                                       key_fields = lt_keys
+                                       key_values = VALUE #( ( `` ) )
+                                       index      = 2 ).
+    ASSIGN lr_row->* TO <ls_row>.
+    cl_abap_unit_assert=>assert_equals( exp = 'B' act = <ls_row>-status ).
+
+    "no index, or one whose row has other keys: the first with the keys
+    lr_row = mo_cut->find_row_by_keys( data       = REF #( lt_rows )
+                                       key_fields = lt_keys
+                                       key_values = VALUE #( ( `` ) ) ).
+    ASSIGN lr_row->* TO <ls_row>.
+    cl_abap_unit_assert=>assert_equals( exp = 'A' act = <ls_row>-status ).
+    lr_row = mo_cut->find_row_by_keys( data       = REF #( lt_rows )
+                                       key_fields = lt_keys
+                                       key_values = VALUE #( ( `` ) )
+                                       index      = 3 ).
+    ASSIGN lr_row->* TO <ls_row>.
+    cl_abap_unit_assert=>assert_equals( exp = 'A' act = <ls_row>-status ).
 
   ENDMETHOD.
 
