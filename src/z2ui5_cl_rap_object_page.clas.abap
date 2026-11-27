@@ -78,6 +78,9 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         child_row_delete  TYPE string VALUE `CHILD_ROW_DELETE`,
         child_cell_change TYPE string VALUE `CHILD_CELL_CHANGE`,
         side_effect       TYPE string VALUE `SIDE_EFFECT`,
+        "added 2026-11: the answer to "discard your changes?" on Cancel
+        "without draft
+        cancel_decision   TYPE string VALUE `CANCEL_DECISION`,
       END OF cs_event.
 
     " the columns of a row of a child table beside the entity's own (added
@@ -138,6 +141,15 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
     METHODS result
       RETURNING
         VALUE(result) TYPE REF TO data.
+
+    "! the page is in edit mode with changes leaving it would lose: the
+    "! record differs from what was loaded or last written into the draft,
+    "! or a child write waits for Save (a row added, deleted or changed, a
+    "! token) - what the flexible column layout asks before it replaces
+    "! the page (added 2026-11)
+    METHODS is_dirty
+      RETURNING
+        VALUE(result) TYPE abap_bool.
 
     DATA ms_data TYPE REF TO data.
     "! the record as last loaded or saved - Cancel and the change check
@@ -272,6 +284,22 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
     DATA mt_pending TYPE ty_t_pending.
     "! the MultiInput (its component) whose value help was called
     DATA mv_pending_path TYPE string.
+    "! a cell of a child table or a new row waits for Save (is_dirty;
+    "! added 2026-11)
+    DATA mv_children_changed TYPE abap_bool.
+
+    "! leave edit mode without saving: the draft discarded, else the
+    "! record as it was loaded (added 2026-11)
+    METHODS cancel_edit
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    "! ask "discard your changes?" - Discard or Cancel, the answer comes
+    "! back as onclose (added 2026-11)
+    METHODS confirm_discard
+      IMPORTING
+        client  TYPE REF TO z2ui5_if_client
+        onclose TYPE string.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app
@@ -885,6 +913,64 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD is_dirty.
+
+    IF mv_editable = abap_false.
+      RETURN.
+    ENDIF.
+    IF mt_pending IS NOT INITIAL OR mv_children_changed = abap_true.
+      result = abap_true.
+      RETURN.
+    ENDIF.
+    IF ms_data IS BOUND AND ms_data_backup IS BOUND.
+      result = xsdbool( z2ui5_cl_rap_util=>get_changed_fields( row      = ms_data->*
+                                                               original = ms_data_backup->* ) IS NOT INITIAL ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD confirm_discard.
+
+    client->message_box_display( text    = get_text( cs_text-leave_changes )
+                                 type    = `confirm`
+                                 actions = VALUE #( ( get_text( cs_text-discard_changes ) )
+                                                    ( get_text( cs_text-cancel ) ) )
+                                 onclose = onclose ).
+
+  ENDMETHOD.
+
+
+  METHOD cancel_edit.
+
+    IF mv_is_create = abap_true.
+      client->nav_app_leave( ).
+      RETURN.
+    ENDIF.
+    IF mv_draft = abap_true.
+      IF discard_draft( client ) = abap_false.
+        RETURN.
+      ENDIF.
+      mv_draft = abap_false.
+      "the active record as it is - the draft had the changes; a draft
+      "that was never activated is gone with it
+      reload_data( ).
+      IF mv_not_found = abap_true.
+        client->nav_app_leave( ).
+        RETURN.
+      ENDIF.
+      ms_data_backup->* = ms_data->*.
+    ELSE.
+      ms_data->* = ms_data_backup->*.
+    ENDIF.
+    mv_editable = abap_false.
+    CLEAR: mt_messages, mt_pending, mv_children_changed.
+    load_child_rows( ).
+    render_page( client ).
+
+  ENDMETHOD.
+
+
   METHOD was_saved.
     result = mv_saved.
   ENDMETHOD.
@@ -1032,12 +1118,23 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
           onclose = cs_event-leave_decision ).
         RETURN.
       ENDIF.
+      "without draft the changes are only on the page - leaving loses
+      "them, so the user decides (since 2026-11)
+      IF is_dirty( ) = abap_true.
+        confirm_discard( client  = client
+                         onclose = cs_event-leave_decision ).
+        RETURN.
+      ENDIF.
       client->nav_app_leave( ).
       RETURN.
     ENDIF.
 
     IF client->check_on_event( cs_event-leave_decision ).
       DATA(lv_leave) = client->get_event_arg( ).
+      IF lv_leave = get_text( cs_text-discard_changes ).
+        client->nav_app_leave( ).
+        RETURN.
+      ENDIF.
       IF lv_leave = get_text( cs_text-discard_draft ).
         IF discard_draft( client ) = abap_false.
           RETURN.
@@ -1074,7 +1171,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         RETURN.
       ENDIF.
       mv_editable = abap_true.
-      CLEAR mt_pending.
+      CLEAR: mt_pending, mv_children_changed.
       "the children as edit mode shows them - of the draft, with what may
       "be changed per row
       load_child_rows( ).
@@ -1110,30 +1207,21 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
 
     IF client->check_on_event( cs_event-cancel ).
-      IF mv_is_create = abap_true.
-        client->nav_app_leave( ).
+      "changes only on the page (no draft holds them) are lost - the user
+      "decides first (since 2026-11)
+      IF mv_draft = abap_false AND is_dirty( ) = abap_true.
+        confirm_discard( client  = client
+                         onclose = cs_event-cancel_decision ).
         RETURN.
       ENDIF.
-      IF mv_draft = abap_true.
-        IF discard_draft( client ) = abap_false.
-          RETURN.
-        ENDIF.
-        mv_draft = abap_false.
-        "the active record as it is - the draft had the changes; a draft
-        "that was never activated is gone with it
-        reload_data( ).
-        IF mv_not_found = abap_true.
-          client->nav_app_leave( ).
-          RETURN.
-        ENDIF.
-        ms_data_backup->* = ms_data->*.
-      ELSE.
-        ms_data->* = ms_data_backup->*.
+      cancel_edit( client ).
+      RETURN.
+    ENDIF.
+
+    IF client->check_on_event( cs_event-cancel_decision ).
+      IF client->get_event_arg( ) = get_text( cs_text-discard_changes ).
+        cancel_edit( client ).
       ENDIF.
-      mv_editable = abap_false.
-      CLEAR: mt_messages, mt_pending.
-      load_child_rows( ).
-      render_page( client ).
       RETURN.
     ENDIF.
 
@@ -1173,7 +1261,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         "what the business object determined on save
         reload_data( ).
         ms_data_backup->* = ms_data->*.
-        CLEAR mt_pending.
+        CLEAR: mt_pending, mv_children_changed.
         load_child_rows( ).
         render_page( client ).
         IF lt_saved_messages IS INITIAL.
@@ -1316,6 +1404,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         ENDIF.
         load_child_rows( ).
         render_page( client ).
+      ELSE.
+        "held back until Save - leaving now would lose it (is_dirty)
+        mv_children_changed = abap_true.
       ENDIF.
       RETURN.
     ENDIF.
@@ -4466,6 +4557,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       <lv_add_flag> = abap_true.
       ASSIGN COMPONENT cs_row_flag-deletable OF STRUCTURE <ls_added> TO <lv_add_flag>.
       <lv_add_flag> = abap_true.
+      mv_children_changed = abap_true.
       render_page( client ).
       RETURN.
     ENDIF.
