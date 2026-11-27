@@ -1166,8 +1166,12 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                      type = `error` ).
         RETURN.
       ENDIF.
-      "a draft business object is edited in a draft of its own
+      "a draft business object is edited in a draft of its own - refused,
+      "the page shows what it learned (another user's lock)
       IF is_draft_enabled( get_bdef( ) ) = abap_true AND start_draft( client ) = abap_false.
+        IF ms_draft-state = z2ui5_cl_rap_util=>cs_editing_status-locked.
+          render_page( client ).
+        ENDIF.
         RETURN.
       ENDIF.
       mv_editable = abap_true.
@@ -1445,9 +1449,17 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         ENDIF.
         RETURN.
       ENDIF.
-      apply_value_help( EXPORTING client    = client
-                                  it_fields = ms_entity-fields
-                        CHANGING  target    = ms_data->* ).
+      DATA(lv_vh_applied) = apply_value_help( EXPORTING client    = client
+                                                        it_fields = ms_entity-fields
+                                              CHANGING  target    = ms_data->* ).
+      "a value chosen in the draft goes into it at once, like a typed one -
+      "its determinations run, and a kept draft has it (since 2026-11)
+      IF lv_vh_applied = abap_true AND mv_draft = abap_true AND mv_editable = abap_true
+        AND z2ui5_cl_rap_util=>get_changed_fields( row      = ms_data->*
+                                                   original = ms_data_backup->* ) IS NOT INITIAL.
+        on_side_effect( client ).
+        RETURN.
+      ENDIF.
       "decided by what this page called - check_app_prev_stack( ) only says
       "whether the page has a caller itself
       IF mv_pending_action IS NOT INITIAL.
@@ -1979,15 +1991,35 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    "a draft exists already - another user's lock, which the business
-    "object names, or one of this user's that can be discarded
-    client->message_box_display(
-      text    = concat_lines_of( table = ls_result-messages sep = cl_abap_char_utilities=>newline )
-      type    = `warning`
-      actions = VALUE #( ( get_text( cs_text-resume_draft ) )
-                         ( get_text( cs_text-discard_draft ) )
-                         ( get_text( cs_text-cancel ) ) )
-      onclose = cs_event-draft_decision ).
+    "refused: asked again why, the draft status may have changed since the
+    "page opened. Only a draft of this user's own can be continued or
+    "discarded; another user's lock, a missing authorization or a refused
+    "precheck is the business object's message, nothing more (since
+    "2026-11)
+    read_draft_status( ).
+    IF ms_draft-state = z2ui5_cl_rap_util=>cs_editing_status-own_draft.
+      client->message_box_display(
+        text    = concat_lines_of( table = ls_result-messages sep = cl_abap_char_utilities=>newline )
+        type    = `warning`
+        actions = VALUE #( ( get_text( cs_text-resume_draft ) )
+                           ( get_text( cs_text-discard_draft ) )
+                           ( get_text( cs_text-cancel ) ) )
+        onclose = cs_event-draft_decision ).
+      RETURN.
+    ENDIF.
+    DATA(lt_refused) = ls_result-messages.
+    IF ms_draft-state = z2ui5_cl_rap_util=>cs_editing_status-locked.
+      INSERT replace( val  = get_text( cs_text-locked_by )
+                      sub  = `&1`
+                      with = ms_draft-user ) INTO lt_refused INDEX 1.
+    ENDIF.
+    IF lt_refused IS INITIAL.
+      APPEND get_text( cs_text-locked ) TO lt_refused.
+    ENDIF.
+    show_messages( client   = client
+                   messages = lt_refused
+                   details  = ls_result-details
+                   fields   = ms_entity-fields ).
 
   ENDMETHOD.
 
@@ -3811,9 +3843,12 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                   get_permissions( entity_name = mv_entity_name
                                    context     = ms_context ) ).
     ELSE.
+      "a draft is asked about as the draft - its field control follows
+      "what the user changed in it, not the active record
       ms_perm = get_row_permissions( entity_name = mv_entity_name
                                      context     = ms_context
-                                     row         = ms_data->* ).
+                                     row         = ms_data->*
+                                     is_draft    = mv_draft ).
     ENDIF.
 
   ENDMETHOD.
@@ -4421,7 +4456,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
     DATA(ls_child_perms) = get_permissions( entity_name = cs_child-entity-name
                                             context     = get_child_context( cs_child-association )
-                                            rows        = rows ).
+                                            rows        = rows
+                                            is_draft    = mv_draft ).
     IF ls_child_perms-answered = abap_true.
       LOOP AT ls_child_perms-global-fields INTO DATA(ls_static)
         WHERE read_only = abap_true OR read_only_update = abap_true.

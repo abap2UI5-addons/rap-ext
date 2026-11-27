@@ -1061,22 +1061,27 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     "! (a table of the entity). Not answered for what is no RAP business
     "! object and where the statement's class did not activate - then the
     "! BDEF derived types alone decide, as before. A subclass can answer it
-    "! itself (added 2026-10, third round)
+    "! itself (added 2026-10, third round). is_draft: rows are drafts -
+    "! the permissions of the draft, not of the active instance (added
+    "! 2026-11)
     METHODS get_permissions
       IMPORTING
         entity_name   TYPE string
         context       TYPE ty_s_rap_context OPTIONAL
         rows          TYPE REF TO data OPTIONAL
+        is_draft      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_permissions.
 
     "! the permissions of the one record row - the global ones combined
-    "! with the instance's (added 2026-10, third round)
+    "! with the instance's (added 2026-10, third round); is_draft: row is
+    "! a draft (added 2026-11)
     METHODS get_row_permissions
       IMPORTING
         entity_name   TYPE string
         context       TYPE ty_s_rap_context OPTIONAL
         row           TYPE data
+        is_draft      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE ty_s_perm_set.
 
@@ -3876,7 +3881,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ENDIF.
     result = z2ui5_cl_rap_eml=>get_permissions( entity_name = entity_name
                                                 context     = context
-                                                rows        = rows ).
+                                                rows        = rows
+                                                is_draft    = is_draft ).
   ENDMETHOD.
 
 
@@ -3893,7 +3899,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     result = z2ui5_cl_rap_util=>get_instance_permissions(
       is_permissions = get_permissions( entity_name = entity_name
                                         context     = context
-                                        rows        = lr_rows )
+                                        rows        = lr_rows
+                                        is_draft    = is_draft )
       keys           = get_keys_of_row( entity_name = entity_name
                                         row         = row ) ).
 
