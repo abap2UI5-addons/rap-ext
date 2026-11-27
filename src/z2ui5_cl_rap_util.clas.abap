@@ -1856,7 +1856,8 @@ CLASS z2ui5_cl_rap_util DEFINITION
 
     "! The select list of a GROUP BY that aggregates it_aggregations, each
     "! under its own name (SUM( X ) AS X, COUNT( DISTINCT Y ) AS Y), and
-    "! groups by group_by (first in the list) - empty without aggregations
+    "! groups by group_by (first in the list; several fields separated by
+    "! commas) - empty without aggregations
     CLASS-METHODS build_aggregate_select
       IMPORTING
         it_aggregations TYPE ty_t_aggregation
@@ -7270,16 +7271,21 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
   METHOD build_aggregate_select.
 
     DATA lt_parts TYPE string_table.
+    DATA lt_group TYPE string_table.
 
     IF it_aggregations IS INITIAL.
       RETURN.
     ENDIF.
-    IF group_by IS NOT INITIAL.
-      APPEND to_upper( group_by ) TO lt_parts.
-    ENDIF.
+    DATA(lv_group_by) = to_upper( group_by ).
+    SPLIT lv_group_by AT `,` INTO TABLE lt_group.
+    LOOP AT lt_group ASSIGNING FIELD-SYMBOL(<lv_group>).
+      <lv_group> = condense( <lv_group> ).
+    ENDLOOP.
+    DELETE lt_group WHERE table_line IS INITIAL.
+    APPEND LINES OF lt_group TO lt_parts.
     LOOP AT it_aggregations INTO DATA(ls_agg).
       DATA(lv_field) = to_upper( ls_agg-field ).
-      IF lv_field = to_upper( group_by ).
+      IF line_exists( lt_group[ table_line = lv_field ] ).
         CONTINUE.
       ENDIF.
       CASE ls_agg-method.

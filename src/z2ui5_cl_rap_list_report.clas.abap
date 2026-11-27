@@ -761,6 +761,38 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       RETURNING
         VALUE(result)   TYPE REF TO data.
 
+    "! the currency and unit fields of the amounts and quantities
+    "! it_aggregations sums, averages or compares (@Semantics.amount
+    "! .currencyCode, @Semantics.quantity.unitOfMeasure) - the aggregates
+    "! are per value of them: 100 USD and 200 EUR are no total of 300
+    METHODS get_aggregate_units
+      IMPORTING
+        it_aggregations TYPE z2ui5_cl_rap_util=>ty_t_aggregation
+      RETURNING
+        VALUE(result)   TYPE string_table.
+
+    "! the aggregates of it_aggregations over the rows of rows per value of
+    "! group_by, into result (a table of the entity) - one field at most
+    METHODS aggregates_from_rows
+      IMPORTING
+        rows            TYPE REF TO data
+        it_aggregations TYPE z2ui5_cl_rap_util=>ty_t_aggregation
+        group_by        TYPE string
+      CHANGING
+        result          TYPE STANDARD TABLE.
+
+    "! an analytic row appended to rows: the aggregates of aggregate (a
+    "! row of read_aggregates( ), when bound), its kind and label
+    METHODS append_analytic_row
+      IMPORTING
+        aggregate     TYPE REF TO data OPTIONAL
+        kind          TYPE string
+        label         TYPE string
+      CHANGING
+        rows          TYPE STANDARD TABLE
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
     "! the rows (mr_data) with the columns of it_columns added - the ones
     "! they have already are kept
     METHODS add_row_columns
@@ -4081,6 +4113,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     DATA lv_value TYPE string.
     DATA lv_first TYPE abap_bool VALUE abap_true.
     DATA lv_group TYPE string.
+    DATA lt_group_rows TYPE STANDARD TABLE OF REF TO data WITH EMPTY KEY.
+    DATA lr_group_row TYPE REF TO data.
+    DATA lr_new_row TYPE REF TO data.
 
     IF mv_analytical = abap_false OR mr_data IS NOT BOUND.
       RETURN.
@@ -4127,31 +4162,34 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           lv_value = |{ <lv_value> }|.
         ENDIF.
         IF lv_first = abap_true OR lv_value <> lv_prev.
-          APPEND INITIAL LINE TO <lt_new> ASSIGNING <ls_new>.
-          "the group's subtotals
+          "the group's subtotals - a row per currency or unit of its
+          "amounts and quantities (read_aggregates)
+          CLEAR lt_group_rows.
           IF <lt_groups> IS ASSIGNED.
             LOOP AT <lt_groups> ASSIGNING <ls_group>.
               UNASSIGN <lv_target>.
               ASSIGN COMPONENT lv_group OF STRUCTURE <ls_group> TO <lv_target>.
               IF <lv_target> IS ASSIGNED AND |{ <lv_target> }| = lv_value.
-                MOVE-CORRESPONDING <ls_group> TO <ls_new>.
-                EXIT.
+                GET REFERENCE OF <ls_group> INTO lr_group_row.
+                APPEND lr_group_row TO lt_group_rows.
               ENDIF.
             ENDLOOP.
           ENDIF.
-          UNASSIGN <lv_target>.
-          ASSIGN COMPONENT lv_group OF STRUCTURE <ls_new> TO <lv_target>.
-          IF <lv_target> IS ASSIGNED AND <lv_value> IS ASSIGNED.
-            <lv_target> = <lv_value>.
+          IF lt_group_rows IS INITIAL.
+            APPEND INITIAL LINE TO lt_group_rows.
           ENDIF.
-          ASSIGN COMPONENT cs_row_column-row_kind OF STRUCTURE <ls_new> TO <lv_target>.
-          IF sy-subrc = 0.
-            <lv_target> = z2ui5_cl_rap_util=>cs_row_kind-group.
-          ENDIF.
-          ASSIGN COMPONENT cs_row_column-row_label OF STRUCTURE <ls_new> TO <lv_target>.
-          IF sy-subrc = 0.
-            <lv_target> = |{ lv_group_label }: { lv_value }|.
-          ENDIF.
+          LOOP AT lt_group_rows INTO lr_group_row.
+            lr_new_row = append_analytic_row( EXPORTING aggregate = lr_group_row
+                                                        kind      = z2ui5_cl_rap_util=>cs_row_kind-group
+                                                        label     = |{ lv_group_label }: { lv_value }|
+                                              CHANGING  rows      = <lt_new> ).
+            ASSIGN lr_new_row->* TO <ls_new>.
+            UNASSIGN <lv_target>.
+            ASSIGN COMPONENT lv_group OF STRUCTURE <ls_new> TO <lv_target>.
+            IF <lv_target> IS ASSIGNED AND <lv_value> IS ASSIGNED.
+              <lv_target> = <lv_value>.
+            ENDIF.
+          ENDLOOP.
           lv_prev = lv_value.
           lv_first = abap_false.
         ENDIF.
@@ -4165,19 +4203,21 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                                   it_aggregations = lt_aggs ).
       IF lr_total IS BOUND.
         ASSIGN lr_total->* TO <lt_total>.
-        APPEND INITIAL LINE TO <lt_new> ASSIGNING <ls_new>.
-        IF <lt_total> IS ASSIGNED AND lines( <lt_total> ) > 0.
-          READ TABLE <lt_total> INDEX 1 ASSIGNING <ls_group>.
-          MOVE-CORRESPONDING <ls_group> TO <ls_new>.
+        "a total per currency or unit of the amounts and quantities
+        CLEAR lt_group_rows.
+        LOOP AT <lt_total> ASSIGNING <ls_group>.
+          GET REFERENCE OF <ls_group> INTO lr_group_row.
+          APPEND lr_group_row TO lt_group_rows.
+        ENDLOOP.
+        IF lt_group_rows IS INITIAL.
+          APPEND INITIAL LINE TO lt_group_rows.
         ENDIF.
-        ASSIGN COMPONENT cs_row_column-row_kind OF STRUCTURE <ls_new> TO <lv_target>.
-        IF sy-subrc = 0.
-          <lv_target> = z2ui5_cl_rap_util=>cs_row_kind-total.
-        ENDIF.
-        ASSIGN COMPONENT cs_row_column-row_label OF STRUCTURE <ls_new> TO <lv_target>.
-        IF sy-subrc = 0.
-          <lv_target> = get_text( cs_text-total ).
-        ENDIF.
+        LOOP AT lt_group_rows INTO lr_group_row.
+          append_analytic_row( EXPORTING aggregate = lr_group_row
+                                         kind      = z2ui5_cl_rap_util=>cs_row_kind-total
+                                         label     = get_text( cs_text-total )
+                               CHANGING  rows      = <lt_new> ).
+        ENDLOOP.
       ENDIF.
     ENDIF.
 
@@ -4189,15 +4229,37 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   METHOD read_aggregates.
 
     FIELD-SYMBOLS <lt_result> TYPE STANDARD TABLE.
-    FIELD-SYMBOLS <ls_target> TYPE any.
-    FIELD-SYMBOLS <lv_target> TYPE any.
+    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_part_rows> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_part> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <ls_row> TYPE any.
+    FIELD-SYMBOLS <lv_unit> TYPE any.
     DATA lv_from_rows TYPE abap_bool.
+    DATA lt_group TYPE string_table.
+    DATA lt_combos TYPE string_table.
+    DATA lt_unit_values TYPE string_table.
+    DATA lv_combo TYPE string.
+    DATA lr_part_rows TYPE REF TO data.
+    DATA lr_part TYPE REF TO data.
+    DATA lv_unit_field TYPE string.
 
     result = create_entity_table( mv_cds_view ).
     IF result IS NOT BOUND OR it_aggregations IS INITIAL.
       RETURN.
     ENDIF.
     ASSIGN result->* TO <lt_result>.
+
+    "per currency and unit as well
+    DATA(lt_units) = get_aggregate_units( it_aggregations ).
+    IF group_by IS NOT INITIAL.
+      APPEND to_upper( group_by ) TO lt_group.
+    ENDIF.
+    LOOP AT lt_units INTO lv_unit_field.
+      IF NOT line_exists( lt_group[ table_line = lv_unit_field ] ).
+        APPEND lv_unit_field TO lt_group.
+      ENDIF.
+    ENDLOOP.
+    DATA(lv_group_by) = concat_lines_of( table = lt_group sep = `, ` ).
 
     "a custom entity or a virtual element: ABAP SQL cannot aggregate it
     DATA(ls_read) = get_read_info( mv_cds_view ).
@@ -4210,18 +4272,18 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     IF lv_from_rows = abap_false.
       DATA(lv_select) = z2ui5_cl_rap_util=>build_aggregate_select( it_aggregations = it_aggregations
-                                                                   group_by        = group_by ).
+                                                                   group_by        = lv_group_by ).
       DATA(lv_where) = get_ext_where( entity_name = mv_cds_view
                                       where       = where ).
       TRY.
-          IF group_by IS INITIAL.
+          IF lv_group_by IS INITIAL.
             SELECT (lv_select) FROM (mv_cds_view)
               WHERE (lv_where)
               INTO CORRESPONDING FIELDS OF TABLE @<lt_result>.
           ELSE.
             SELECT (lv_select) FROM (mv_cds_view)
               WHERE (lv_where)
-              GROUP BY (group_by)
+              GROUP BY (lv_group_by)
               INTO CORRESPONDING FIELDS OF TABLE @<lt_result>.
           ENDIF.
           RETURN.
@@ -4236,13 +4298,104 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     DATA(lr_rows) = select_rows( entity_name = mv_cds_view
                                  where       = where
                                  max_rows    = cv_aggregate_max ).
-    LOOP AT it_aggregations INTO ls_agg.
-      LOOP AT z2ui5_cl_rap_util=>aggregate_rows( data     = lr_rows
+    IF lt_units IS INITIAL OR lr_rows IS NOT BOUND.
+      aggregates_from_rows( EXPORTING rows            = lr_rows
+                                      it_aggregations = it_aggregations
+                                      group_by        = group_by
+                            CHANGING  result          = <lt_result> ).
+      RETURN.
+    ENDIF.
+
+    "per currency or unit: the rows of each combination of their values
+    "aggregated apart, the combination written into each aggregate row
+    ASSIGN lr_rows->* TO <lt_rows>.
+    LOOP AT <lt_rows> ASSIGNING <ls_row>.
+      CLEAR lt_unit_values.
+      LOOP AT lt_units INTO lv_unit_field.
+        UNASSIGN <lv_unit>.
+        ASSIGN COMPONENT lv_unit_field OF STRUCTURE <ls_row> TO <lv_unit>.
+        APPEND COND string( WHEN <lv_unit> IS ASSIGNED THEN |{ <lv_unit> }| ) TO lt_unit_values.
+      ENDLOOP.
+      lv_combo = concat_lines_of( table = lt_unit_values sep = cl_abap_char_utilities=>horizontal_tab ).
+      IF NOT line_exists( lt_combos[ table_line = lv_combo ] ).
+        APPEND lv_combo TO lt_combos.
+      ENDIF.
+    ENDLOOP.
+    LOOP AT lt_combos INTO lv_combo.
+      CREATE DATA lr_part_rows LIKE <lt_rows>.
+      ASSIGN lr_part_rows->* TO <lt_part_rows>.
+      "empty - the transpiled runtime copies the rows along with LIKE
+      CLEAR <lt_part_rows>.
+      LOOP AT <lt_rows> ASSIGNING <ls_row>.
+        CLEAR lt_unit_values.
+        LOOP AT lt_units INTO lv_unit_field.
+          UNASSIGN <lv_unit>.
+          ASSIGN COMPONENT lv_unit_field OF STRUCTURE <ls_row> TO <lv_unit>.
+          APPEND COND string( WHEN <lv_unit> IS ASSIGNED THEN |{ <lv_unit> }| ) TO lt_unit_values.
+        ENDLOOP.
+        IF concat_lines_of( table = lt_unit_values sep = cl_abap_char_utilities=>horizontal_tab ) = lv_combo.
+          APPEND <ls_row> TO <lt_part_rows>.
+        ENDIF.
+      ENDLOOP.
+      lr_part = create_entity_table( mv_cds_view ).
+      ASSIGN lr_part->* TO <lt_part>.
+      aggregates_from_rows( EXPORTING rows            = lr_part_rows
+                                      it_aggregations = it_aggregations
+                                      group_by        = group_by
+                            CHANGING  result          = <lt_part> ).
+      "the values of the combination from its first row
+      READ TABLE <lt_part_rows> INDEX 1 ASSIGNING <ls_row>.
+      LOOP AT <lt_part> ASSIGNING FIELD-SYMBOL(<ls_part>).
+        LOOP AT lt_units INTO lv_unit_field.
+          UNASSIGN <lv_unit>.
+          ASSIGN COMPONENT lv_unit_field OF STRUCTURE <ls_part> TO <lv_unit>.
+          ASSIGN COMPONENT lv_unit_field OF STRUCTURE <ls_row> TO FIELD-SYMBOL(<lv_from>).
+          IF <lv_unit> IS ASSIGNED AND sy-subrc = 0.
+            <lv_unit> = <lv_from>.
+          ENDIF.
+        ENDLOOP.
+        APPEND <ls_part> TO <lt_result>.
+      ENDLOOP.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD get_aggregate_units.
+
+    LOOP AT it_aggregations INTO DATA(ls_agg).
+      "a count counts rows, whatever their currency
+      IF ls_agg-method <> `SUM` AND ls_agg-method <> `AVG` AND ls_agg-method <> `MIN` AND ls_agg-method <> `MAX`.
+        CONTINUE.
+      ENDIF.
+      READ TABLE ms_entity-fields INTO DATA(ls_field) WITH KEY name = to_upper( ls_agg-field ).
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_unit) = to_upper( COND string( WHEN ls_field-semantics_currency_code IS NOT INITIAL
+                                             THEN ls_field-semantics_currency_code
+                                             ELSE ls_field-semantics_unit_of_measure ) ).
+      IF lv_unit IS NOT INITIAL AND line_exists( ms_entity-fields[ name = lv_unit ] )
+        AND NOT line_exists( result[ table_line = lv_unit ] ).
+        APPEND lv_unit TO result.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD aggregates_from_rows.
+
+    FIELD-SYMBOLS <ls_target> TYPE any.
+    FIELD-SYMBOLS <lv_target> TYPE any.
+
+    LOOP AT it_aggregations INTO DATA(ls_agg).
+      LOOP AT z2ui5_cl_rap_util=>aggregate_rows( data     = rows
                                                  group_by = group_by
                                                  measure  = ls_agg-field
                                                  method   = ls_agg-method ) INTO DATA(ls_value).
         UNASSIGN <ls_target>.
-        LOOP AT <lt_result> ASSIGNING <ls_target>.
+        LOOP AT result ASSIGNING <ls_target>.
           IF group_by IS INITIAL.
             EXIT.
           ENDIF.
@@ -4254,7 +4407,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           UNASSIGN <ls_target>.
         ENDLOOP.
         IF <ls_target> IS NOT ASSIGNED.
-          APPEND INITIAL LINE TO <lt_result> ASSIGNING <ls_target>.
+          APPEND INITIAL LINE TO result ASSIGNING <ls_target>.
           IF group_by IS NOT INITIAL.
             ASSIGN COMPONENT group_by OF STRUCTURE <ls_target> TO <lv_target>.
             IF sy-subrc = 0.
@@ -4274,6 +4427,29 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD append_analytic_row.
+
+    FIELD-SYMBOLS <ls_aggregate> TYPE any.
+    FIELD-SYMBOLS <lv_target> TYPE any.
+
+    APPEND INITIAL LINE TO rows ASSIGNING FIELD-SYMBOL(<ls_new>).
+    IF aggregate IS BOUND.
+      ASSIGN aggregate->* TO <ls_aggregate>.
+      MOVE-CORRESPONDING <ls_aggregate> TO <ls_new>.
+    ENDIF.
+    ASSIGN COMPONENT cs_row_column-row_kind OF STRUCTURE <ls_new> TO <lv_target>.
+    IF sy-subrc = 0.
+      <lv_target> = kind.
+    ENDIF.
+    ASSIGN COMPONENT cs_row_column-row_label OF STRUCTURE <ls_new> TO <lv_target>.
+    IF sy-subrc = 0.
+      <lv_target> = label.
+    ENDIF.
+    GET REFERENCE OF <ls_new> INTO result.
 
   ENDMETHOD.
 
