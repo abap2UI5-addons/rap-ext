@@ -711,6 +711,13 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         io_toolbar TYPE REF TO z2ui5_cl_ui5_view_builder
         client     TYPE REF TO z2ui5_if_client.
 
+    "! what the toolbar shows after its title - nothing here, the
+    "! worklist's search field there (added 2026-11)
+    METHODS render_toolbar_search
+      IMPORTING
+        io_toolbar TYPE REF TO z2ui5_cl_ui5_view_builder
+        client     TYPE REF TO z2ui5_if_client.
+
     "! the rows as a sap.ui.table.Table (cs_table_type-grid): a check box
     "! column for the selection, the columns, the inline actions and a
     "! navigation column (added 2026-10, third round)
@@ -2701,6 +2708,11 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD render_toolbar_search ##NEEDED.
+    "the list report searches in its filter bar
+  ENDMETHOD.
+
+
   METHOD render_toolbar_content.
 
     io_toolbar->tag( `Title`
@@ -2708,6 +2720,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
               v = z2ui5_cl_ui5_view_builder=>escape_literal( mv_title ) && ` (` && client->_bind( mv_count ) && `)` ).
 
     io_toolbar->tag( `ToolbarSpacer` ).
+
+    render_toolbar_search( io_toolbar = io_toolbar
+                           client     = client ).
 
     "@UI.lineItem actions of type #FOR_ACTION - on the selected rows, a
     "static one without; by position, an action group as a menu

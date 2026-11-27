@@ -60,7 +60,7 @@ CLASS z2ui5_cl_rap_worklist DEFINITION
     METHODS get_where_clause REDEFINITION.
     METHODS render_page REDEFINITION.
     METHODS render_filter_bar REDEFINITION.
-    METHODS render_toolbar REDEFINITION.
+    METHODS render_toolbar_search REDEFINITION.
     METHODS get_selection_fields REDEFINITION.
     METHODS apply_variant REDEFINITION.
 
@@ -317,66 +317,17 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD render_toolbar.
+  METHOD render_toolbar_search.
 
     "the events of the list report this class inherits
     DATA(ls_event) = z2ui5_cl_rap_list_report=>cs_event.
-    DATA(lo_toolbar) = io_table->ele( `headerToolbar`
-        )->ele( `OverflowToolbar` ).
-
-    lo_toolbar->tag( `Title`
-        )->a( n = `text`
-              v = z2ui5_cl_ui5_view_builder=>escape_literal( mv_title ) && ` (` && client->_bind( mv_count ) && `)` ).
-
-    lo_toolbar->tag( `ToolbarSpacer` ).
-
-    lo_toolbar->tag( `SearchField`
+    io_toolbar->tag( `SearchField`
         )->a( n = `value`
               v = client->_bind( mv_search )
         )->a( n = `search`
               v = client->_event( ls_event-search )
         )->a( n = `width`
               v = `15rem` ).
-
-    render_sort_controls( io_toolbar = lo_toolbar
-                          client     = client ).
-
-    render_variant_controls( io_toolbar = lo_toolbar
-                             client     = client ).
-
-    "@UI.lineItem actions of type #FOR_ACTION - on the selected rows, a
-    "static one without; by position, an action group as a menu
-    render_action_buttons( io_container     = lo_toolbar
-                           it_actions       = get_line_item_actions( abap_false )
-                           it_groups        = ms_entity-action_groups
-                           client           = client
-                           event            = ls_event-action
-                           enabled_values   = get_action_enabled( ) ).
-
-    "@UI.lineItem #FOR_INTENT_BASED_NAVIGATION - to another app
-    LOOP AT get_line_item_intents( ) INTO DATA(ls_intent).
-      lo_toolbar->tag( `Button`
-          )->a( n = `text`
-                t = ls_intent-label
-          )->a( n = `press`
-                v = client->_event( val = ls_event-intent
-                                    arg = ls_intent-name ) ).
-    ENDLOOP.
-
-    render_extension( spot         = cs_spot-toolbar
-                      io_container = lo_toolbar
-                      client       = client ).
-
-    render_export_button( io_toolbar = lo_toolbar
-                          client     = client ).
-
-    lo_toolbar->tag( `Button`
-        )->a( n = `icon`
-              v = `sap-icon://refresh`
-        )->a( n = `tooltip`
-              t = get_text( cs_text-refresh )
-        )->a( n = `press`
-              v = client->_event( ls_event-refresh ) ).
 
   ENDMETHOD.
 
