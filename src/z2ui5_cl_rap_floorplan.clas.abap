@@ -664,7 +664,9 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     "! write one row: operation is CREATE, UPDATE or DELETE. Through RAP when
     "! the entity is a business object, with ABAP SQL when it is a table
     "! whose writes the extension allowed (get_entity_capabilities) - an
-    "! operation the entity does not allow is refused here, whoever asks
+    "! operation the entity does not allow is refused here, whoever asks.
+    "! The extension's after_save follows every write but an UPDATE of a
+    "! draft (write_draft): what saves a draft's changes is its activation
     METHODS write_row
       IMPORTING
         entity_name   TYPE string
@@ -676,6 +678,10 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         "a child of the draft the object page edits: written into that
         "draft, committed, not activated (added 2026-10, third round)
         in_draft      TYPE abap_bool DEFAULT abap_false
+        "a business object's UPDATE or DELETE is checked against the
+        "record's permissions and field control first; abap_false only
+        "for an UPDATE of a draft (write_draft) - added 2026-11
+        check         TYPE abap_bool DEFAULT abap_true
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -2792,7 +2798,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     "the record's own permissions, its read-only fields and - without a
     "draft - that nobody changed it meanwhile (since 2026-10, third round)
-    IF ls_caps-is_rap_bo = abap_true AND ( operation = `UPDATE` OR operation = `DELETE` ).
+    IF check = abap_true AND ls_caps-is_rap_bo = abap_true AND ( operation = `UPDATE` OR operation = `DELETE` ).
       IF original IS SUPPLIED.
         result-messages = check_rap_write( entity_name = entity_name
                                            operation   = operation
@@ -2862,7 +2868,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                                 row         = <ls_row> ).
     ENDIF.
 
-    IF result-success = abap_true AND mo_ext IS BOUND.
+    IF result-success = abap_true AND mo_ext IS BOUND
+      AND NOT ( operation = `UPDATE` AND in_draft = abap_true ).
       mo_ext->after_save( entity_name = entity_name
                           operation   = operation
                           data        = lr_row ).
@@ -3146,46 +3153,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
 
   METHOD write_draft.
-
-    DATA lv_cancel TYPE abap_bool.
-    DATA lr_row TYPE REF TO data.
-    FIELD-SYMBOLS <ls_row> TYPE any.
-
-    IF get_entity_capabilities( entity_name = entity_name
-                                context     = context )-can_update = abap_false.
-      APPEND get_text( cs_text-read_only ) TO result-messages.
-      RETURN.
-    ENDIF.
-    IF check = abap_true.
-      result-messages = check_rap_write( entity_name = entity_name
-                                         operation   = `UPDATE`
-                                         row         = row
-                                         original    = original
-                                         context     = context ).
-      IF result-messages IS NOT INITIAL.
-        RETURN.
-      ENDIF.
-    ENDIF.
-
-    CREATE DATA lr_row LIKE row.
-    ASSIGN lr_row->* TO <ls_row>.
-    <ls_row> = row.
-    IF mo_ext IS BOUND.
-      mo_ext->before_save( EXPORTING entity_name = entity_name
-                                     operation   = `UPDATE`
-                                     data        = lr_row
-                           CHANGING  messages    = result-messages
-                                     cancel      = lv_cancel ).
-      IF lv_cancel = abap_true.
-        RETURN.
-      ENDIF.
-    ENDIF.
-
-    result = z2ui5_cl_rap_eml=>update_draft( entity_name = entity_name
-                                             row         = <ls_row>
-                                             original    = original
-                                             context     = context ).
-
+    "write_row's UPDATE of a draft - the record of the object page is
+    "checked by its own steps, a child row (check) like every write
+    result = write_row( entity_name = entity_name
+                        operation   = `UPDATE`
+                        row         = row
+                        original    = original
+                        context     = context
+                        in_draft    = abap_true
+                        check       = check ).
   ENDMETHOD.
 
 
