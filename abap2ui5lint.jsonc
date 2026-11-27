@@ -36,14 +36,7 @@
   // with BINDING_ERROR; that was verified at runtime, transpiled against
   // the core, as was the fix (see the overview page's unit test).
   //
-  // Four more, accepted when the linter moved to 0.13 (reported since 0.12):
-  // - nonpublic-data-reference on the object page's ms_data_backup and the
-  //   value help's mr_selected: both are PROTECTED on purpose and created
-  //   with the entity's named type (ms_data_backup LIKE ms_data->*, which
-  //   the callers hand over typed by the entity; mr_selected by
-  //   to_entity_row), which the draft survives (AGENTS.md, "A generic REF
-  //   TO data ..."). Moving them to PUBLIC changes the public contract and
-  //   what the draft carries - a maintainer decision, not a version bump.
+  // Two more, accepted when the linter moved to 0.13 (reported since 0.12):
   // - message-before-navigation in the object page's main (the load error
   //   before nav_app_leave on init, the "deleted" toast before
   //   nav_app_leave): the remedy, keep_messages on the navigation, is in no

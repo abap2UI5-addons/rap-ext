@@ -137,6 +137,10 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         VALUE(result) TYPE REF TO data.
 
     DATA ms_data TYPE REF TO data.
+    "! the record as last loaded or saved - Cancel and the change check
+    "! compare against it. PUBLIC because the core carries a generic
+    "! reference through the draft only as a public attribute
+    DATA ms_data_backup TYPE REF TO data.
     DATA mv_editable TYPE abap_bool.
 
     "! the rows of the #LINEITEM_REFERENCE sections - one component per
@@ -227,7 +231,6 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         change_docs TYPE string VALUE `ZZCHANGEDOCS`,
       END OF cs_section_id.
 
-    DATA ms_data_backup TYPE REF TO data.
     DATA mv_entity_name TYPE string.
     DATA ms_caps TYPE ty_s_capabilities.
     DATA mt_child TYPE ty_t_child.

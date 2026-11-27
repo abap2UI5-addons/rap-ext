@@ -100,6 +100,10 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
     "! as a public attribute - the caller reads it after nav_app_leave( )
     DATA mr_result_table TYPE REF TO data.
 
+    "! the selected row of a single-select dialog, a row of the entity.
+    "! PUBLIC for the same reason as mr_result_table
+    DATA mr_selected TYPE REF TO data.
+
     "! the filter fields of the dialog (@UI.selectionField of the entity)
     DATA mt_filter TYPE ty_t_filter.
     "! the search field of the filter bar
@@ -112,7 +116,6 @@ CLASS z2ui5_cl_rap_value_help DEFINITION
     DATA mv_max_rows   TYPE i.
     DATA mv_confirmed  TYPE abap_bool.
     DATA ms_entity     TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
-    DATA mr_selected   TYPE REF TO data.
     DATA mv_result_val TYPE string.
     DATA mv_multi      TYPE abap_bool.
     DATA mt_filters    TYPE ty_t_name_value.
