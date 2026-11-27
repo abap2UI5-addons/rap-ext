@@ -32,7 +32,10 @@ home, and a find-and-replace of the `uses:` lines in the callers.
 Every job inside declares its own permissions; a job that runs the code of a
 pull request has `contents: read` whatever the caller grants. Secrets are
 never inherited: `addon-bump-deps.yaml` takes `DEPS_TOKEN` by name, the others
-need none.
+need none. Inside it, the token reaches two steps only - the npm/Actions
+update (for its `gh` calls; npm itself runs without it) and
+create-pull-request, the one step that pushes. No checkout keeps credentials
+in `.git/config` (`persist-credentials: false`).
 
 ### `addon-check.yaml` inputs
 
