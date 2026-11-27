@@ -479,6 +479,19 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
+    "! the column names of the rows (mr_data), blank-separated - empty
+    "! when there are none
+    METHODS get_row_columns
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! load_data( ), and the view again when that changed the columns of
+    "! the rows: the table binds only the columns mr_data has when it is
+    "! rendered (added 2026-11 - a list that started empty lacked them)
+    METHODS reload_rows
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
     "! the return from a called app: value help, action dialog, object page
     METHODS on_navigated
       IMPORTING
@@ -894,7 +907,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           text = |{ get_text( cs_text-required ) }: { concat_lines_of( table = lt_missing sep = `, ` ) }|
           type = `warning` ).
       ENDIF.
-      load_data( ).
+      reload_rows( client ).
       RETURN.
     ENDIF.
 
@@ -909,7 +922,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     IF client->check_on_event( cs_event-more ).
       "the next rows - loaded from the database, not only shown
       mv_max_rows = mv_max_rows + mv_page_size.
-      load_data( ).
+      reload_rows( client ).
       RETURN.
     ENDIF.
 
@@ -3218,6 +3231,35 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       CATCH cx_root.
         result = abap_false.
     ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD get_row_columns.
+
+    IF mr_data IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    TRY.
+        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( mr_data ) ).
+        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
+        LOOP AT lo_line->components INTO DATA(ls_component).
+          result = |{ result } { ls_component-name }|.
+        ENDLOOP.
+      CATCH cx_root.
+        CLEAR result.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD reload_rows.
+
+    DATA(lv_columns) = get_row_columns( ).
+    load_data( ).
+    IF get_row_columns( ) <> lv_columns.
+      render_page( client ).
+    ENDIF.
 
   ENDMETHOD.
 

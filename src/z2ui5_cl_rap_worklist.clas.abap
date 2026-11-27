@@ -91,7 +91,7 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     IF client->check_on_init( ) = abap_false
       AND client->check_on_event( cv_event_segment ).
       mv_segment = client->get_event_arg( ).
-      load_data( ).
+      reload_rows( client ).
       RETURN.
     ENDIF.
 
