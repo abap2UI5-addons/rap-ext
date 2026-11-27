@@ -1460,21 +1460,14 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD reload_data.
 
-    DATA lt_names TYPE string_table.
-    FIELD-SYMBOLS <lv_key> TYPE any.
-
     "the keys: those the page was opened with (or RAP assigned), else the
     "record's own - read each time, not kept, so an edited record is not
     "looked up by keys it no longer has
     CLEAR: mv_read_error, mv_not_found.
     DATA(lt_keys) = mt_keys.
     IF lt_keys IS INITIAL.
-      LOOP AT ms_entity-keys INTO DATA(lv_key).
-        ASSIGN COMPONENT lv_key OF STRUCTURE ms_data->* TO <lv_key>.
-        IF sy-subrc = 0.
-          APPEND VALUE #( name = lv_key value = |{ <lv_key> }| ) TO lt_keys.
-        ENDIF.
-      ENDLOOP.
+      lt_keys = get_key_values( key_fields = ms_entity-keys
+                                row        = ms_data->* ).
     ENDIF.
     IF lt_keys IS INITIAL.
       RETURN.
@@ -1488,14 +1481,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         mv_not_found = abap_true.
         RETURN.
       ENDIF.
-      APPEND lv_name TO lt_names.
     ENDLOOP.
 
-    DATA(lr_rows) = select_rows( entity_name = mv_entity_name
-                                 where       = build_key_condition( lt_names )
-                                 max_rows    = 1
-                                 host        = create_host( entity_name = mv_entity_name
-                                                            values      = lt_keys ) ).
+    DATA(lr_rows) = select_by_keys( entity_name = mv_entity_name
+                                    keys        = lt_keys ).
     IF lr_rows IS NOT BOUND.
       mv_not_found = abap_true.
       RETURN.
@@ -1922,16 +1911,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
 
   METHOD get_own_keys.
-
-    FIELD-SYMBOLS <lv_key> TYPE any.
-    LOOP AT ms_entity-keys INTO DATA(lv_key).
-      UNASSIGN <lv_key>.
-      ASSIGN COMPONENT lv_key OF STRUCTURE ms_data->* TO <lv_key>.
-      IF <lv_key> IS ASSIGNED.
-        APPEND VALUE #( name = lv_key value = |{ <lv_key> }| ) TO result.
-      ENDIF.
-    ENDLOOP.
-
+    result = get_key_values( key_fields = ms_entity-keys
+                             row        = ms_data->* ).
   ENDMETHOD.
 
 
@@ -4290,7 +4271,6 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     DATA lt_row_keys TYPE ty_t_name_value.
     DATA lv_flag TYPE abap_bool.
     FIELD-SYMBOLS <lt_out> TYPE STANDARD TABLE.
-    FIELD-SYMBOLS <lv_row_key> TYPE any.
     FIELD-SYMBOLS <lv_row_flag> TYPE any.
 
     IF rows IS NOT BOUND.
@@ -4327,14 +4307,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
 
     LOOP AT <lt_out> ASSIGNING FIELD-SYMBOL(<ls_out>).
-      CLEAR lt_row_keys.
-      LOOP AT cs_child-entity-keys INTO DATA(lv_row_key_name).
-        UNASSIGN <lv_row_key>.
-        ASSIGN COMPONENT lv_row_key_name OF STRUCTURE <ls_out> TO <lv_row_key>.
-        IF <lv_row_key> IS ASSIGNED.
-          APPEND VALUE #( name = lv_row_key_name value = |{ <lv_row_key> }| ) TO lt_row_keys.
-        ENDIF.
-      ENDLOOP.
+      lt_row_keys = get_key_values( key_fields = cs_child-entity-keys
+                                    row        = <ls_out> ).
       DATA(ls_instance) = z2ui5_cl_rap_util=>get_instance_permissions( is_permissions = ls_child_perms
                                                                       keys           = lt_row_keys ).
       ASSIGN COMPONENT cs_row_flag-updatable OF STRUCTURE <ls_out> TO <lv_row_flag>.
@@ -4488,7 +4462,6 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     FIELD-SYMBOLS <ls_all> TYPE any.
     FIELD-SYMBOLS <lt_del_rows> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lv_del_flag> TYPE any.
-    FIELD-SYMBOLS <lv_del_key> TYPE any.
 
     READ TABLE mt_child INTO DATA(ls_child) WITH KEY component = client->get_event_arg( ).
     IF sy-subrc <> 0 OR mr_child_rows IS NOT BOUND OR mv_editable = abap_false
@@ -4544,13 +4517,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     "without draft: deleted on Save - a new row is simply gone
     IF lv_is_new = abap_false.
-      LOOP AT ls_child-entity-keys INTO DATA(lv_key).
-        UNASSIGN <lv_del_key>.
-        ASSIGN COMPONENT lv_key OF STRUCTURE <ls_del> TO <lv_del_key>.
-        IF <lv_del_key> IS ASSIGNED.
-          APPEND VALUE #( name = lv_key value = |{ <lv_del_key> }| ) TO lt_keys.
-        ENDIF.
-      ENDLOOP.
+      lt_keys = get_key_values( key_fields = ls_child-entity-keys
+                                row        = <ls_del> ).
       APPEND VALUE #( component = ls_child-component
                       operation = `DELETE`
                       keys      = lt_keys ) TO mt_pending.
@@ -4573,21 +4541,13 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
   METHOD get_child_original.
 
     DATA lt_values TYPE ty_t_name_value.
-    DATA lt_names TYPE string_table.
     FIELD-SYMBOLS <lt_one> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lt_found> TYPE STANDARD TABLE.
-    FIELD-SYMBOLS <lv_original_key> TYPE any.
 
-    LOOP AT is_child-entity-keys INTO DATA(lv_key).
-      UNASSIGN <lv_original_key>.
-      ASSIGN COMPONENT lv_key OF STRUCTURE row TO <lv_original_key>.
-      IF <lv_original_key> IS NOT ASSIGNED.
-        RETURN.
-      ENDIF.
-      APPEND VALUE #( name = lv_key value = |{ <lv_original_key> }| ) TO lt_values.
-      APPEND lv_key TO lt_names.
-    ENDLOOP.
-    IF lt_values IS INITIAL.
+    "every key, or no original
+    lt_values = get_key_values( key_fields = is_child-entity-keys
+                                row        = row ).
+    IF lt_values IS INITIAL OR lines( lt_values ) <> lines( is_child-entity-keys ).
       RETURN.
     ENDIF.
 
@@ -4606,11 +4566,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                               context     = ls_context
                               rows        = lr_one ).
     ELSE.
-      lr_found = select_rows( entity_name = is_child-entity-name
-                              where       = build_key_condition( lt_names )
-                              max_rows    = 1
-                              host        = create_host( entity_name = is_child-entity-name
-                                                         values      = lt_values ) ).
+      lr_found = select_by_keys( entity_name = is_child-entity-name
+                                 keys        = lt_values ).
     ENDIF.
     IF lr_found IS NOT BOUND.
       RETURN.

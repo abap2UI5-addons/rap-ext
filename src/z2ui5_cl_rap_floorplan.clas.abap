@@ -358,6 +358,17 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! the rows of entity_name whose fields equal keys (name, value in
+    "! the text form of create_host) - at most one, compared with typed
+    "! host variables (build_key_condition); unbound when the read failed
+    "! (added 2026-11)
+    METHODS select_by_keys
+      IMPORTING
+        entity_name   TYPE string
+        keys          TYPE ty_t_name_value
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
     "! a structure of the entity with the fields of values set - the host
     "! structure of a key condition (build_key_condition). A value is the
     "! text form a row, an event argument or a URL carries: a date as
@@ -1047,6 +1058,15 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         row           TYPE data
       RETURNING
         VALUE(result) TYPE ty_s_perm_set.
+
+    "! the fields key_fields of row with their values (upper-case names) -
+    "! a field row does not have is left out (added 2026-11)
+    METHODS get_key_values
+      IMPORTING
+        key_fields    TYPE string_table
+        row           TYPE data
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
 
     "! the key fields of entity_name with their values in row
     METHODS get_keys_of_row
@@ -2676,7 +2696,6 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
   METHOD read_association_target.
 
     DATA lt_values TYPE ty_t_name_value.
-    DATA lt_names TYPE string_table.
     FIELD-SYMBOLS <lv_value> TYPE any.
     FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
 
@@ -2691,14 +2710,10 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         RETURN.
       ENDIF.
       APPEND VALUE #( name = ls_condition-target value = |{ <lv_value> }| ) TO lt_values.
-      APPEND ls_condition-target TO lt_names.
     ENDLOOP.
 
-    DATA(lr_rows) = select_rows( entity_name = ls_assoc-target
-                                 where       = build_key_condition( lt_names )
-                                 max_rows    = 1
-                                 host        = create_host( entity_name = ls_assoc-target
-                                                            values      = lt_values ) ).
+    DATA(lr_rows) = select_by_keys( entity_name = ls_assoc-target
+                                    keys        = lt_values ).
     IF lr_rows IS NOT BOUND.
       RETURN.
     ENDIF.
@@ -3077,6 +3092,21 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       APPEND |{ lv_field } = @{ cv_host }-{ lv_field }| TO lt_and.
     ENDLOOP.
     result = concat_lines_of( table = lt_and sep = ` AND ` ).
+
+  ENDMETHOD.
+
+
+  METHOD select_by_keys.
+
+    DATA lt_names TYPE string_table.
+    LOOP AT keys INTO DATA(ls_key).
+      APPEND ls_key-name TO lt_names.
+    ENDLOOP.
+    result = select_rows( entity_name = entity_name
+                          where       = build_key_condition( lt_names )
+                          max_rows    = 1
+                          host        = create_host( entity_name = entity_name
+                                                     values      = keys ) ).
 
   ENDMETHOD.
 
@@ -3865,9 +3895,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
 
   METHOD get_keys_of_row.
+    result = get_key_values( key_fields = z2ui5_cl_rap_util=>get_key_fields( entity_name )
+                             row        = row ).
+  ENDMETHOD.
+
+
+  METHOD get_key_values.
 
     FIELD-SYMBOLS <lv_key> TYPE any.
-    LOOP AT z2ui5_cl_rap_util=>get_key_fields( entity_name ) INTO DATA(lv_key).
+    LOOP AT key_fields INTO DATA(lv_key).
       UNASSIGN <lv_key>.
       ASSIGN COMPONENT lv_key OF STRUCTURE row TO <lv_key>.
       IF <lv_key> IS ASSIGNED.
@@ -3908,7 +3944,6 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD check_etag.
 
-    DATA lt_names TYPE string_table.
     FIELD-SYMBOLS <lv_seen> TYPE any.
     FIELD-SYMBOLS <lv_now> TYPE any.
     FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
@@ -3927,15 +3962,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     IF lt_keys IS INITIAL.
       RETURN.
     ENDIF.
-    LOOP AT lt_keys INTO DATA(ls_key).
-      APPEND ls_key-name TO lt_names.
-    ENDLOOP.
-
-    DATA(lr_rows) = select_rows( entity_name = entity_name
-                                 where       = build_key_condition( lt_names )
-                                 max_rows    = 1
-                                 host        = create_host( entity_name = entity_name
-                                                            values      = lt_keys ) ).
+    DATA(lr_rows) = select_by_keys( entity_name = entity_name
+                                    keys        = lt_keys ).
     IF lr_rows IS NOT BOUND.
       RETURN.
     ENDIF.
