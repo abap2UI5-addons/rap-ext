@@ -62,6 +62,9 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         child_action   TYPE string VALUE `CHILD_ACTION`,
         "the answer to "keep or discard your draft?" when leaving the page
         leave_decision TYPE string VALUE `LEAVE_DECISION`,
+        "the message box saying the record is gone was closed: leave then,
+        "so the user sees the message before the page goes
+        not_found_ok   TYPE string VALUE `NOT_FOUND_OK`,
         "added 2026-10, third round (object page): the MultiInput of a 1:n
         "child - a token typed (arg the component), deleted (the component,
         "the token's key), its value help (the component); a row of a child
@@ -248,6 +251,10 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
     "! parameter dialog - empty for an action of this record (added
     "! 2026-10, third round)
     DATA mv_pending_child TYPE string.
+    "! reload_data found no record (and no draft) by the keys, or the read
+    "! failed (mv_read_error) - added 2026-11; a redefined reload_data
+    "! that does not call it leaves it false
+    DATA mv_not_found TYPE abap_bool.
     "! the last action created a record and its object page was called -
     "! nothing else is rendered in this roundtrip
     DATA mv_opened_created TYPE abap_bool.
@@ -438,8 +445,23 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         VALUE(result) TYPE abap_bool.
 
     "! read the record again by its keys - after a save, and when the page
-    "! was opened with keys instead of a record
+    "! was opened with keys instead of a record; mv_not_found says whether
+    "! it was not found
     METHODS reload_data.
+
+    "! discard the draft of the record (DISCARD on its root, committed) -
+    "! false, and its messages shown, when that failed (added 2026-11)
+    METHODS discard_draft
+      IMPORTING
+        client        TYPE REF TO z2ui5_if_client
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! no record to show: why (the read's error, else "no record found"),
+    "! and leave (added 2026-11)
+    METHODS show_not_found
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
 
     "! the CDS entity an association leads to - the extension answers it;
     "! redefine it to answer it in a subclass
@@ -823,7 +845,12 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ms_data->* = val.
     ELSEIF cds_view_name IS NOT INITIAL.
       mv_entity_name = to_upper( cds_view_name ).
-      CREATE DATA ms_data TYPE (mv_entity_name).
+      "no type of that name: ms_data stays unbound - main shows the error
+      TRY.
+          CREATE DATA ms_data TYPE (mv_entity_name).
+        CATCH cx_sy_create_data_error.
+          CLEAR ms_data.
+      ENDTRY.
     ENDIF.
     IF cds_view_name IS NOT INITIAL.
       mv_entity_name = to_upper( cds_view_name ).
@@ -872,6 +899,12 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       IF mt_keys IS NOT INITIAL
         OR ( mv_is_create = abap_false AND line_exists( ms_entity-fields[ is_large_object = abap_true ] ) ).
         reload_data( ).
+        "opened by keys no record has (any more), or the read failed:
+        "nothing to show - a record handed over stays as it was
+        IF mt_keys IS NOT INITIAL AND mv_not_found = abap_true.
+          show_not_found( client ).
+          RETURN.
+        ENDIF.
       ENDIF.
 
       "a draft of the record: the user's own opens to be edited further,
@@ -959,6 +992,11 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    IF client->check_on_event( cs_event-not_found_ok ).
+      client->nav_app_leave( ).
+      RETURN.
+    ENDIF.
+
     IF client->check_on_event( cs_event-back ).
       "leaving a draft: keep it (the page reads it back next time) or
       "discard it - the user decides (since 2026-10, third round)
@@ -979,15 +1017,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     IF client->check_on_event( cs_event-leave_decision ).
       DATA(lv_leave) = client->get_event_arg( ).
       IF lv_leave = get_text( cs_text-discard_draft ).
-        DATA(ls_leave_discard) = run_draft_action( bdef      = get_bdef( )
-                                                   action    = `DISCARD`
-                                                   root_keys = get_root_keys( )
-                                                   is_draft  = abap_true ).
-        IF ls_leave_discard-success = abap_false.
-          show_messages( client   = client
-                         messages = ls_leave_discard-messages
-                         details  = ls_leave_discard-details
-                         fields   = ms_entity-fields ).
+        IF discard_draft( client ) = abap_false.
           RETURN.
         ENDIF.
         mv_draft = abap_false.
@@ -1045,15 +1075,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         RETURN.
       ENDIF.
       IF client->get_event_arg( ) = get_text( cs_text-discard_draft ).
-        DATA(ls_discard) = run_draft_action( bdef      = get_bdef( )
-                                             action    = `DISCARD`
-                                             root_keys = get_root_keys( )
-                                             is_draft  = abap_true ).
-        IF ls_discard-success = abap_false.
-          show_messages( client   = client
-                         messages = ls_discard-messages
-                         details  = ls_discard-details
-                         fields   = ms_entity-fields ).
+        IF discard_draft( client ) = abap_false.
           RETURN.
         ENDIF.
         IF start_draft( client ) = abap_true.
@@ -1071,20 +1093,17 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         RETURN.
       ENDIF.
       IF mv_draft = abap_true.
-        DATA(ls_cancel) = run_draft_action( bdef      = get_bdef( )
-                                            action    = `DISCARD`
-                                            root_keys = get_root_keys( )
-                                            is_draft  = abap_true ).
-        IF ls_cancel-success = abap_false.
-          show_messages( client   = client
-                         messages = ls_cancel-messages
-                         details  = ls_cancel-details
-                         fields   = ms_entity-fields ).
+        IF discard_draft( client ) = abap_false.
           RETURN.
         ENDIF.
         mv_draft = abap_false.
-        "the active record as it is - the draft had the changes
+        "the active record as it is - the draft had the changes; a draft
+        "that was never activated is gone with it
         reload_data( ).
+        IF mv_not_found = abap_true.
+          client->nav_app_leave( ).
+          RETURN.
+        ENDIF.
         ms_data_backup->* = ms_data->*.
       ELSE.
         ms_data->* = ms_data_backup->*.
@@ -1383,6 +1402,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                      fields   = ms_entity-fields ).
       RETURN.
     ENDIF.
+    "the record is written - the list reads again, whatever the children do
+    mv_saved = abap_true.
 
     "the children changed in edit mode - after the record, each its own
     "write (since 2026-10, third round). The record is saved: a child that
@@ -1434,20 +1455,14 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD reload_data.
 
-    DATA lt_names TYPE string_table.
-    FIELD-SYMBOLS <lv_key> TYPE any.
-
     "the keys: those the page was opened with (or RAP assigned), else the
     "record's own - read each time, not kept, so an edited record is not
     "looked up by keys it no longer has
+    CLEAR: mv_read_error, mv_not_found.
     DATA(lt_keys) = mt_keys.
     IF lt_keys IS INITIAL.
-      LOOP AT ms_entity-keys INTO DATA(lv_key).
-        ASSIGN COMPONENT lv_key OF STRUCTURE ms_data->* TO <lv_key>.
-        IF sy-subrc = 0.
-          APPEND VALUE #( name = lv_key value = |{ <lv_key> }| ) TO lt_keys.
-        ENDIF.
-      ENDLOOP.
+      lt_keys = get_key_values( key_fields = ms_entity-keys
+                                row        = ms_data->* ).
     ENDIF.
     IF lt_keys IS INITIAL.
       RETURN.
@@ -1458,17 +1473,15 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     LOOP AT lt_keys INTO DATA(ls_key).
       DATA(lv_name) = to_upper( ls_key-name ).
       IF NOT line_exists( ms_entity-fields[ name = lv_name ] ).
+        mv_not_found = abap_true.
         RETURN.
       ENDIF.
-      APPEND lv_name TO lt_names.
     ENDLOOP.
 
-    DATA(lr_rows) = select_rows( entity_name = mv_entity_name
-                                 where       = build_key_condition( lt_names )
-                                 max_rows    = 1
-                                 host        = create_host( entity_name = mv_entity_name
-                                                            values      = lt_keys ) ).
+    DATA(lr_rows) = select_by_keys( entity_name = mv_entity_name
+                                    keys        = lt_keys ).
     IF lr_rows IS NOT BOUND.
+      mv_not_found = abap_true.
       RETURN.
     ENDIF.
     FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
@@ -1483,18 +1496,49 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     "what a factory action of a draft business object creates (since
     "2026-10, third round). It opens to be edited
     IF is_draft_enabled( get_bdef( ) ) = abap_false.
+      mv_not_found = abap_true.
       RETURN.
     ENDIF.
     DATA(lr_host) = create_host( entity_name = mv_entity_name
                                  values      = lt_keys ).
     IF lr_host IS NOT BOUND.
+      mv_not_found = abap_true.
       RETURN.
     ENDIF.
     ASSIGN lr_host->* TO FIELD-SYMBOL(<ls_host_row>).
     MOVE-CORRESPONDING <ls_host_row> TO ms_data->*.
     IF resume_draft( ) = abap_false.
       CLEAR ms_data->*.
+      mv_not_found = abap_true.
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD discard_draft.
+
+    DATA(ls_discard) = run_draft_action( bdef      = get_bdef( )
+                                         action    = `DISCARD`
+                                         root_keys = get_root_keys( )
+                                         is_draft  = abap_true ).
+    IF ls_discard-success = abap_false.
+      show_messages( client   = client
+                     messages = ls_discard-messages
+                     details  = ls_discard-details
+                     fields   = ms_entity-fields ).
+    ENDIF.
+    result = ls_discard-success.
+
+  ENDMETHOD.
+
+
+  METHOD show_not_found.
+
+    client->message_box_display( text = COND #( WHEN mv_read_error IS INITIAL
+                                                THEN get_text( cs_text-not_found )
+                                                ELSE get_load_error( mv_entity_name ) )
+                                 type    = `error`
+                                 onclose = cs_event-not_found_ok ).
 
   ENDMETHOD.
 
@@ -1879,16 +1923,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
 
   METHOD get_own_keys.
-
-    FIELD-SYMBOLS <lv_key> TYPE any.
-    LOOP AT ms_entity-keys INTO DATA(lv_key).
-      UNASSIGN <lv_key>.
-      ASSIGN COMPONENT lv_key OF STRUCTURE ms_data->* TO <lv_key>.
-      IF <lv_key> IS ASSIGNED.
-        APPEND VALUE #( name = lv_key value = |{ <lv_key> }| ) TO result.
-      ENDIF.
-    ENDLOOP.
-
+    result = get_key_values( key_fields = ms_entity-keys
+                             row        = ms_data->* ).
   ENDMETHOD.
 
 
@@ -2040,25 +2076,16 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(lr_row) = find_row_by_event_keys( data       = REF #( <lt_rows> )
-                                           key_fields = ls_child-entity-keys
-                                           client     = client
-                                           arg_offset = 1 ).
-    IF lr_row IS NOT BOUND.
-      RETURN.
-    ENDIF.
-    ASSIGN lr_row->* TO FIELD-SYMBOL(<ls_row>).
-    DATA(lr_entity_row) = to_entity_row( entity_name = ls_child-entity-name
-                                         row         = <ls_row> ).
-    ASSIGN lr_entity_row->* TO <ls_row>.
     "the child is changed in the business object of this record - no
     "create by association here
     DATA(ls_context) = get_child_context( ls_child-association ).
     CLEAR: ls_context-association, ls_context-parent_fields.
-    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( val     = <ls_row>
-                                                context = ls_context ).
-    lo_op->set_extension( mo_ext ).
-    client->nav_app_call( lo_op ).
+    call_row_page( client      = client
+                   data        = REF #( <lt_rows> )
+                   key_fields  = ls_child-entity-keys
+                   entity_name = ls_child-entity-name
+                   arg_offset  = 1
+                   context     = ls_context ).
 
   ENDMETHOD.
 
@@ -2095,10 +2122,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                        context     = ms_context
                                        is_draft    = mv_draft
                              CHANGING  param       = <ls_param> ).
-      DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = <ls_param>
-                                                        title = ls_action-label ).
-      lo_dialog->set_extension( mo_ext ).
-      client->nav_app_call( lo_dialog ).
+      call_action_dialog( client = client
+                          param  = <ls_param>
+                          title  = ls_action-label ).
       RETURN.
     ENDIF.
 
@@ -2160,21 +2186,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                       context     = ms_context ).
         RETURN.
       ENDIF.
-      IF ls_result-messages IS INITIAL.
-        client->message_toast_display( get_text( cs_text-action_done ) ).
-      ELSE.
-        show_messages( client   = client
-                       messages = ls_result-messages
-                       details  = ls_result-details
-                       fields   = ms_entity-fields
-                       type     = `success` ).
-      ENDIF.
-    ELSE.
-      show_messages( client   = client
-                     messages = ls_result-messages
-                     details  = ls_result-details
-                     fields   = ms_entity-fields ).
     ENDIF.
+    show_action_result( client    = client
+                        is_result = ls_result
+                        fields    = ms_entity-fields ).
 
   ENDMETHOD.
 
@@ -2222,10 +2237,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                        context     = ls_context
                                        is_draft    = mv_draft
                              CHANGING  param       = <ls_param> ).
-      DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = <ls_param>
-                                                        title = ls_action-label ).
-      lo_dialog->set_extension( mo_ext ).
-      client->nav_app_call( lo_dialog ).
+      call_action_dialog( client = client
+                          param  = <ls_param>
+                          title  = ls_action-label ).
       RETURN.
     ENDIF.
 
@@ -2282,21 +2296,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                       context     = ls_context ).
         RETURN.
       ENDIF.
-      IF ls_result-messages IS INITIAL.
-        client->message_toast_display( get_text( cs_text-action_done ) ).
-      ELSE.
-        show_messages( client   = client
-                       messages = ls_result-messages
-                       details  = ls_result-details
-                       fields   = ms_entity-fields
-                       type     = `success` ).
-      ENDIF.
-    ELSE.
-      show_messages( client   = client
-                     messages = ls_result-messages
-                     details  = ls_result-details
-                     fields   = ms_entity-fields ).
     ENDIF.
+    show_action_result( client    = client
+                        is_result = ls_result
+                        fields    = ms_entity-fields ).
 
   ENDMETHOD.
 
@@ -2305,6 +2308,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     DATA lt_arg TYPE string_table.
     DATA ls_crit TYPE z2ui5_cl_rap_util=>ty_s_action.
+    DATA lv_crit_type TYPE string.
 
     LOOP AT get_action_entries( it_actions = it_actions
                                 it_groups  = it_groups ) INTO DATA(ls_entry).
@@ -2333,27 +2337,21 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       "the criticality as the button's type - written as a literal of
       "sap.m.ButtonType, so the view gate can check it
       ls_crit = ls_entry-action.
-      DATA(lv_button_type) = `Default`.
       IF row IS SUPPLIED.
-        CASE get_action_button_type( is_action = ls_crit
-                                     row       = row ).
-          WHEN `Accept`.
-            lv_button_type = `Accept`.
-          WHEN `Reject`.
-            lv_button_type = `Reject`.
-          WHEN `Emphasized`.
-            lv_button_type = `Emphasized`.
-        ENDCASE.
+        lv_crit_type = get_action_button_type( is_action = ls_crit
+                                               row       = row ).
       ELSE.
-        CASE get_action_button_type( ls_crit ).
-          WHEN `Accept`.
-            lv_button_type = `Accept`.
-          WHEN `Reject`.
-            lv_button_type = `Reject`.
-          WHEN `Emphasized`.
-            lv_button_type = `Emphasized`.
-        ENDCASE.
+        lv_crit_type = get_action_button_type( ls_crit ).
       ENDIF.
+      DATA(lv_button_type) = `Default`.
+      CASE lv_crit_type.
+        WHEN `Accept`.
+          lv_button_type = `Accept`.
+        WHEN `Reject`.
+          lv_button_type = `Reject`.
+        WHEN `Emphasized`.
+          lv_button_type = `Emphasized`.
+      ENDCASE.
       lt_arg = args_before.
       APPEND ls_entry-action-name TO lt_arg.
       io_container->tag( `Button`
@@ -2374,12 +2372,11 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD open_created.
 
-    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( cds_view_name = entity_name
-                                                keys          = keys
-                                                context       = context ).
-    lo_op->set_extension( mo_ext ).
     mv_opened_created = abap_true.
-    client->nav_app_call( lo_op ).
+    call_object_page( client      = client
+                      entity_name = entity_name
+                      keys        = keys
+                      context     = context ).
 
   ENDMETHOD.
 
@@ -2868,17 +2865,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
               )->a( n = `level`
                     v = `H5` ).
         ENDIF.
-        DATA lt_group TYPE z2ui5_cl_rap_util=>ty_t_field_info.
-        CLEAR lt_group.
-        LOOP AT ms_entity-fields INTO DATA(ls_field) WHERE is_hidden = abap_false.
-          READ TABLE ls_field-field_groups INTO DATA(ls_group) WITH KEY qualifier = ls_facet-target_qualifier.
-          IF sy-subrc = 0.
-            ls_field-field_group_pos = ls_group-position.
-            APPEND ls_field TO lt_group.
-          ENDIF.
-        ENDLOOP.
-        SORT lt_group BY field_group_pos.
-        LOOP AT lt_group INTO ls_field.
+        DATA(lt_group) = z2ui5_cl_rap_util=>get_field_group_fields( it_fields  = ms_entity-fields
+                                                                    qualifier = ls_facet-target_qualifier ).
+        LOOP AT lt_group INTO DATA(ls_field).
           lo_block->ele( `HBox`
               )->tag( `Label`
                   )->a( n = `text`
@@ -3672,6 +3661,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
     IF lv_child_delete = abap_true.
+      "the keys and the row's position: rows not saved yet can share keys
+      DATA(lt_delete_arg) = lt_arg.
+      APPEND `$event.getSource().getBindingContext().getPath().split('/').pop()` TO lt_delete_arg.
       lo_cells->tag( `Button`
           )->a( n = `icon`
                 v = `sap-icon://delete`
@@ -3683,7 +3675,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                 v = |\{{ cs_row_flag-deletable }\}|
           )->a( n = `press`
                 v = client->_event( val   = cs_event-child_row_delete
-                                    t_arg = lt_arg ) ).
+                                    t_arg = lt_delete_arg ) ).
     ENDIF.
 
   ENDMETHOD.
@@ -4282,31 +4274,21 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     DATA lt_flags TYPE string_table.
     DATA lt_row_keys TYPE ty_t_name_value.
     DATA lv_flag TYPE abap_bool.
-    FIELD-SYMBOLS <lt_in> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lt_out> TYPE STANDARD TABLE.
-    FIELD-SYMBOLS <lv_row_key> TYPE any.
     FIELD-SYMBOLS <lv_row_flag> TYPE any.
 
     IF rows IS NOT BOUND.
       RETURN.
     ENDIF.
-    DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( rows ) ).
-    DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
-    lt_comp = lo_line->get_components( ).
     DATA(lo_flag) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_data( lv_flag ) ).
     lt_flags = VALUE #( ( cs_row_flag-updatable ) ( cs_row_flag-deletable ) ( cs_row_flag-new ) ).
     LOOP AT lt_flags INTO DATA(lv_flag_name).
-      IF NOT line_exists( lt_comp[ name = lv_flag_name ] ).
-        APPEND VALUE #( name = lv_flag_name
-                        type = lo_flag ) TO lt_comp.
-      ENDIF.
+      APPEND VALUE #( name = lv_flag_name
+                      type = lo_flag ) TO lt_comp.
     ENDLOOP.
-    DATA(lo_out_line) = cl_abap_structdescr=>create( lt_comp ).
-    DATA(lo_out_table) = cl_abap_tabledescr=>create( p_line_type = lo_out_line ).
-    CREATE DATA result TYPE HANDLE lo_out_table.
-    ASSIGN rows->* TO <lt_in>.
+    result = add_table_columns( data       = rows
+                                it_columns = lt_comp ).
     ASSIGN result->* TO <lt_out>.
-    MOVE-CORRESPONDING <lt_in> TO <lt_out>.
 
     "what GET PERMISSIONS answers: the static field control of the child
     "(its read-only fields), and per instance whether it may be changed or
@@ -4329,14 +4311,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
 
     LOOP AT <lt_out> ASSIGNING FIELD-SYMBOL(<ls_out>).
-      CLEAR lt_row_keys.
-      LOOP AT cs_child-entity-keys INTO DATA(lv_row_key_name).
-        UNASSIGN <lv_row_key>.
-        ASSIGN COMPONENT lv_row_key_name OF STRUCTURE <ls_out> TO <lv_row_key>.
-        IF <lv_row_key> IS ASSIGNED.
-          APPEND VALUE #( name = lv_row_key_name value = |{ <lv_row_key> }| ) TO lt_row_keys.
-        ENDIF.
-      ENDLOOP.
+      lt_row_keys = get_key_values( key_fields = cs_child-entity-keys
+                                    row        = <ls_out> ).
       DATA(ls_instance) = z2ui5_cl_rap_util=>get_instance_permissions( is_permissions = ls_child_perms
                                                                       keys           = lt_row_keys ).
       ASSIGN COMPONENT cs_row_flag-updatable OF STRUCTURE <ls_out> TO <lv_row_flag>.
@@ -4490,7 +4466,6 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     FIELD-SYMBOLS <ls_all> TYPE any.
     FIELD-SYMBOLS <lt_del_rows> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lv_del_flag> TYPE any.
-    FIELD-SYMBOLS <lv_del_key> TYPE any.
 
     READ TABLE mt_child INTO DATA(ls_child) WITH KEY component = client->get_event_arg( ).
     IF sy-subrc <> 0 OR mr_child_rows IS NOT BOUND OR mv_editable = abap_false
@@ -4502,10 +4477,18 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     IF sy-subrc <> 0.
       RETURN.
     ENDIF.
+    "the last argument is the row's position (0-based) - the row there
+    "when it has the keys
+    DATA(lv_position) = condense( client->get_event_arg( lines( ls_child-entity-keys ) + 2 ) ).
+    IF lv_position IS NOT INITIAL AND lv_position CO `0123456789`.
+      lv_index = lv_position + 1.
+    ENDIF.
     DATA(lr_row) = find_row_by_event_keys( data       = REF #( <lt_del_rows> )
                                            key_fields = ls_child-entity-keys
                                            client     = client
-                                           arg_offset = 1 ).
+                                           arg_offset = 1
+                                           index      = lv_index ).
+    CLEAR lv_index.
     IF lr_row IS NOT BOUND.
       RETURN.
     ENDIF.
@@ -4538,13 +4521,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     "without draft: deleted on Save - a new row is simply gone
     IF lv_is_new = abap_false.
-      LOOP AT ls_child-entity-keys INTO DATA(lv_key).
-        UNASSIGN <lv_del_key>.
-        ASSIGN COMPONENT lv_key OF STRUCTURE <ls_del> TO <lv_del_key>.
-        IF <lv_del_key> IS ASSIGNED.
-          APPEND VALUE #( name = lv_key value = |{ <lv_del_key> }| ) TO lt_keys.
-        ENDIF.
-      ENDLOOP.
+      lt_keys = get_key_values( key_fields = ls_child-entity-keys
+                                row        = <ls_del> ).
       APPEND VALUE #( component = ls_child-component
                       operation = `DELETE`
                       keys      = lt_keys ) TO mt_pending.
@@ -4567,21 +4545,13 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
   METHOD get_child_original.
 
     DATA lt_values TYPE ty_t_name_value.
-    DATA lt_names TYPE string_table.
     FIELD-SYMBOLS <lt_one> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lt_found> TYPE STANDARD TABLE.
-    FIELD-SYMBOLS <lv_original_key> TYPE any.
 
-    LOOP AT is_child-entity-keys INTO DATA(lv_key).
-      UNASSIGN <lv_original_key>.
-      ASSIGN COMPONENT lv_key OF STRUCTURE row TO <lv_original_key>.
-      IF <lv_original_key> IS NOT ASSIGNED.
-        RETURN.
-      ENDIF.
-      APPEND VALUE #( name = lv_key value = |{ <lv_original_key> }| ) TO lt_values.
-      APPEND lv_key TO lt_names.
-    ENDLOOP.
-    IF lt_values IS INITIAL.
+    "every key, or no original
+    lt_values = get_key_values( key_fields = is_child-entity-keys
+                                row        = row ).
+    IF lt_values IS INITIAL OR lines( lt_values ) <> lines( is_child-entity-keys ).
       RETURN.
     ENDIF.
 
@@ -4600,11 +4570,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                               context     = ls_context
                               rows        = lr_one ).
     ELSE.
-      lr_found = select_rows( entity_name = is_child-entity-name
-                              where       = build_key_condition( lt_names )
-                              max_rows    = 1
-                              host        = create_host( entity_name = is_child-entity-name
-                                                         values      = lt_values ) ).
+      lr_found = select_by_keys( entity_name = is_child-entity-name
+                                 keys        = lt_values ).
     ENDIF.
     IF lr_found IS NOT BOUND.
       RETURN.

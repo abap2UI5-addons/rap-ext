@@ -266,7 +266,8 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
         CONTINUE.
       ENDIF.
       DATA(lv_cond) = build_filter_condition( is_field = ls_field
-                                              value    = |={ ls_filter-value }| ).
+                                              value    = ls_filter-value
+                                              exact    = abap_true ).
       IF lv_cond IS NOT INITIAL.
         APPEND lv_cond TO lt_and.
       ENDIF.

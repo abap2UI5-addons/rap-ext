@@ -60,8 +60,9 @@ CLASS z2ui5_cl_rap_worklist DEFINITION
     METHODS get_where_clause REDEFINITION.
     METHODS render_page REDEFINITION.
     METHODS render_filter_bar REDEFINITION.
-    METHODS render_toolbar REDEFINITION.
+    METHODS render_toolbar_search REDEFINITION.
     METHODS get_selection_fields REDEFINITION.
+    METHODS apply_variant REDEFINITION.
 
     "! the values of segment_field with their counts
     METHODS load_segments
@@ -91,11 +92,26 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     IF client->check_on_init( ) = abap_false
       AND client->check_on_event( cv_event_segment ).
       mv_segment = client->get_event_arg( ).
-      load_data( ).
+      reload_rows( client ).
       RETURN.
     ENDIF.
 
     super->z2ui5_if_app~main( client ).
+
+  ENDMETHOD.
+
+
+  METHOD apply_variant.
+
+    "the views are those of the entity, the list report's included - their
+    "filters would restrict the items here without a filter bar to show
+    "them: the worklist keeps its own filters (added 2026-11)
+    DATA(ls_data) = is_data.
+    CLEAR: ls_data-filters, ls_data-filter_fields.
+    LOOP AT mt_filter INTO DATA(ls_filter).
+      APPEND VALUE #( name = ls_filter-name value = ls_filter-value ) TO ls_data-filters.
+    ENDLOOP.
+    super->apply_variant( ls_data ).
 
   ENDMETHOD.
 
@@ -127,7 +143,8 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     DATA(lv_cond) = COND string( WHEN mv_segment = cv_segment_empty
                                  THEN |{ ls_field-name } IS INITIAL|
                                  ELSE build_filter_condition( is_field = ls_field
-                                                              value    = |={ mv_segment }| ) ).
+                                                              value    = mv_segment
+                                                              exact    = abap_true ) ).
     result = COND #( WHEN result IS INITIAL THEN lv_cond ELSE |{ result } AND { lv_cond }| ).
 
   ENDMETHOD.
@@ -300,66 +317,17 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD render_toolbar.
+  METHOD render_toolbar_search.
 
     "the events of the list report this class inherits
     DATA(ls_event) = z2ui5_cl_rap_list_report=>cs_event.
-    DATA(lo_toolbar) = io_table->ele( `headerToolbar`
-        )->ele( `OverflowToolbar` ).
-
-    lo_toolbar->tag( `Title`
-        )->a( n = `text`
-              v = mv_title && ` (` && client->_bind( mv_count ) && `)` ).
-
-    lo_toolbar->tag( `ToolbarSpacer` ).
-
-    lo_toolbar->tag( `SearchField`
+    io_toolbar->tag( `SearchField`
         )->a( n = `value`
               v = client->_bind( mv_search )
         )->a( n = `search`
               v = client->_event( ls_event-search )
         )->a( n = `width`
               v = `15rem` ).
-
-    render_sort_controls( io_toolbar = lo_toolbar
-                          client     = client ).
-
-    render_variant_controls( io_toolbar = lo_toolbar
-                             client     = client ).
-
-    "@UI.lineItem actions of type #FOR_ACTION - on the selected rows, a
-    "static one without; by position, an action group as a menu
-    render_action_buttons( io_container     = lo_toolbar
-                           it_actions       = get_line_item_actions( abap_false )
-                           it_groups        = ms_entity-action_groups
-                           client           = client
-                           event            = ls_event-action
-                           enabled_values   = get_action_enabled( ) ).
-
-    "@UI.lineItem #FOR_INTENT_BASED_NAVIGATION - to another app
-    LOOP AT get_line_item_intents( ) INTO DATA(ls_intent).
-      lo_toolbar->tag( `Button`
-          )->a( n = `text`
-                t = ls_intent-label
-          )->a( n = `press`
-                v = client->_event( val = ls_event-intent
-                                    arg = ls_intent-name ) ).
-    ENDLOOP.
-
-    render_extension( spot         = cs_spot-toolbar
-                      io_container = lo_toolbar
-                      client       = client ).
-
-    render_export_button( io_toolbar = lo_toolbar
-                          client     = client ).
-
-    lo_toolbar->tag( `Button`
-        )->a( n = `icon`
-              v = `sap-icon://refresh`
-        )->a( n = `tooltip`
-              t = get_text( cs_text-refresh )
-        )->a( n = `press`
-              v = client->_event( ls_event-refresh ) ).
 
   ENDMETHOD.
 

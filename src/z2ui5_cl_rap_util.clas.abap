@@ -276,6 +276,10 @@ CLASS z2ui5_cl_rap_util DEFINITION
         "added 2026-10, third round (analytical list): @Aggregation.default
         "(SUM, MIN, MAX, AVG, COUNT_DISTINCT - normalize_aggregation)
         aggregation_default       TYPE string,
+        "added 2026-11: a STRING column the dictionary types STRG (no
+        "SSTRING) - a LOB, which ABAP SQL neither UPPERs nor LIKEs, so it
+        "is not searched; set where the DDIC field list is read (on premise)
+        is_lob_string             TYPE abap_bool,
       END OF ty_s_field_info.
 
     TYPES ty_t_field_info TYPE STANDARD TABLE OF ty_s_field_info WITH DEFAULT KEY.
@@ -934,14 +938,18 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE ty_s_entity_info.
 
-    "! Read entity-level annotations only (no field details)
+    "! Read entity-level annotations only (no field details).
+    "! Deprecated (2026-11): no caller - use read_entity( ); removed in a
+    "! later release
     CLASS-METHODS read_entity_annotations
       IMPORTING
         entity_name   TYPE clike
       RETURNING
         VALUE(result) TYPE ty_s_entity_info.
 
-    "! Read annotations for a single field
+    "! Read annotations for a single field.
+    "! Deprecated (2026-11): no caller - use read_raw_annotations( ) or
+    "! read_entity( ); removed in a later release
     CLASS-METHODS read_field_annotations
       IMPORTING
         entity_name   TYPE clike
@@ -964,7 +972,9 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string_table.
 
-    "! Get all annotations for an entity (raw key-value pairs)
+    "! Get all annotations for an entity (raw key-value pairs).
+    "! Deprecated (2026-11): no caller - use read_raw_annotations( );
+    "! removed in a later release
     CLASS-METHODS get_all_annotations
       IMPORTING
         entity_name   TYPE clike
@@ -999,10 +1009,14 @@ CLASS z2ui5_cl_rap_util DEFINITION
     "! Values become literals of the field's type with their quotes doubled,
     "! and a LIKE escapes the user's own % and _ - the field name comes from
     "! the metadata, never from the user.
+    "! exact = abap_true: value is one literal - no ;, no operator, no
+    "! pattern (added 2026-11: a value that contains ; or .. compared
+    "! exactly); an initial one is the empty field
     CLASS-METHODS build_filter_condition
       IMPORTING
         is_field      TYPE ty_s_field_info
         value         TYPE string
+        exact         TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE string.
 
@@ -1107,6 +1121,18 @@ CLASS z2ui5_cl_rap_util DEFINITION
         val           TYPE string
       RETURNING
         VALUE(result) TYPE string.
+
+    "! the components of structure that values names (any case) set from
+    "! the text form a row, an event or a URL carries: a date or time as
+    "! the JSON model writes it (2024-01-15), a RAW as hex digits, a UUID
+    "! with its dashes (normalize_value); a value that does not fit leaves
+    "! the component initial (added 2026-11 - the host of a key condition
+    "! and the keys of an EML instance)
+    CLASS-METHODS set_fields_from_text
+      IMPORTING
+        values    TYPE ty_t_name_value
+      CHANGING
+        structure TYPE data.
 
     "! The rows of data (a table) as CSV: a header line with the labels of
     "! it_fields, then one line per row with the values of those fields -
@@ -1541,6 +1567,15 @@ CLASS z2ui5_cl_rap_util DEFINITION
         it_fields     TYPE ty_t_field_info
       RETURNING
         VALUE(result) TYPE string.
+
+    "! the visible fields of the @UI.fieldGroup qualifier by their position
+    "! in it - field_group_pos is that position (added 2026-11)
+    CLASS-METHODS get_field_group_fields
+      IMPORTING
+        it_fields     TYPE ty_t_field_info
+        qualifier     TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_t_field_info.
 
     "! the columns of the @UI.lineItem of qualifier, by position: every
     "! field with an entry of it, line_item_pos, label, importance,
@@ -2019,6 +2054,17 @@ CLASS z2ui5_cl_rap_util DEFINITION
     CLASS-DATA gt_cache TYPE STANDARD TABLE OF ty_s_cache WITH DEFAULT KEY.
 
     TYPES:
+      BEGIN OF ty_s_key_cache,
+        name TYPE string,
+        keys TYPE string_table,
+      END OF ty_s_key_cache.
+
+    "! The keys per entity (get_key_fields) for the rest of the ABAP
+    "! session - asked per row, and read_entity reads the whole entity
+    "! (added 2026-11)
+    CLASS-DATA gt_key_cache TYPE STANDARD TABLE OF ty_s_key_cache WITH DEFAULT KEY.
+
+    TYPES:
       BEGIN OF ty_s_assoc_cache,
         name         TYPE string,
         associations TYPE ty_t_association,
@@ -2156,6 +2202,16 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE ty_t_additional_binding.
 
+    "! the bindings of the array prop (ADDITIONALBINDING,
+    "! SEMANTICOBJECTBINDING) inside the entry idx of it_entries
+    CLASS-METHODS get_nested_bindings
+      IMPORTING
+        it_entries    TYPE ty_t_entry
+        idx           TYPE i
+        prop          TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_t_additional_binding.
+
     "! the criticality, its representation, the importance and hidden of
     "! the entry idx of a @UI.fieldGroup or @UI.identification
     CLASS-METHODS set_entry_display
@@ -2250,6 +2306,29 @@ CLASS z2ui5_cl_rap_util DEFINITION
         value         TYPE string
       RETURNING
         VALUE(result) TYPE string.
+
+    "! text for a LIKE pattern with ESCAPE '#': its #, % and _ escaped,
+    "! its quotes doubled - * is left for the caller
+    CLASS-METHODS escape_like
+      IMPORTING
+        val           TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! an entity annotation that says @ObjectModel.resultSet.sizeCategory: #XS
+    CLASS-METHODS is_size_xs_annotation
+      IMPORTING
+        key           TYPE string
+        value         TYPE string
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! a CHAR or STRING field: no operator means "contains" in a filter
+    CLASS-METHODS is_text_field
+      IMPORTING
+        is_field      TYPE ty_s_field_info
+      RETURNING
+        VALUE(result) TYPE abap_bool.
 
     TYPES ty_t_token_groups TYPE STANDARD TABLE OF string_table WITH EMPTY KEY.
 
@@ -2422,6 +2501,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         "the data element text - @EndUserText.label overrides it below
         ls_field-label = COND #( WHEN ls_dfies-scrtext_m IS NOT INITIAL THEN ls_dfies-scrtext_m
                                  ELSE ls_dfies-fieldtext ).
+        ls_field-is_lob_string = xsdbool( ls_field-type_kind = `STRING` AND ls_dfies-datatype = `STRG` ).
       ENDIF.
 
       APPEND ls_field TO result-fields.
@@ -2475,7 +2555,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
       APPEND VALUE ty_s_annotation( key = lv_key value = lv_val ) TO cs_entity-entity_annotations.
 
-      IF lv_key CS `OBJECTMODEL.RESULTSET.SIZECATEGORY` AND lv_val CS `XS`.
+      IF is_size_xs_annotation( key = lv_key value = lv_val ) = abap_true.
         cs_entity-is_dropdown = abap_true.
       ENDIF.
       IF lv_key = `SEARCH.SEARCHABLE` AND is_true( lv_val ).
@@ -2539,7 +2619,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       <ls_el>-element = to_upper( <ls_el>-element ).
       <ls_el>-key = to_upper( <ls_el>-key ).
     ENDLOOP.
-    SORT lt_elements BY element.
+    SORT lt_elements STABLE BY element.
 
     DATA lv_element TYPE string.
     LOOP AT lt_elements INTO DATA(ls_el).
@@ -2590,7 +2670,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    SORT cs_entity-facets BY position.
+    SORT cs_entity-facets STABLE BY position.
     "by position - an action without one behind the others, in the order
     "of the annotations
     SORT cs_entity-actions STABLE BY source position.
@@ -2776,7 +2856,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     "variant, get_line_item_columns), an entry hidden: true is none
     DATA(lt_entries) = get_entries( it_annos = it_annos prefix = `UI.LINEITEM` ).
     DATA lv_idx TYPE i.
-    DATA lt_entry_parts TYPE ty_t_entry.
+    DATA ls_line_display TYPE ty_s_field_group.
     LOOP AT lt_entries INTO DATA(ls_entry).
       IF ls_entry-idx = lv_idx.
         CONTINUE.
@@ -2795,22 +2875,20 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         qualifier           = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `QUALIFIER` ) )
         position            = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) )
         label               = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) )
-        importance          = to_upper( replace( val  = strip_quotes( get_entry_value( it_entries = lt_entries
-                                                                                       idx        = lv_idx
-                                                                                       prop       = `IMPORTANCE` ) )
-                                                 sub  = `#`
-                                                 with = `` ) )
-        criticality         = to_upper( strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `CRITICALITY` ) ) )
-        crit_representation = to_upper( replace( val  = strip_quotes( get_entry_value( it_entries = lt_entries
-                                                                                       idx        = lv_idx
-                                                                                       prop       = `CRITICALITYREPRESENTATION` ) )
-                                                 sub  = `#`
-                                                 with = `` ) )
         type                = to_upper( replace( val = strip_quotes( lv_type ) sub = `#` with = `` ) )
         value_qualifier     = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `VALUEQUALIFIER` ) )
-        hidden              = hidden_value( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `HIDDEN` ) )
         width               = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `CSSDEFAULT.WIDTH` ) )
         icon_url            = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `ICONURL` ) ) ).
+      "criticality, its representation, importance and hidden as every
+      "entry has them (set_entry_display)
+      CLEAR ls_line_display.
+      set_entry_display( EXPORTING it_entries = lt_entries
+                                   idx        = lv_idx
+                         CHANGING  cs_entry   = ls_line_display ).
+      ls_line_item-criticality = ls_line_display-criticality.
+      ls_line_item-crit_representation = ls_line_display-crit_representation.
+      ls_line_item-importance = ls_line_display-importance.
+      ls_line_item-hidden = ls_line_display-hidden.
       IF ls_line_item-hidden = `TRUE` OR line_exists( cs_field-line_items[ qualifier = ls_line_item-qualifier ] ).
         CONTINUE.
       ENDIF.
@@ -2828,24 +2906,16 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       cs_field-line_item_hidden = ls_line_item-hidden.
       cs_field-line_item_icon_url = ls_line_item-icon_url.
       "semanticObjectBinding of a #WITH_INTENT_BASED_NAVIGATION column
-      CLEAR lt_entry_parts.
-      LOOP AT lt_entries INTO DATA(ls_binding_part) WHERE idx = lv_idx AND prop CP `SEMANTICOBJECTBINDING*`.
-        APPEND ls_binding_part TO lt_entry_parts.
-      ENDLOOP.
-      APPEND LINES OF get_entry_bindings( get_entries( it_annos = entries_to_annos( lt_entry_parts )
-                                                       prefix   = `SEMANTICOBJECTBINDING` ) )
-        TO cs_field-sem_object_bindings.
-      cs_field-line_item_pos = to_int( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `POSITION` ) ).
-      IF cs_field-line_item_pos = 0.
-        "an entry without a position still makes a column - behind the others
-        cs_field-line_item_pos = 9999.
-      ENDIF.
+      APPEND LINES OF get_nested_bindings( it_entries = lt_entries
+                                           idx        = lv_idx
+                                           prop       = `SEMANTICOBJECTBINDING` ) TO cs_field-sem_object_bindings.
+      "the entry read above - only the importance keeps its # here
+      cs_field-line_item_pos = ls_line_item-position.
       cs_field-line_item_importance = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `IMPORTANCE` ) ).
       cs_field-is_high_importance = xsdbool( cs_field-line_item_importance CS `HIGH` ).
-      cs_field-line_item_label = strip_quotes( get_entry_value( it_entries = lt_entries idx = lv_idx prop = `LABEL` ) ).
-      cs_field-line_item_crit_field = to_upper( strip_quotes(
-          get_entry_value( it_entries = lt_entries idx = lv_idx prop = `CRITICALITY` ) ) ).
-      cs_field-line_item_type = replace( val = strip_quotes( lv_type ) sub = `#` with = `` ).
+      cs_field-line_item_label = ls_line_item-label.
+      cs_field-line_item_crit_field = ls_line_item-criticality.
+      cs_field-line_item_type = ls_line_item-type.
       cs_field-line_item_url = to_upper( strip_quotes(
           get_entry_value( it_entries = lt_entries idx = lv_idx prop = `URL` ) ) ).
       cs_field-line_item_target = to_upper( strip_quotes(
@@ -2953,24 +3023,11 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       cs_field-value_help-element = to_upper( strip_quotes(
           get_entry_value( it_entries = lt_entries idx = lv_idx prop = `ENTITY.ELEMENT` ) ) ).
 
-      "ADDITIONALBINDING$n$.ELEMENT / .LOCALELEMENT / .USAGE
-      DATA lt_binding_annos TYPE ty_t_annotation.
-      LOOP AT lt_entries INTO ls_entry WHERE idx = lv_idx AND prop CP `ADDITIONALBINDING*`.
-        APPEND VALUE #( key = ls_entry-prop value = ls_entry-value ) TO lt_binding_annos.
-      ENDLOOP.
-      DATA(lt_bindings) = get_entries( it_annos = lt_binding_annos prefix = `ADDITIONALBINDING` ).
-      DATA lv_bidx TYPE i.
-      LOOP AT lt_bindings INTO DATA(ls_binding).
-        IF ls_binding-idx = lv_bidx.
-          CONTINUE.
-        ENDIF.
-        lv_bidx = ls_binding-idx.
-        APPEND VALUE ty_s_additional_binding(
-          element       = to_upper( strip_quotes( get_entry_value( it_entries = lt_bindings idx = lv_bidx prop = `ELEMENT` ) ) )
-          local_element = to_upper( strip_quotes( get_entry_value( it_entries = lt_bindings idx = lv_bidx prop = `LOCALELEMENT` ) ) )
-          usage         = strip_quotes( get_entry_value( it_entries = lt_bindings idx = lv_bidx prop = `USAGE` ) ) )
-          TO cs_field-value_help-additional_binding.
-      ENDLOOP.
+      "ADDITIONALBINDING$n$.ELEMENT / .LOCALELEMENT / .USAGE - one without
+      "either element binds nothing
+      cs_field-value_help-additional_binding = get_nested_bindings( it_entries = lt_entries
+                                                                    idx        = lv_idx
+                                                                    prop       = `ADDITIONALBINDING` ).
     ENDIF.
 
   ENDMETHOD.
@@ -3008,7 +3065,6 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
   METHOD parse_actions.
 
-    DATA lt_binding_parts TYPE ty_t_entry.
     DATA(lt_entries) = get_entries( it_annos = it_annos prefix = prefix ).
     DATA lv_idx TYPE i.
     LOOP AT lt_entries INTO DATA(ls_entry).
@@ -3071,12 +3127,9 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         ENDIF.
         ls_action-name = to_upper( |INTENT~{ ls_action-semantic_object }~{ ls_action-semantic_action }| ).
         "semanticObjectBinding: the parameters the selected rows fill
-        CLEAR lt_binding_parts.
-        LOOP AT lt_entries INTO DATA(ls_binding_part) WHERE idx = lv_idx AND prop CP `SEMANTICOBJECTBINDING*`.
-          APPEND ls_binding_part TO lt_binding_parts.
-        ENDLOOP.
-        ls_action-sem_object_bindings = get_entry_bindings( get_entries( it_annos = entries_to_annos( lt_binding_parts )
-                                                                         prefix   = `SEMANTICOBJECTBINDING` ) ).
+        ls_action-sem_object_bindings = get_nested_bindings( it_entries = lt_entries
+                                                             idx        = lv_idx
+                                                             prop       = `SEMANTICOBJECTBINDING` ).
       ENDIF.
       IF ls_action-name IS INITIAL
         OR line_exists( ct_action[ name = ls_action-name source = source qualifier = lv_qualifier ] ).
@@ -3397,7 +3450,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ls_entry-prop = lv_rest.
       APPEND ls_entry TO result.
     ENDLOOP.
-    SORT result BY idx.
+    SORT result STABLE BY idx.
 
   ENDMETHOD.
 
@@ -3497,7 +3550,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
     gv_anno_reader = to_upper( reader ).
     "what was read with the other reader is read again
-    CLEAR: gt_cache, gt_assoc_cache.
+    CLEAR: gt_cache, gt_assoc_cache, gt_key_cache.
 
   ENDMETHOD.
 
@@ -3762,7 +3815,14 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
 
   METHOD get_key_fields.
-    result = read_entity( entity_name )-keys.
+    DATA(lv_name) = to_upper( entity_name ).
+    READ TABLE gt_key_cache INTO DATA(ls_cached) WITH KEY name = lv_name.
+    IF sy-subrc = 0.
+      result = ls_cached-keys.
+      RETURN.
+    ENDIF.
+    result = read_entity( lv_name )-keys.
+    APPEND VALUE #( name = lv_name keys = result ) TO gt_key_cache.
   ENDMETHOD.
 
 
@@ -3785,7 +3845,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
     DATA(ls_raw) = read_raw_annotations( entity_name ).
     LOOP AT ls_raw-entity INTO DATA(ls_anno).
-      IF to_upper( ls_anno-key ) CS `OBJECTMODEL.RESULTSET.SIZECATEGORY` AND ls_anno-value CS `XS`.
+      IF is_size_xs_annotation( key = ls_anno-key value = ls_anno-value ) = abap_true.
         result = abap_true.
         RETURN.
       ENDIF.
@@ -3812,12 +3872,63 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD set_fields_from_text.
+
+    FIELD-SYMBOLS <lv_field> TYPE any.
+    LOOP AT values INTO DATA(ls_value).
+      DATA(lv_name) = to_upper( ls_value-name ).
+      UNASSIGN <lv_field>.
+      ASSIGN COMPONENT lv_name OF STRUCTURE structure TO <lv_field>.
+      IF <lv_field> IS NOT ASSIGNED.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_kind) = cl_abap_typedescr=>describe_by_data( <lv_field> )->type_kind.
+      TRY.
+          IF lv_kind = cl_abap_typedescr=>typekind_date
+            OR lv_kind = cl_abap_typedescr=>typekind_time
+            OR lv_kind = cl_abap_typedescr=>typekind_hex.
+            <lv_field> = normalize_value( ls_value-value ).
+          ELSE.
+            <lv_field> = ls_value-value.
+          ENDIF.
+        CATCH cx_root.
+          CLEAR <lv_field>.
+      ENDTRY.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD escape_like.
+    result = replace( val = val sub = `#` with = `##` occ = 0 ).
+    result = replace( val = result sub = `%` with = `#%` occ = 0 ).
+    result = replace( val = result sub = `_` with = `#_` occ = 0 ).
+    result = replace( val = result sub = `'` with = `''` occ = 0 ).
+  ENDMETHOD.
+
+
+  METHOD is_size_xs_annotation.
+    result = xsdbool( to_upper( key ) CS `OBJECTMODEL.RESULTSET.SIZECATEGORY` AND value CS `XS` ).
+  ENDMETHOD.
+
+
+  METHOD is_text_field.
+    result = xsdbool( is_field-type_kind = `CHAR` OR is_field-type_kind = `STRING` ).
+  ENDMETHOD.
+
+
   METHOD build_filter_condition.
 
     DATA lt_or TYPE string_table.
     DATA lt_not TYPE string_table.
     DATA(lv_name) = is_field-name.
-    DATA(lv_text_field) = xsdbool( is_field-type_kind = `CHAR` ).
+    DATA(lv_text_field) = is_text_field( is_field ).
+
+    IF exact = abap_true.
+      result = COND #( WHEN value IS INITIAL THEN |{ lv_name } IS INITIAL|
+                       ELSE |{ lv_name } = { literal( is_field = is_field value = value ) }| ).
+      RETURN.
+    ENDIF.
 
     SPLIT value AT `;` INTO TABLE DATA(lt_parts).
     LOOP AT lt_parts INTO DATA(lv_part).
@@ -3840,6 +3951,9 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         "= alone: the field is empty (a No of a boolean, the "empty"
         "condition) - added 2026-10, third round
         lv_cond = |{ lv_name } IS INITIAL|.
+      ELSEIF lv_part(1) = `=`.
+        "=value is the value itself, a .. in it included
+        lv_cond = |{ lv_name } = { literal( is_field = is_field value = substring( val = lv_part off = 1 ) ) }|.
       ELSEIF lv_part CS `..`.
         SPLIT lv_part AT `..` INTO DATA(lv_low) DATA(lv_high).
         CONDENSE lv_low.
@@ -3850,15 +3964,9 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         lv_cond = |{ lv_name } { lv_part(2) } { literal( is_field = is_field value = substring( val = lv_part off = 2 ) ) }|.
       ELSEIF strlen( lv_part ) > 1 AND ( lv_part(1) = `>` OR lv_part(1) = `<` ).
         lv_cond = |{ lv_name } { lv_part(1) } { literal( is_field = is_field value = substring( val = lv_part off = 1 ) ) }|.
-      ELSEIF strlen( lv_part ) > 1 AND lv_part(1) = `=`.
-        lv_cond = |{ lv_name } = { literal( is_field = is_field value = substring( val = lv_part off = 1 ) ) }|.
       ELSEIF lv_text_field = abap_true.
         "LIKE: the user's * is the wildcard, their own % and _ are escaped
-        DATA(lv_like) = lv_part.
-        lv_like = replace( val = lv_like sub = `#` with = `##` occ = 0 ).
-        lv_like = replace( val = lv_like sub = `%` with = `#%` occ = 0 ).
-        lv_like = replace( val = lv_like sub = `_` with = `#_` occ = 0 ).
-        lv_like = replace( val = lv_like sub = `'` with = `''` occ = 0 ).
+        DATA(lv_like) = escape_like( lv_part ).
         IF lv_like CS `*`.
           lv_like = replace( val = lv_like sub = `*` with = `%` occ = 0 ).
         ELSE.
@@ -3903,26 +4011,14 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     IF lv_search IS INITIAL.
       RETURN.
     ENDIF.
-    lv_search = replace( val = lv_search sub = `#` with = `##` occ = 0 ).
-    lv_search = replace( val = lv_search sub = `%` with = `#%` occ = 0 ).
-    lv_search = replace( val = lv_search sub = `_` with = `#_` occ = 0 ).
-    lv_search = replace( val = lv_search sub = `'` with = `''` occ = 0 ).
-    lv_search = replace( val = lv_search sub = `*` with = `%` occ = 0 ).
+    lv_search = replace( val = escape_like( lv_search ) sub = `*` with = `%` occ = 0 ).
 
     "a text or string field - a virtual element is no column. A
     "@Search.defaultSearchElement is searched also when it is @UI.hidden
     "(added 2026-10, third round: STRING fields and hidden search
     "elements; @Search.fuzzinessThreshold is read, the search stays a LIKE)
-    DATA(lv_only_searchable) = xsdbool( line_exists( it_fields[ is_searchable = abap_true is_virtual = abap_false ] ) ).
-    LOOP AT it_fields INTO DATA(ls_field)
-      WHERE ( type_kind = `CHAR` OR type_kind = `STRING` ) AND is_virtual = abap_false.
-      IF lv_only_searchable = abap_true AND ls_field-is_searchable = abap_false.
-        CONTINUE.
-      ENDIF.
-      IF lv_only_searchable = abap_false AND ls_field-is_hidden = abap_true.
-        CONTINUE.
-      ENDIF.
-      APPEND |UPPER( { ls_field-name } ) LIKE '%{ lv_search }%' ESCAPE '#'| TO lt_or.
+    LOOP AT get_search_fields( it_fields ) INTO DATA(lv_name).
+      APPEND |UPPER( { lv_name } ) LIKE '%{ lv_search }%' ESCAPE '#'| TO lt_or.
     ENDLOOP.
 
     IF lt_or IS NOT INITIAL.
@@ -5989,6 +6085,20 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD get_nested_bindings.
+
+    DATA lt_parts TYPE ty_t_entry.
+    DATA(lv_idx) = idx.
+    DATA(lv_pattern) = |{ prop }*|.
+    LOOP AT it_entries INTO DATA(ls_entry) WHERE idx = lv_idx AND prop CP lv_pattern.
+      APPEND ls_entry TO lt_parts.
+    ENDLOOP.
+    result = get_entry_bindings( get_entries( it_annos = entries_to_annos( lt_parts )
+                                              prefix   = prop ) ).
+
+  ENDMETHOD.
+
+
   METHOD set_entry_display.
 
     cs_entry-criticality = to_upper( strip_quotes( get_entry_value( it_entries = it_entries
@@ -6154,6 +6264,10 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       lv_len = strlen( lv_part ).
       IF lv_part = `=`.
         ls_condition-operator = cs_condition_op-empty.
+      ELSEIF lv_part(1) = `=`.
+        "=value is the value itself, a .. in it included
+        ls_condition-operator = cs_condition_op-eq.
+        ls_condition-low = substring( val = lv_part off = 1 ).
       ELSEIF lv_part CS `..`.
         ls_condition-operator = cs_condition_op-bt.
         SPLIT lv_part AT `..` INTO ls_condition-low ls_condition-high.
@@ -6171,9 +6285,6 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ELSEIF lv_len > 1 AND lv_part(1) = `<`.
         ls_condition-operator = cs_condition_op-lt.
         ls_condition-low = substring( val = lv_part off = 1 ).
-      ELSEIF lv_len > 1 AND lv_part(1) = `=`.
-        ls_condition-operator = cs_condition_op-eq.
-        ls_condition-low = substring( val = lv_part off = 1 ).
       ELSEIF lv_len > 2 AND lv_part(1) = `*` AND substring( val = lv_part off = lv_len - 1 ) = `*`.
         ls_condition-operator = cs_condition_op-contains.
         ls_condition-low = substring( val = lv_part off = 1 len = lv_len - 2 ).
@@ -6185,7 +6296,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         ls_condition-low = substring( val = lv_part off = 1 ).
       ELSE.
         "no operator: contains for text, equals for the rest
-        ls_condition-operator = COND #( WHEN is_field-type_kind = `CHAR` OR is_field-type_kind = `STRING`
+        ls_condition-operator = COND #( WHEN is_text_field( is_field ) = abap_true
                                         THEN cs_condition_op-contains
                                         ELSE cs_condition_op-eq ).
         ls_condition-low = lv_part.
@@ -6343,6 +6454,20 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
     result = concat_lines_of( table = lt_and sep = ` AND ` ).
+
+  ENDMETHOD.
+
+
+  METHOD get_field_group_fields.
+
+    LOOP AT it_fields INTO DATA(ls_field) WHERE is_hidden = abap_false.
+      READ TABLE ls_field-field_groups INTO DATA(ls_group) WITH KEY qualifier = qualifier.
+      IF sy-subrc = 0.
+        ls_field-field_group_pos = ls_group-position.
+        APPEND ls_field TO result.
+      ENDIF.
+    ENDLOOP.
+    SORT result STABLE BY field_group_pos.
 
   ENDMETHOD.
 
@@ -7232,8 +7357,9 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
   METHOD get_search_fields.
     DATA(lv_only_searchable) = xsdbool( line_exists( it_fields[ is_searchable = abap_true is_virtual = abap_false ] ) ).
+    "a LOB string (STRG) has no UPPER and no LIKE in ABAP SQL
     LOOP AT it_fields INTO DATA(ls_field)
-      WHERE ( type_kind = `CHAR` OR type_kind = `STRING` ) AND is_virtual = abap_false.
+      WHERE ( type_kind = `CHAR` OR type_kind = `STRING` ) AND is_virtual = abap_false AND is_lob_string = abap_false.
       IF lv_only_searchable = abap_true AND ls_field-is_searchable = abap_false.
         CONTINUE.
       ENDIF.

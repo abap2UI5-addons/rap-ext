@@ -15,6 +15,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_view TYPE string.
     DATA mv_called TYPE abap_bool.
     DATA mv_timer TYPE string.
+    DATA mv_onclose TYPE string.
 
 ENDCLASS.
 
@@ -95,9 +96,11 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~message_box_display.
+    mv_onclose = onclose.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~message_toast_display.
+    mv_onclose = onclose.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~_event.
@@ -359,6 +362,20 @@ CLASS ltcl_fcl IMPLEMENTATION.
     li_proxy->timer_set( event    = ``
                          delay_ms = 0 ).
     cl_abap_unit_assert=>assert_initial( mo_client->mv_timer ).
+    cl_abap_unit_assert=>assert_equals( exp = `WIN:`
+                                        act = li_proxy->window_bind_tab( val   = lt_rows
+                                                                         total = 0
+                                                                         event = `` ) ).
+
+    "the event a message box or a toast raises when it closes is the column's
+    li_proxy->message_box_display( text    = `?`
+                                   onclose = `DECIDE` ).
+    cl_abap_unit_assert=>assert_equals( exp = `MID~DECIDE` act = mo_client->mv_onclose ).
+    li_proxy->message_toast_display( text    = `!`
+                                     onclose = `DONE` ).
+    cl_abap_unit_assert=>assert_equals( exp = `MID~DONE` act = mo_client->mv_onclose ).
+    li_proxy->message_box_display( `?` ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_onclose ).
 
     "nothing called, nothing left, nothing returned
     cl_abap_unit_assert=>assert_false( li_proxy->check_nav_pending( ) ).

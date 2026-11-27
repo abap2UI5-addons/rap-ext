@@ -312,20 +312,11 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(lr_row) = find_row_by_event_keys( data       = REF #( <lt_rows> )
-                                           key_fields = ls_cd-entity-keys
-                                           client     = client
-                                           arg_offset = 1 ).
-    IF lr_row IS NOT BOUND.
-      RETURN.
-    ENDIF.
-    ASSIGN lr_row->* TO FIELD-SYMBOL(<ls_row>).
-    DATA(lr_entity_row) = to_entity_row( entity_name = ls_cd-entity-name
-                                         row         = <ls_row> ).
-    ASSIGN lr_entity_row->* TO <ls_row>.
-    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( val = <ls_row> ).
-    lo_op->set_extension( mo_ext ).
-    client->nav_app_call( lo_op ).
+    call_row_page( client      = client
+                   data        = REF #( <lt_rows> )
+                   key_fields  = ls_cd-entity-keys
+                   entity_name = ls_cd-entity-name
+                   arg_offset  = 1 ).
 
   ENDMETHOD.
 
@@ -398,6 +389,9 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
           ls_cd-data_ref = select_rows( entity_name = lv_view
                                         max_rows    = lv_max
                                         order_by    = lv_order_by ).
+          "the files stay on the server, as in the list report
+          z2ui5_cl_rap_util=>clear_large_objects( data      = ls_cd-data_ref
+                                                  it_fields = ls_cd-entity-fields ).
       ENDCASE.
 
       APPEND ls_cd TO mt_card_data.

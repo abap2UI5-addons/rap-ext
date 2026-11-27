@@ -358,6 +358,17 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! the rows of entity_name whose fields equal keys (name, value in
+    "! the text form of create_host) - at most one, compared with typed
+    "! host variables (build_key_condition); unbound when the read failed
+    "! (added 2026-11)
+    METHODS select_by_keys
+      IMPORTING
+        entity_name   TYPE string
+        keys          TYPE ty_t_name_value
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
     "! a structure of the entity with the fields of values set - the host
     "! structure of a key condition (build_key_condition). A value is the
     "! text form a row, an event argument or a URL carries: a date as
@@ -437,11 +448,13 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         VALUE(result) TYPE i.
 
     "! the WHERE condition for the user's filter text on one field - the
-    "! syntax is z2ui5_cl_rap_util=>build_filter_condition's
+    "! syntax is z2ui5_cl_rap_util=>build_filter_condition's; exact =
+    "! abap_true compares with the value as it is (added 2026-11)
     METHODS build_filter_condition
       IMPORTING
         is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
         value         TYPE string
+        exact         TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE string.
 
@@ -529,33 +542,52 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         VALUE(result) TYPE REF TO z2ui5_cl_rap_value_help.
 
     "! on the return from open_value_help: write the selected value (and
-    "! the additional bindings with usage RESULT) into target
+    "! the additional bindings with usage RESULT) into target; value_help
+    "! is the confirmed value help (get_value_help_result, added 2026-11)
     METHODS apply_value_help
       IMPORTING
         client        TYPE REF TO z2ui5_if_client
         it_fields     TYPE z2ui5_cl_rap_util=>ty_t_field_info
+      EXPORTING
+        value_help    TYPE REF TO z2ui5_cl_rap_value_help
       CHANGING
         target        TYPE data
       RETURNING
         VALUE(result) TYPE abap_bool.
 
     "! the row of data (a table) whose key fields equal the event arguments
-    "! arg_offset + 1 ... - how a row press identifies its row
+    "! arg_offset + 1 ... - how a row press identifies its row; index as
+    "! in find_row_by_keys
     METHODS find_row_by_event_keys
       IMPORTING
         data          TYPE REF TO data
         key_fields    TYPE string_table
         client        TYPE REF TO z2ui5_if_client
         arg_offset    TYPE i DEFAULT 0
+        index         TYPE i DEFAULT 0
       RETURNING
         VALUE(result) TYPE REF TO data.
 
-    "! the row of data (a table) whose key fields equal key_values
+    "! the row of data (a table) whose key fields equal key_values - the
+    "! one at index when it has them (rows not saved yet can share their
+    "! keys, added 2026-11), else the first
     METHODS find_row_by_keys
       IMPORTING
         data          TYPE REF TO data
         key_fields    TYPE string_table
         key_values    TYPE string_table
+        index         TYPE i DEFAULT 0
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
+    "! data (a table) with the columns of it_columns added - the ones it
+    "! has already are kept; data itself when none is new or the type
+    "! cannot be built. The rows are copied one by one: the transpiled
+    "! runtime moves no generic table into another (added 2026-11)
+    METHODS add_table_columns
+      IMPORTING
+        data          TYPE REF TO data
+        it_columns    TYPE cl_abap_structdescr=>component_table
       RETURNING
         VALUE(result) TYPE REF TO data.
 
@@ -632,7 +664,9 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     "! write one row: operation is CREATE, UPDATE or DELETE. Through RAP when
     "! the entity is a business object, with ABAP SQL when it is a table
     "! whose writes the extension allowed (get_entity_capabilities) - an
-    "! operation the entity does not allow is refused here, whoever asks
+    "! operation the entity does not allow is refused here, whoever asks.
+    "! The extension's after_save follows every write but an UPDATE of a
+    "! draft (write_draft): what saves a draft's changes is its activation
     METHODS write_row
       IMPORTING
         entity_name   TYPE string
@@ -644,6 +678,10 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         "a child of the draft the object page edits: written into that
         "draft, committed, not activated (added 2026-10, third round)
         in_draft      TYPE abap_bool DEFAULT abap_false
+        "a business object's UPDATE or DELETE is checked against the
+        "record's permissions and field control first; abap_false only
+        "for an UPDATE of a draft (write_draft) - added 2026-11
+        check         TYPE abap_bool DEFAULT abap_true
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -765,6 +803,52 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         "added 2026-10, third round
         details  TYPE ty_t_message OPTIONAL
         fields   TYPE z2ui5_cl_rap_util=>ty_t_field_info OPTIONAL.
+
+    "! what an action that ran says: a toast when it succeeded without a
+    "! message, else its messages (success or error) - a factory action's
+    "! new record is opened by the caller (added 2026-11)
+    METHODS show_action_result
+      IMPORTING
+        client    TYPE REF TO z2ui5_if_client
+        is_result TYPE ty_s_result
+        fields    TYPE z2ui5_cl_rap_util=>ty_t_field_info OPTIONAL.
+
+    "! the parameter dialog of an action (z2ui5_cl_rap_action_dialog) with
+    "! param, called - the action runs on its return (added 2026-11)
+    METHODS call_action_dialog
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client
+        param  TYPE data
+        title  TYPE string.
+
+    "! the object page of the record of entity_name with keys, called -
+    "! the record a factory action created (added 2026-11)
+    METHODS call_object_page
+      IMPORTING
+        client      TYPE REF TO z2ui5_if_client
+        entity_name TYPE string
+        keys        TYPE ty_t_name_value
+        context     TYPE ty_s_rap_context OPTIONAL.
+
+    "! the object page of row (a record of its entity), called (added
+    "! 2026-11)
+    METHODS call_record_page
+      IMPORTING
+        client  TYPE REF TO z2ui5_if_client
+        row     TYPE data
+        context TYPE ty_s_rap_context OPTIONAL.
+
+    "! the object page of the row of data whose keys the event arguments
+    "! arg_offset + 1 ... name (find_row_by_event_keys), typed as
+    "! entity_name again - a row press (added 2026-11)
+    METHODS call_row_page
+      IMPORTING
+        client      TYPE REF TO z2ui5_if_client
+        data        TYPE REF TO data
+        key_fields  TYPE string_table
+        entity_name TYPE string
+        arg_offset  TYPE i DEFAULT 0
+        context     TYPE ty_s_rap_context OPTIONAL.
 
     "! the dialog with a sap.m.MessageView of mt_message_items - grouped by
     "! entity when grouped is set (added 2026-10, third round)
@@ -980,6 +1064,15 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         row           TYPE data
       RETURNING
         VALUE(result) TYPE ty_s_perm_set.
+
+    "! the fields key_fields of row with their values (upper-case names) -
+    "! a field row does not have is left out (added 2026-11)
+    METHODS get_key_values
+      IMPORTING
+        key_fields    TYPE string_table
+        row           TYPE data
+      RETURNING
+        VALUE(result) TYPE ty_t_name_value.
 
     "! the key fields of entity_name with their values in row
     METHODS get_keys_of_row
@@ -1469,17 +1562,14 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     DATA(ls_read) = get_read_info( entity_name ).
 
     TRY.
-        DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( entity_name ) ).
-        DATA(lt_comp) = lo_struct->get_components( ).
-        IF with_selection = abap_true.
-          IF NOT line_exists( lt_comp[ name = cv_select_column ] ).
-            APPEND VALUE #( name = cv_select_column
-                            type = CAST #( cl_abap_typedescr=>describe_by_name( `ABAP_BOOL` ) ) ) TO lt_comp.
-          ENDIF.
-          lo_struct = cl_abap_structdescr=>create( lt_comp ).
+        "an unknown entity raises here - its text is the read error
+        DATA(lt_comp) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( entity_name ) )->get_components( ).
+        result = create_entity_table( entity_name    = entity_name
+                                      with_selection = with_selection ).
+        IF result IS NOT BOUND.
+          mv_read_error = get_text( cs_text-load_error ).
+          RETURN.
         ENDIF.
-        DATA(lo_table) = cl_abap_tabledescr=>create( lo_struct ).
-        CREATE DATA result TYPE HANDLE lo_table.
         ASSIGN result->* TO <lt_data>.
 
         "a custom entity: its query provider reads it - ABAP SQL cannot
@@ -1823,7 +1913,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD build_filter_condition.
     result = z2ui5_cl_rap_util=>build_filter_condition( is_field = is_field
-                                                        value    = value ).
+                                                        value    = value
+                                                        exact    = exact ).
   ENDMETHOD.
 
 
@@ -2297,12 +2388,14 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     FIELD-SYMBOLS <lv_source> TYPE any.
     FIELD-SYMBOLS <ls_row> TYPE any.
 
+    CLEAR value_help.
     DATA(lo_vh) = get_value_help_result( client ).
     DATA(lv_field) = mv_vh_target.
     CLEAR mv_vh_target.
     IF lo_vh IS NOT BOUND.
       RETURN.
     ENDIF.
+    value_help = lo_vh.
 
     ASSIGN COMPONENT lv_field OF STRUCTURE target TO <lv_target>.
     IF sy-subrc = 0.
@@ -2345,7 +2438,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ENDDO.
     result = find_row_by_keys( data       = data
                                key_fields = key_fields
-                               key_values = lt_values ).
+                               key_values = lt_values
+                               index      = index ).
 
   ENDMETHOD.
 
@@ -2354,6 +2448,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     FIELD-SYMBOLS <lt_data> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lv_val> TYPE any.
+    DATA lv_row_index TYPE i.
 
     IF data IS NOT BOUND OR key_fields IS INITIAL OR lines( key_values ) < lines( key_fields ).
       RETURN.
@@ -2361,6 +2456,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ASSIGN data->* TO <lt_data>.
 
     LOOP AT <lt_data> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      lv_row_index = sy-tabix.
       DATA(lv_match) = abap_true.
       LOOP AT key_fields INTO DATA(lv_key).
         DATA(lv_idx) = sy-tabix.
@@ -2372,10 +2468,55 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
       IF lv_match = abap_true.
-        result = REF #( <ls_row> ).
-        RETURN.
+        IF index <= 0 OR lv_row_index = index.
+          result = REF #( <ls_row> ).
+          RETURN.
+        ENDIF.
+        IF result IS NOT BOUND.
+          result = REF #( <ls_row> ).
+        ENDIF.
       ENDIF.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD add_table_columns.
+
+    DATA lt_comp TYPE cl_abap_structdescr=>component_table.
+    FIELD-SYMBOLS <lt_old> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_new> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <ls_old> TYPE any.
+    FIELD-SYMBOLS <ls_new> TYPE any.
+
+    result = data.
+    IF data IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    TRY.
+        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( data ) ).
+        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
+        lt_comp = lo_line->get_components( ).
+        DATA(lv_before) = lines( lt_comp ).
+        LOOP AT it_columns INTO DATA(ls_column).
+          IF NOT line_exists( lt_comp[ name = ls_column-name ] ).
+            APPEND ls_column TO lt_comp.
+          ENDIF.
+        ENDLOOP.
+        IF lines( lt_comp ) = lv_before.
+          RETURN.
+        ENDIF.
+        DATA(lo_new_table) = cl_abap_tabledescr=>create( cl_abap_structdescr=>create( lt_comp ) ).
+        CREATE DATA result TYPE HANDLE lo_new_table.
+        ASSIGN data->* TO <lt_old>.
+        ASSIGN result->* TO <lt_new>.
+        LOOP AT <lt_old> ASSIGNING <ls_old>.
+          APPEND INITIAL LINE TO <lt_new> ASSIGNING <ls_new>.
+          MOVE-CORRESPONDING <ls_old> TO <ls_new>.
+        ENDLOOP.
+      CATCH cx_root.
+        result = data.
+    ENDTRY.
 
   ENDMETHOD.
 
@@ -2486,7 +2627,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     READ TABLE ls_target-fields INTO DATA(ls_language) WITH KEY is_language = abap_true.
     DATA(lv_language) = COND string( WHEN sy-subrc = 0
                                      THEN z2ui5_cl_rap_util=>build_filter_condition( is_field = ls_language
-                                                                                     value    = |={ sy-langu }| ) ).
+                                                                                     value    = |{ sy-langu }|
+                                                                                     exact    = abap_true ) ).
 
     "one condition per distinct value of the rows - at most 200
     ASSIGN data->* TO <lt_rows>.
@@ -2505,7 +2647,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
           RETURN.
         ENDIF.
         APPEND z2ui5_cl_rap_util=>build_filter_condition( is_field = ls_target_field
-                                                          value    = |={ condense( |{ <lv_value> }| ) }| ) TO lt_and.
+                                                          value    = condense( |{ <lv_value> }| )
+                                                          exact    = abap_true ) TO lt_and.
       ENDLOOP.
       APPEND lv_key TO lt_keys.
       APPEND |( { concat_lines_of( table = lt_and sep = ` AND ` ) } )| TO lt_groups.
@@ -2559,7 +2702,6 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
   METHOD read_association_target.
 
     DATA lt_values TYPE ty_t_name_value.
-    DATA lt_names TYPE string_table.
     FIELD-SYMBOLS <lv_value> TYPE any.
     FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
 
@@ -2574,14 +2716,10 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         RETURN.
       ENDIF.
       APPEND VALUE #( name = ls_condition-target value = |{ <lv_value> }| ) TO lt_values.
-      APPEND ls_condition-target TO lt_names.
     ENDLOOP.
 
-    DATA(lr_rows) = select_rows( entity_name = ls_assoc-target
-                                 where       = build_key_condition( lt_names )
-                                 max_rows    = 1
-                                 host        = create_host( entity_name = ls_assoc-target
-                                                            values      = lt_values ) ).
+    DATA(lr_rows) = select_by_keys( entity_name = ls_assoc-target
+                                    keys        = lt_values ).
     IF lr_rows IS NOT BOUND.
       RETURN.
     ENDIF.
@@ -2660,7 +2798,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
     "the record's own permissions, its read-only fields and - without a
     "draft - that nobody changed it meanwhile (since 2026-10, third round)
-    IF ls_caps-is_rap_bo = abap_true AND ( operation = `UPDATE` OR operation = `DELETE` ).
+    IF check = abap_true AND ls_caps-is_rap_bo = abap_true AND ( operation = `UPDATE` OR operation = `DELETE` ).
       IF original IS SUPPLIED.
         result-messages = check_rap_write( entity_name = entity_name
                                            operation   = operation
@@ -2730,7 +2868,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                                 row         = <ls_row> ).
     ENDIF.
 
-    IF result-success = abap_true AND mo_ext IS BOUND.
+    IF result-success = abap_true AND mo_ext IS BOUND
+      AND NOT ( operation = `UPDATE` AND in_draft = abap_true ).
       mo_ext->after_save( entity_name = entity_name
                           operation   = operation
                           data        = lr_row ).
@@ -2925,6 +3064,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     "nor what GET PERMISSIONS forbids (since 2026-10, third round): global
     "feature control and authorization, an internal operation - and a
     "create by association as the parent's association allows it
+    DATA(ls_perm) = get_permissions( entity_name = entity_name
+                                     context     = context ).
     IF context-association IS NOT INITIAL AND context-parent IS NOT INITIAL.
       DATA(lv_parent) = to_upper( context-parent ).
       DATA(lr_parent) = create_host( entity_name = lv_parent
@@ -2939,15 +3080,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
           AND z2ui5_cl_rap_util=>is_permitted( ops  = ls_parent_perm-associations
                                                name = context-association ) = abap_true ).
       ENDIF.
-    ELSE.
-      DATA(ls_perm) = get_permissions( entity_name = entity_name
-                                       context     = context ).
-      IF ls_perm-answered = abap_true.
-        result-can_create = xsdbool( result-can_create = abap_true AND ls_perm-global-can_create = abap_true ).
-      ENDIF.
+    ELSEIF ls_perm-answered = abap_true.
+      result-can_create = xsdbool( result-can_create = abap_true AND ls_perm-global-can_create = abap_true ).
     ENDIF.
-    ls_perm = get_permissions( entity_name = entity_name
-                               context     = context ).
     IF ls_perm-answered = abap_true.
       result-can_update = xsdbool( result-can_update = abap_true AND ls_perm-global-can_update = abap_true ).
       result-can_delete = xsdbool( result-can_delete = abap_true AND ls_perm-global-can_delete = abap_true ).
@@ -2968,10 +3103,22 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD create_host.
+  METHOD select_by_keys.
 
-    FIELD-SYMBOLS <ls_host> TYPE any.
-    FIELD-SYMBOLS <lv_value> TYPE any.
+    DATA lt_names TYPE string_table.
+    LOOP AT keys INTO DATA(ls_key).
+      APPEND ls_key-name TO lt_names.
+    ENDLOOP.
+    result = select_rows( entity_name = entity_name
+                          where       = build_key_condition( lt_names )
+                          max_rows    = 1
+                          host        = create_host( entity_name = entity_name
+                                                     values      = keys ) ).
+
+  ENDMETHOD.
+
+
+  METHOD create_host.
 
     TRY.
         CREATE DATA result TYPE (entity_name).
@@ -2979,30 +3126,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         CLEAR result.
         RETURN.
     ENDTRY.
-    ASSIGN result->* TO <ls_host>.
-
-    LOOP AT values INTO DATA(ls_value).
-      DATA(lv_name) = to_upper( ls_value-name ).
-      UNASSIGN <lv_value>.
-      ASSIGN COMPONENT lv_name OF STRUCTURE <ls_host> TO <lv_value>.
-      IF <lv_value> IS NOT ASSIGNED.
-        CONTINUE.
-      ENDIF.
-      DATA(lv_kind) = cl_abap_typedescr=>describe_by_data( <lv_value> )->type_kind.
-      TRY.
-          "a date or time as the JSON model writes it (2024-01-15), a RAW
-          "as hex digits - a UUID may come with its dashes
-          IF lv_kind = cl_abap_typedescr=>typekind_date
-            OR lv_kind = cl_abap_typedescr=>typekind_time
-            OR lv_kind = cl_abap_typedescr=>typekind_hex.
-            <lv_value> = z2ui5_cl_rap_util=>normalize_value( ls_value-value ).
-          ELSE.
-            <lv_value> = ls_value-value.
-          ENDIF.
-        CATCH cx_root.
-          CLEAR <lv_value>.
-      ENDTRY.
-    ENDLOOP.
+    ASSIGN result->* TO FIELD-SYMBOL(<ls_host>).
+    z2ui5_cl_rap_util=>set_fields_from_text( EXPORTING values    = values
+                                             CHANGING  structure = <ls_host> ).
 
   ENDMETHOD.
 
@@ -3027,46 +3153,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
 
   METHOD write_draft.
-
-    DATA lv_cancel TYPE abap_bool.
-    DATA lr_row TYPE REF TO data.
-    FIELD-SYMBOLS <ls_row> TYPE any.
-
-    IF get_entity_capabilities( entity_name = entity_name
-                                context     = context )-can_update = abap_false.
-      APPEND get_text( cs_text-read_only ) TO result-messages.
-      RETURN.
-    ENDIF.
-    IF check = abap_true.
-      result-messages = check_rap_write( entity_name = entity_name
-                                         operation   = `UPDATE`
-                                         row         = row
-                                         original    = original
-                                         context     = context ).
-      IF result-messages IS NOT INITIAL.
-        RETURN.
-      ENDIF.
-    ENDIF.
-
-    CREATE DATA lr_row LIKE row.
-    ASSIGN lr_row->* TO <ls_row>.
-    <ls_row> = row.
-    IF mo_ext IS BOUND.
-      mo_ext->before_save( EXPORTING entity_name = entity_name
-                                     operation   = `UPDATE`
-                                     data        = lr_row
-                           CHANGING  messages    = result-messages
-                                     cancel      = lv_cancel ).
-      IF lv_cancel = abap_true.
-        RETURN.
-      ENDIF.
-    ENDIF.
-
-    result = z2ui5_cl_rap_eml=>update_draft( entity_name = entity_name
-                                             row         = <ls_row>
-                                             original    = original
-                                             context     = context ).
-
+    "write_row's UPDATE of a draft - the record of the object page is
+    "checked by its own steps, a child row (check) like every write
+    result = write_row( entity_name = entity_name
+                        operation   = `UPDATE`
+                        row         = row
+                        original    = original
+                        context     = context
+                        in_draft    = abap_true
+                        check       = check ).
   ENDMETHOD.
 
 
@@ -3284,6 +3379,79 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       CATCH cx_root.
         CLEAR result.
     ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD show_action_result.
+
+    IF is_result-success = abap_true AND is_result-messages IS INITIAL.
+      client->message_toast_display( get_text( cs_text-action_done ) ).
+    ELSEIF is_result-success = abap_true.
+      show_messages( client   = client
+                     messages = is_result-messages
+                     details  = is_result-details
+                     fields   = fields
+                     type     = `success` ).
+    ELSE.
+      show_messages( client   = client
+                     messages = is_result-messages
+                     details  = is_result-details
+                     fields   = fields ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD call_action_dialog.
+
+    DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = param
+                                                      title = title ).
+    lo_dialog->set_extension( mo_ext ).
+    client->nav_app_call( lo_dialog ).
+
+  ENDMETHOD.
+
+
+  METHOD call_object_page.
+
+    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( cds_view_name = entity_name
+                                                keys          = keys
+                                                context       = context ).
+    lo_op->set_extension( mo_ext ).
+    client->nav_app_call( lo_op ).
+
+  ENDMETHOD.
+
+
+  METHOD call_record_page.
+
+    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( val     = row
+                                                context = context ).
+    lo_op->set_extension( mo_ext ).
+    client->nav_app_call( lo_op ).
+
+  ENDMETHOD.
+
+
+  METHOD call_row_page.
+
+    DATA(lr_row) = find_row_by_event_keys( data       = data
+                                           key_fields = key_fields
+                                           client     = client
+                                           arg_offset = arg_offset ).
+    IF lr_row IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_row->* TO FIELD-SYMBOL(<ls_row>).
+    "typed as the entity again - the object page reads its annotations
+    "from the type name, which a row with added columns has not
+    DATA(lr_entity_row) = to_entity_row( entity_name = entity_name
+                                         row         = <ls_row> ).
+    ASSIGN lr_entity_row->* TO <ls_row>.
+    call_record_page( client  = client
+                      row     = <ls_row>
+                      context = context ).
 
   ENDMETHOD.
 
@@ -3703,9 +3871,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
 
   METHOD get_keys_of_row.
+    result = get_key_values( key_fields = z2ui5_cl_rap_util=>get_key_fields( entity_name )
+                             row        = row ).
+  ENDMETHOD.
+
+
+  METHOD get_key_values.
 
     FIELD-SYMBOLS <lv_key> TYPE any.
-    LOOP AT z2ui5_cl_rap_util=>get_key_fields( entity_name ) INTO DATA(lv_key).
+    LOOP AT key_fields INTO DATA(lv_key).
       UNASSIGN <lv_key>.
       ASSIGN COMPONENT lv_key OF STRUCTURE row TO <lv_key>.
       IF <lv_key> IS ASSIGNED.
@@ -3746,7 +3920,6 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD check_etag.
 
-    DATA lt_names TYPE string_table.
     FIELD-SYMBOLS <lv_seen> TYPE any.
     FIELD-SYMBOLS <lv_now> TYPE any.
     FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
@@ -3765,15 +3938,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     IF lt_keys IS INITIAL.
       RETURN.
     ENDIF.
-    LOOP AT lt_keys INTO DATA(ls_key).
-      APPEND ls_key-name TO lt_names.
-    ENDLOOP.
-
-    DATA(lr_rows) = select_rows( entity_name = entity_name
-                                 where       = build_key_condition( lt_names )
-                                 max_rows    = 1
-                                 host        = create_host( entity_name = entity_name
-                                                            values      = lt_keys ) ).
+    DATA(lr_rows) = select_by_keys( entity_name = entity_name
+                                    keys        = lt_keys ).
     IF lr_rows IS NOT BOUND.
       RETURN.
     ENDIF.

@@ -441,6 +441,22 @@ CLASS z2ui5_cl_rap_eml DEFINITION
       CHANGING
         instance TYPE data.
 
+    "! the READ ENTITIES OPERATIONS of operations (z2ui5_cl_rap_eml_read,
+    "! called dynamically) - false when it could not run
+    CLASS-METHODS run_read
+      CHANGING
+        operations    TYPE abp_behv_retrievals_tab
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
+    "! the rows (a table) as instances of a read - with %is_draft for a
+    "! draft and every field flagged in %control
+    CLASS-METHODS fill_read_instances
+      IMPORTING
+        rows      TYPE REF TO data
+        is_draft  TYPE abap_bool
+        instances TYPE REF TO data.
+
     "! one message (msg, an IF_ABAP_BEHV_MESSAGE) into messages and, with
     "! its severity, the fields of the %element of entry (a response entry,
     "! when there is one) and target (the entity), into details
@@ -1083,30 +1099,8 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
 
 
   METHOD set_fields.
-
-    FIELD-SYMBOLS <lv_field> TYPE any.
-    LOOP AT keys INTO DATA(ls_key).
-      DATA(lv_name) = to_upper( ls_key-name ).
-      UNASSIGN <lv_field>.
-      ASSIGN COMPONENT lv_name OF STRUCTURE structure TO <lv_field>.
-      IF <lv_field> IS NOT ASSIGNED.
-        CONTINUE.
-      ENDIF.
-      DATA(lv_kind) = cl_abap_typedescr=>describe_by_data( <lv_field> )->type_kind.
-      TRY.
-          "a date as 2024-01-15, a UUID with its dashes - in their internal form
-          IF lv_kind = cl_abap_typedescr=>typekind_date
-            OR lv_kind = cl_abap_typedescr=>typekind_time
-            OR lv_kind = cl_abap_typedescr=>typekind_hex.
-            <lv_field> = z2ui5_cl_rap_util=>normalize_value( ls_key-value ).
-          ELSE.
-            <lv_field> = ls_key-value.
-          ENDIF.
-        CATCH cx_root.
-          CLEAR <lv_field>.
-      ENDTRY.
-    ENDLOOP.
-
+    z2ui5_cl_rap_util=>set_fields_from_text( EXPORTING values    = keys
+                                             CHANGING  structure = structure ).
   ENDMETHOD.
 
 
@@ -1560,12 +1554,9 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
   METHOD read_instances.
 
     DATA lt_ops TYPE abp_behv_retrievals_tab.
-    DATA lt_failed TYPE abp_behv_response_tab.
-    DATA lt_reported TYPE abp_behv_response_tab.
     DATA lr_in TYPE REF TO data.
     DATA lr_out TYPE REF TO data.
     FIELD-SYMBOLS <lt_in> TYPE STANDARD TABLE.
-    FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
 
     IF rows IS NOT BOUND.
       RETURN.
@@ -1584,16 +1575,10 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
         RETURN.
     ENDTRY.
 
+    fill_read_instances( rows      = rows
+                         is_draft  = is_draft
+                         instances = lr_in ).
     ASSIGN lr_in->* TO <lt_in>.
-    ASSIGN rows->* TO <lt_rows>.
-    LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
-      APPEND INITIAL LINE TO <lt_in> ASSIGNING FIELD-SYMBOL(<ls_in>).
-      MOVE-CORRESPONDING <ls_row> TO <ls_in>.
-      IF is_draft = abap_true.
-        set_draft( CHANGING instance = <ls_in> ).
-      ENDIF.
-      set_control_all( CHANGING instance = <ls_in> ).
-    ENDLOOP.
     IF <lt_in> IS INITIAL.
       result = lr_out.
       RETURN.
@@ -1603,18 +1588,51 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
                     entity_name = lv_entity
                     instances   = lr_in
                     results     = lr_out ) TO lt_ops.
+    IF run_read( CHANGING operations = lt_ops ) = abap_false.
+      RETURN.
+    ENDIF.
+    result = lr_out.
+
+  ENDMETHOD.
+
+
+  METHOD run_read.
+
+    "failed and reported are not read: what a READ does not find is
+    "missing from its results
+    DATA lt_failed TYPE abp_behv_response_tab.
+    DATA lt_reported TYPE abp_behv_response_tab.
     DATA(lv_class) = cs_dynamic-read.
     DATA(lv_method) = `READ`.
     TRY.
         CALL METHOD (lv_class)=>(lv_method)
           CHANGING
-            operations = lt_ops
+            operations = operations
             failed     = lt_failed
             reported   = lt_reported.
+        result = abap_true.
       CATCH cx_root.
-        RETURN.
+        result = abap_false.
     ENDTRY.
-    result = lr_out.
+
+  ENDMETHOD.
+
+
+  METHOD fill_read_instances.
+
+    FIELD-SYMBOLS <lt_in> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
+
+    ASSIGN instances->* TO <lt_in>.
+    ASSIGN rows->* TO <lt_rows>.
+    LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
+      APPEND INITIAL LINE TO <lt_in> ASSIGNING FIELD-SYMBOL(<ls_in>).
+      MOVE-CORRESPONDING <ls_row> TO <ls_in>.
+      IF is_draft = abap_true.
+        set_draft( CHANGING instance = <ls_in> ).
+      ENDIF.
+      set_control_all( CHANGING instance = <ls_in> ).
+    ENDLOOP.
 
   ENDMETHOD.
 
@@ -1677,8 +1695,6 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
   METHOD read_action_defaults.
 
     DATA lt_ops TYPE abp_behv_retrievals_tab.
-    DATA lt_failed TYPE abp_behv_response_tab.
-    DATA lt_reported TYPE abp_behv_response_tab.
     DATA lr_in TYPE REF TO data.
     DATA lr_out TYPE REF TO data.
     DATA lt_kinds TYPE string_table.
@@ -1754,17 +1770,9 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     ENDIF.
     <lv_comp> = lv_function.
 
-    DATA(lv_class) = cs_dynamic-read.
-    DATA(lv_method) = `READ`.
-    TRY.
-        CALL METHOD (lv_class)=>(lv_method)
-          CHANGING
-            operations = lt_ops
-            failed     = lt_failed
-            reported   = lt_reported.
-      CATCH cx_root.
-        RETURN.
-    ENDTRY.
+    IF run_read( CHANGING operations = lt_ops ) = abap_false.
+      RETURN.
+    ENDIF.
 
     ASSIGN lr_out->* TO <lt_out>.
     LOOP AT <lt_out> ASSIGNING FIELD-SYMBOL(<ls_out>).
@@ -1783,13 +1791,10 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
   METHOD read_by_association.
 
     DATA lt_ops TYPE abp_behv_retrievals_tab.
-    DATA lt_failed TYPE abp_behv_response_tab.
-    DATA lt_reported TYPE abp_behv_response_tab.
     DATA lr_in TYPE REF TO data.
     DATA lr_out TYPE REF TO data.
     DATA lt_kinds TYPE string_table.
     FIELD-SYMBOLS <lt_in> TYPE STANDARD TABLE.
-    FIELD-SYMBOLS <lt_rows> TYPE ANY TABLE.
     FIELD-SYMBOLS <lv_op> TYPE any.
     FIELD-SYMBOLS <lv_comp> TYPE any.
 
@@ -1827,16 +1832,10 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    fill_read_instances( rows      = rows
+                         is_draft  = is_draft
+                         instances = lr_in ).
     ASSIGN lr_in->* TO <lt_in>.
-    ASSIGN rows->* TO <lt_rows>.
-    LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
-      APPEND INITIAL LINE TO <lt_in> ASSIGNING FIELD-SYMBOL(<ls_in>).
-      MOVE-CORRESPONDING <ls_row> TO <ls_in>.
-      IF is_draft = abap_true.
-        set_draft( CHANGING instance = <ls_in> ).
-      ENDIF.
-      set_control_all( CHANGING instance = <ls_in> ).
-    ENDLOOP.
     IF <lt_in> IS INITIAL.
       result = lr_out.
       RETURN.
@@ -1854,17 +1853,9 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     ENDIF.
     <lv_comp> = lv_assoc.
 
-    DATA(lv_class) = cs_dynamic-read.
-    DATA(lv_method) = `READ`.
-    TRY.
-        CALL METHOD (lv_class)=>(lv_method)
-          CHANGING
-            operations = lt_ops
-            failed     = lt_failed
-            reported   = lt_reported.
-      CATCH cx_root.
-        RETURN.
-    ENDTRY.
+    IF run_read( CHANGING operations = lt_ops ) = abap_false.
+      RETURN.
+    ENDIF.
     result = lr_out.
 
   ENDMETHOD.

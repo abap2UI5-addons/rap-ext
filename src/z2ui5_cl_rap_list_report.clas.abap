@@ -98,6 +98,9 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
         adapt_filters_ok    TYPE string VALUE `ADAPT_FILTERS_OK`,
         column_up           TYPE string VALUE `COLUMN_UP`,
         column_down         TYPE string VALUE `COLUMN_DOWN`,
+        "added 2026-11: an action pressed in a row (args: the action, the
+        "row's keys) - an empty key is a key, not "the selected rows"
+        inline_action       TYPE string VALUE `INLINE_ACTION`,
       END OF cs_event.
 
     " when the list is read at the start (constructor initial_load; added
@@ -479,6 +482,19 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
+    "! the column names of the rows (mr_data), blank-separated - empty
+    "! when there are none
+    METHODS get_row_columns
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! load_data( ), and the view again when that changed the columns of
+    "! the rows: the table binds only the columns mr_data has when it is
+    "! rendered (added 2026-11 - a list that started empty lacked them)
+    METHODS reload_rows
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
     "! the return from a called app: value help, action dialog, object page
     METHODS on_navigated
       IMPORTING
@@ -582,6 +598,8 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       IMPORTING
         client TYPE REF TO z2ui5_if_client.
 
+    "! Deprecated (2026-11): nothing calls it - use normalize_key_value( ),
+    "! which it hands on to; kept for subclasses, removed in a later release
     METHODS normalize_value
       IMPORTING
         val           TYPE string
@@ -689,6 +707,13 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
     "! header toolbar and the grid table into its extension (added 2026-10,
     "! third round)
     METHODS render_toolbar_content
+      IMPORTING
+        io_toolbar TYPE REF TO z2ui5_cl_ui5_view_builder
+        client     TYPE REF TO z2ui5_if_client.
+
+    "! what the toolbar shows after its title - nothing here, the
+    "! worklist's search field there (added 2026-11)
+    METHODS render_toolbar_search
       IMPORTING
         io_toolbar TYPE REF TO z2ui5_cl_ui5_view_builder
         client     TYPE REF TO z2ui5_if_client.
@@ -894,7 +919,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           text = |{ get_text( cs_text-required ) }: { concat_lines_of( table = lt_missing sep = `, ` ) }|
           type = `warning` ).
       ENDIF.
-      load_data( ).
+      reload_rows( client ).
       RETURN.
     ENDIF.
 
@@ -909,7 +934,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     IF client->check_on_event( cs_event-more ).
       "the next rows - loaded from the database, not only shown
       mv_max_rows = mv_max_rows + mv_page_size.
-      load_data( ).
+      reload_rows( client ).
       RETURN.
     ENDIF.
 
@@ -968,7 +993,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    IF client->check_on_event( cs_event-action ).
+    IF client->check_on_event( cs_event-action )
+      OR client->check_on_event( cs_event-inline_action ).
       on_action( client ).
       RETURN.
     ENDIF.
@@ -1883,9 +1909,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       RETURN.
     ENDIF.
     ASSIGN lr_target->* TO <ls_row>.
-    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( val = <ls_row> ).
-    lo_op->set_extension( mo_ext ).
-    client->nav_app_call( lo_op ).
+    call_record_page( client = client
+                      row    = <ls_row> ).
 
   ENDMETHOD.
 
@@ -1971,24 +1996,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD on_row_press.
 
-    FIELD-SYMBOLS <ls_row> TYPE any.
-
-    DATA(lr_row) = find_row_by_event_keys( data       = mr_data
-                                           key_fields = mt_row_key
-                                           client     = client ).
-    IF lr_row IS NOT BOUND.
-      RETURN.
-    ENDIF.
-    ASSIGN lr_row->* TO <ls_row>.
-
-    "typed as the entity again - the object page reads its annotations
-    "from the type name, which a row with the selection column has not
-    DATA(lr_entity_row) = to_entity_row( entity_name = mv_cds_view
-                                         row         = <ls_row> ).
-    ASSIGN lr_entity_row->* TO <ls_row>.
-    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( val = <ls_row> ).
-    lo_op->set_extension( mo_ext ).
-    client->nav_app_call( lo_op ).
+    call_row_page( client      = client
+                   data        = mr_data
+                   key_fields  = mt_row_key
+                   entity_name = mv_cds_view ).
 
   ENDMETHOD.
 
@@ -2034,10 +2045,14 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       CLEAR mv_pending_action.
       RETURN.
     ENDIF.
+    "an inline action names its row by all its keys, empty ones included;
+    "ACTION without keys is one of the toolbar (an empty first key there
+    "stays "no row" for buttons built before INLINE_ACTION)
     CLEAR mt_pending_keys.
+    DATA(lv_inline) = client->check_on_event( cs_event-inline_action ).
     DO lines( mt_row_key ) TIMES.
       DATA(lv_key) = client->get_event_arg( sy-index + 1 ).
-      IF lv_key IS INITIAL AND sy-index = 1.
+      IF lv_inline = abap_false AND lv_key IS INITIAL AND sy-index = 1.
         EXIT.
       ENDIF.
       APPEND lv_key TO mt_pending_keys.
@@ -2054,10 +2069,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                                        rows        = get_action_rows( )
                              CHANGING  param       = <ls_param> ).
       READ TABLE ms_entity-actions INTO DATA(ls_action) WITH KEY name = mv_pending_action.
-      DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = <ls_param>
-                                                        title = ls_action-label ).
-      lo_dialog->set_extension( mo_ext ).
-      client->nav_app_call( lo_dialog ).
+      call_action_dialog( client = client
+                          param  = <ls_param>
+                          title  = ls_action-label ).
       RETURN.
     ENDIF.
 
@@ -2104,28 +2118,15 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                                   invocation_grouping = ls_action-invocation_grouping ).
     "#ISOLATED: some rows may have changed even when others failed
     load_data( ).
-    IF ls_result-success = abap_true.
-      "a factory action: the record it created
-      IF ls_result-keys IS NOT INITIAL.
-        open_created( client = client
-                      keys   = ls_result-keys ).
-        RETURN.
-      ENDIF.
-      IF ls_result-messages IS INITIAL.
-        client->message_toast_display( get_text( cs_text-action_done ) ).
-      ELSE.
-        show_messages( client   = client
-                       messages = ls_result-messages
-                       details  = ls_result-details
-                       fields   = ms_entity-fields
-                       type     = `success` ).
-      ENDIF.
-    ELSE.
-      show_messages( client   = client
-                     messages = ls_result-messages
-                     details  = ls_result-details
-                     fields   = ms_entity-fields ).
+    "a factory action: the record it created
+    IF ls_result-success = abap_true AND ls_result-keys IS NOT INITIAL.
+      open_created( client = client
+                    keys   = ls_result-keys ).
+      RETURN.
     ENDIF.
+    show_action_result( client    = client
+                        is_result = ls_result
+                        fields    = ms_entity-fields ).
 
   ENDMETHOD.
 
@@ -2134,6 +2135,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     DATA lt_arg TYPE string_table.
     DATA ls_crit TYPE z2ui5_cl_rap_util=>ty_s_action.
+    DATA lv_crit_type TYPE string.
 
     LOOP AT get_action_entries( it_actions = it_actions
                                 it_groups  = it_groups ) INTO DATA(ls_entry).
@@ -2164,27 +2166,21 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       "the criticality as the button's type - written as a literal of
       "sap.m.ButtonType, so the view gate can check it
       ls_crit = ls_entry-action.
-      DATA(lv_button_type) = `Default`.
       IF row IS SUPPLIED.
-        CASE get_action_button_type( is_action = ls_crit
-                                     row       = row ).
-          WHEN `Accept`.
-            lv_button_type = `Accept`.
-          WHEN `Reject`.
-            lv_button_type = `Reject`.
-          WHEN `Emphasized`.
-            lv_button_type = `Emphasized`.
-        ENDCASE.
+        lv_crit_type = get_action_button_type( is_action = ls_crit
+                                               row       = row ).
       ELSE.
-        CASE get_action_button_type( ls_crit ).
-          WHEN `Accept`.
-            lv_button_type = `Accept`.
-          WHEN `Reject`.
-            lv_button_type = `Reject`.
-          WHEN `Emphasized`.
-            lv_button_type = `Emphasized`.
-        ENDCASE.
+        lv_crit_type = get_action_button_type( ls_crit ).
       ENDIF.
+      DATA(lv_button_type) = `Default`.
+      CASE lv_crit_type.
+        WHEN `Accept`.
+          lv_button_type = `Accept`.
+        WHEN `Reject`.
+          lv_button_type = `Reject`.
+        WHEN `Emphasized`.
+          lv_button_type = `Emphasized`.
+      ENDCASE.
       lt_arg = args_before.
       APPEND ls_entry-action-name TO lt_arg.
       READ TABLE enabled_values INTO DATA(ls_binding) WITH KEY name = ls_entry-action-name.
@@ -2207,11 +2203,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD open_created.
 
-    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( cds_view_name = mv_cds_view
-                                                keys          = keys ).
-    lo_op->set_extension( mo_ext ).
     mv_opened_created = abap_true.
-    client->nav_app_call( lo_op ).
+    call_object_page( client      = client
+                      entity_name = mv_cds_view
+                      keys        = keys ).
 
   ENDMETHOD.
 
@@ -2652,7 +2647,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
           )->a( n = `enabled`
                 v = lv_inline_enabled
           )->a( n = `press`
-                v = client->_event( val   = cs_event-action
+                v = client->_event( val   = cs_event-inline_action
                                     t_arg = lt_action_arg ) ).
     ENDLOOP.
 
@@ -2683,13 +2678,21 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD render_toolbar_search ##NEEDED.
+    "the list report searches in its filter bar
+  ENDMETHOD.
+
+
   METHOD render_toolbar_content.
 
     io_toolbar->tag( `Title`
         )->a( n = `text`
-              v = mv_title && ` (` && client->_bind( mv_count ) && `)` ).
+              v = z2ui5_cl_ui5_view_builder=>escape_literal( mv_title ) && ` (` && client->_bind( mv_count ) && `)` ).
 
     io_toolbar->tag( `ToolbarSpacer` ).
+
+    render_toolbar_search( io_toolbar = io_toolbar
+                           client     = client ).
 
     "@UI.lineItem actions of type #FOR_ACTION - on the selected rows, a
     "static one without; by position, an action group as a menu
@@ -2825,17 +2828,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     "#AS_FIELDGROUP -> the fields of the field group, one under the other
     IF is_col-line_item_type = `AS_FIELDGROUP` AND is_col-line_item_value_qualifier IS NOT INITIAL.
-      LOOP AT ms_entity-fields INTO DATA(ls_group_field) WHERE is_hidden = abap_false.
-        READ TABLE ls_group_field-field_groups INTO DATA(ls_group)
-          WITH KEY qualifier = is_col-line_item_value_qualifier.
-        IF sy-subrc = 0.
-          ls_group_field-field_group_pos = ls_group-position.
-          APPEND ls_group_field TO lt_group.
-        ENDIF.
-      ENDLOOP.
-      SORT lt_group BY field_group_pos.
+      lt_group = z2ui5_cl_rap_util=>get_field_group_fields( it_fields  = ms_entity-fields
+                                                            qualifier = is_col-line_item_value_qualifier ).
       DATA(lo_group) = lo_cell->ele( `VBox` ).
-      LOOP AT lt_group INTO ls_group_field.
+      LOOP AT lt_group INTO DATA(ls_group_field).
         lo_group->tag( `Text`
             )->a( n = `text`
                   v = COND string( WHEN ls_group_field-text_element IS NOT INITIAL
@@ -2984,7 +2980,6 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   METHOD apply_row_states.
 
     DATA lt_comp TYPE cl_abap_structdescr=>component_table.
-    DATA lr_extended TYPE REF TO data.
     FIELD-SYMBOLS <lt_old> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lt_new> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lv_enabled> TYPE any.
@@ -3001,31 +2996,18 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     DATA(lt_inline) = get_line_item_actions( abap_true ).
 
     "the columns: an inline action's enabled, the draft status
-    TRY.
-        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( mr_data ) ).
-        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
-        lt_comp = lo_line->get_components( ).
-        DATA(lo_bool) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `ABAP_BOOL` ) ).
-        DATA(lo_string) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `STRING` ) ).
-        IF ms_perm-answered = abap_true.
-          LOOP AT lt_inline INTO ls_inline.
-            APPEND VALUE #( name = |{ cs_row_column-action_prefix }{ sy-tabix }| type = lo_bool ) TO lt_comp.
-          ENDLOOP.
-        ENDIF.
-        IF mv_is_draft_bo = abap_true.
-          APPEND VALUE #( name = cs_row_column-draft type = lo_string ) TO lt_comp.
-          APPEND VALUE #( name = cs_row_column-draft_text type = lo_string ) TO lt_comp.
-        ENDIF.
-        IF lines( lt_comp ) > lines( lo_line->get_components( ) ).
-          DATA(lo_new_table) = cl_abap_tabledescr=>create( cl_abap_structdescr=>create( lt_comp ) ).
-          CREATE DATA lr_extended TYPE HANDLE lo_new_table.
-          ASSIGN mr_data->* TO <lt_old>.
-          ASSIGN lr_extended->* TO <lt_new>.
-          MOVE-CORRESPONDING <lt_old> TO <lt_new>.
-          mr_data = lr_extended.
-        ENDIF.
-      CATCH cx_root ##NO_HANDLER.
-    ENDTRY.
+    DATA(lo_bool) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `ABAP_BOOL` ) ).
+    DATA(lo_string) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `STRING` ) ).
+    IF ms_perm-answered = abap_true.
+      LOOP AT lt_inline INTO ls_inline.
+        APPEND VALUE #( name = |{ cs_row_column-action_prefix }{ sy-tabix }| type = lo_bool ) TO lt_comp.
+      ENDLOOP.
+    ENDIF.
+    IF mv_is_draft_bo = abap_true.
+      APPEND VALUE #( name = cs_row_column-draft type = lo_string ) TO lt_comp.
+      APPEND VALUE #( name = cs_row_column-draft_text type = lo_string ) TO lt_comp.
+    ENDIF.
+    add_row_columns( lt_comp ).
 
     ASSIGN mr_data->* TO <lt_new>.
     IF ms_perm-answered = abap_true AND lt_inline IS NOT INITIAL.
@@ -3218,6 +3200,35 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       CATCH cx_root.
         result = abap_false.
     ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD get_row_columns.
+
+    IF mr_data IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    TRY.
+        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( mr_data ) ).
+        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
+        LOOP AT lo_line->components INTO DATA(ls_component).
+          result = |{ result } { ls_component-name }|.
+        ENDLOOP.
+      CATCH cx_root.
+        CLEAR result.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD reload_rows.
+
+    DATA(lv_columns) = get_row_columns( ).
+    load_data( ).
+    IF get_row_columns( ) <> lv_columns.
+      render_page( client ).
+    ENDIF.
 
   ENDMETHOD.
 
@@ -3726,10 +3737,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   METHOD apply_text_columns.
 
     DATA lt_comp TYPE cl_abap_structdescr=>component_table.
-    DATA lr_extended TYPE REF TO data.
     DATA lt_fields TYPE z2ui5_cl_rap_util=>ty_t_field_info.
     DATA lt_columns TYPE string_table.
-    FIELD-SYMBOLS <lt_old> TYPE STANDARD TABLE.
+    DATA lv_column TYPE string.
     FIELD-SYMBOLS <lt_new> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lv_text> TYPE any.
 
@@ -3751,27 +3761,11 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    TRY.
-        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( mr_data ) ).
-        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
-        lt_comp = lo_line->get_components( ).
-        DATA(lo_string) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `STRING` ) ).
-        LOOP AT lt_columns INTO DATA(lv_column).
-          IF NOT line_exists( lt_comp[ name = lv_column ] ).
-            APPEND VALUE #( name = lv_column type = lo_string ) TO lt_comp.
-          ENDIF.
-        ENDLOOP.
-        IF lines( lt_comp ) > lines( lo_line->get_components( ) ).
-          DATA(lo_new_table) = cl_abap_tabledescr=>create( cl_abap_structdescr=>create( lt_comp ) ).
-          CREATE DATA lr_extended TYPE HANDLE lo_new_table.
-          ASSIGN mr_data->* TO <lt_old>.
-          ASSIGN lr_extended->* TO <lt_new>.
-          MOVE-CORRESPONDING <lt_old> TO <lt_new>.
-          mr_data = lr_extended.
-        ENDIF.
-      CATCH cx_root.
-        RETURN.
-    ENDTRY.
+    DATA(lo_string) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `STRING` ) ).
+    LOOP AT lt_columns INTO lv_column.
+      APPEND VALUE #( name = lv_column type = lo_string ) TO lt_comp.
+    ENDLOOP.
+    add_row_columns( lt_comp ).
 
     ASSIGN mr_data->* TO <lt_new>.
     LOOP AT lt_fields INTO ls_field.
@@ -3951,7 +3945,7 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                   )->a( n = `enabled`
                         v = lv_grid_enabled
                   )->a( n = `press`
-                        v = client->_event( val   = cs_event-action
+                        v = client->_event( val   = cs_event-inline_action
                                             t_arg = lt_grid_action_arg ) ).
     ENDLOOP.
 
@@ -4241,43 +4235,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
 
   METHOD add_row_columns.
-
-    DATA lt_comp TYPE cl_abap_structdescr=>component_table.
-    DATA lr_extended TYPE REF TO data.
-    FIELD-SYMBOLS <lt_old> TYPE STANDARD TABLE.
-    FIELD-SYMBOLS <lt_new> TYPE STANDARD TABLE.
-    FIELD-SYMBOLS <ls_old> TYPE any.
-    FIELD-SYMBOLS <ls_new> TYPE any.
-
-    IF mr_data IS NOT BOUND.
-      RETURN.
-    ENDIF.
-    TRY.
-        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( mr_data ) ).
-        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
-        lt_comp = lo_line->get_components( ).
-        DATA(lv_before) = lines( lt_comp ).
-        LOOP AT it_columns INTO DATA(ls_column).
-          IF NOT line_exists( lt_comp[ name = ls_column-name ] ).
-            APPEND ls_column TO lt_comp.
-          ENDIF.
-        ENDLOOP.
-        IF lines( lt_comp ) = lv_before.
-          RETURN.
-        ENDIF.
-        DATA(lo_new_table) = cl_abap_tabledescr=>create( cl_abap_structdescr=>create( lt_comp ) ).
-        CREATE DATA lr_extended TYPE HANDLE lo_new_table.
-        ASSIGN mr_data->* TO <lt_old>.
-        ASSIGN lr_extended->* TO <lt_new>.
-        "row by row - the transpiled runtime moves no generic tables
-        LOOP AT <lt_old> ASSIGNING <ls_old>.
-          APPEND INITIAL LINE TO <lt_new> ASSIGNING <ls_new>.
-          MOVE-CORRESPONDING <ls_old> TO <ls_new>.
-        ENDLOOP.
-        mr_data = lr_extended.
-      CATCH cx_root ##NO_HANDLER.
-    ENDTRY.
-
+    mr_data = add_table_columns( data       = mr_data
+                                 it_columns = it_columns ).
   ENDMETHOD.
 
 

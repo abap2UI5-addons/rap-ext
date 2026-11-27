@@ -650,6 +650,10 @@ CLASS ltcl_filter DEFINITION FINAL
     METHODS empty_is_nothing    FOR TESTING RAISING cx_static_check.
     METHODS search_fields       FOR TESTING RAISING cx_static_check.
     METHODS raw_is_no_text      FOR TESTING RAISING cx_static_check.
+    METHODS string_is_text      FOR TESTING RAISING cx_static_check.
+    METHODS exact_value_literal FOR TESTING RAISING cx_static_check.
+    METHODS fields_from_text    FOR TESTING RAISING cx_static_check.
+    METHODS field_group_fields  FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -767,6 +771,83 @@ CLASS ltcl_filter IMPLEMENTATION.
     cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>build_search_condition(
       it_fields = VALUE #( ( name = `UUID` type_kind = `RAW` ) ( name = `RATE` type_kind = `FLTP` ) )
       search    = `x` ) ).
+
+  ENDMETHOD.
+
+  METHOD string_is_text.
+
+    " a STRING field is text like a CHAR one - contains, not equals
+    cl_abap_unit_assert=>assert_equals( exp = `F LIKE '%abc%' ESCAPE '#'`
+                                        act = cond( type_kind = `STRING` value = `abc` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_condition( ( operator = `CONTAINS` low = `abc` ) )
+      act = z2ui5_cl_rap_util=>filter_to_conditions( is_field = VALUE #( name = `F` type_kind = `STRING` )
+                                                     value    = `abc` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD field_group_fields.
+
+    " the visible members of the group by their position in it
+    DATA(lt_fields) = z2ui5_cl_rap_util=>get_field_group_fields(
+      it_fields = VALUE #( ( name = `A` field_groups = VALUE #( ( qualifier = `G` position = 20 ) ) )
+                           ( name = `B` field_groups = VALUE #( ( qualifier = `H` position = 5 )
+                                                                ( qualifier = `G` position = 10 ) ) )
+                           ( name = `C` field_groups = VALUE #( ( qualifier = `G` position = 1 ) ) is_hidden = abap_true )
+                           ( name = `D` ) )
+      qualifier = `G` ).
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = lines( lt_fields ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `B` act = lt_fields[ 1 ]-name ).
+    cl_abap_unit_assert=>assert_equals( exp = 10  act = lt_fields[ 1 ]-field_group_pos ).
+    cl_abap_unit_assert=>assert_equals( exp = `A` act = lt_fields[ 2 ]-name ).
+
+  ENDMETHOD.
+
+
+  METHOD fields_from_text.
+
+    TYPES:
+      BEGIN OF ty_s_host,
+        id    TYPE c LENGTH 4,
+        since TYPE d,
+      END OF ty_s_host.
+    DATA ls_host TYPE ty_s_host.
+
+    " any case, a date as the JSON model writes it, an unknown name ignored
+    z2ui5_cl_rap_util=>set_fields_from_text(
+      EXPORTING values    = VALUE #( ( name = `id`    value = `A1` )
+                                     ( name = `SINCE` value = `2024-01-15` )
+                                     ( name = `OTHER` value = `x` ) )
+      CHANGING  structure = ls_host ).
+    cl_abap_unit_assert=>assert_equals( exp = 'A1'       act = ls_host-id ).
+    cl_abap_unit_assert=>assert_equals( exp = '20240115' act = ls_host-since ).
+
+  ENDMETHOD.
+
+
+  METHOD exact_value_literal.
+
+    " =a..b is the value a..b, not a range
+    cl_abap_unit_assert=>assert_equals( exp = `F = 'a..b'`
+                                        act = cond( type_kind = cs_type-char value = `=a..b` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `NOT ( F = 'a..b' )`
+                                        act = cond( type_kind = cs_type-char value = `!=a..b` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_condition( ( operator = `EQ` low = `a..b` ) )
+      act = z2ui5_cl_rap_util=>filter_to_conditions( is_field = VALUE #( name = `F` type_kind = `CHAR` )
+                                                     value    = `=a..b` ) ).
+    " exact: the whole value, a ; and an operator in it included
+    cl_abap_unit_assert=>assert_equals(
+      exp = `F = 'x;>y..z'`
+      act = z2ui5_cl_rap_util=>build_filter_condition( is_field = VALUE #( name = `F` type_kind = `CHAR` )
+                                                       value    = `x;>y..z`
+                                                       exact    = abap_true ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `F IS INITIAL`
+      act = z2ui5_cl_rap_util=>build_filter_condition( is_field = VALUE #( name = `F` type_kind = `CHAR` )
+                                                       value    = ``
+                                                       exact    = abap_true ) ).
 
   ENDMETHOD.
 
@@ -1510,9 +1591,11 @@ CLASS ltcl_reading IMPLEMENTATION.
       ( name = `ID`   type_kind = `CHAR` )
       ( name = `NOTE` type_kind = `STRING` )
       ( name = `CALC` type_kind = `CHAR` is_virtual = abap_true )
-      ( name = `HIDE` type_kind = `CHAR` is_hidden = abap_true ) ).
+      ( name = `HIDE` type_kind = `CHAR` is_hidden = abap_true )
+      ( name = `TEXT` type_kind = `STRING` is_lob_string = abap_true ) ).
 
-    " no search element - every visible text and string field, no virtual one
+    " no search element - every visible text and string field, no virtual
+    " one and no LOB string (STRG: no UPPER, no LIKE in ABAP SQL)
     cl_abap_unit_assert=>assert_equals(
       exp = `( UPPER( ID ) LIKE '%X%' ESCAPE '#' OR UPPER( NOTE ) LIKE '%X%' ESCAPE '#' )`
       act = z2ui5_cl_rap_util=>build_search_condition( it_fields = lt_fields search = `x` ) ).

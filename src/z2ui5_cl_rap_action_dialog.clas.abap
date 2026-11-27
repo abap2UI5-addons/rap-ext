@@ -40,7 +40,10 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
 
     DATA ms_cds TYPE REF TO data.
 
-    "! the rows the last value help returned (a table of its entity)
+    "! the rows the last value help returned (a table of its entity).
+    "! Deprecated (2026-11): the dialog itself does not read it (the value
+    "! help's result is applied by apply_value_help); kept for callers,
+    "! removed in a later release
     DATA mt_vh_data TYPE REF TO data.
 
     METHODS result
@@ -54,6 +57,8 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
   PROTECTED SECTION.
     DATA mv_title     TYPE string.
     DATA ms_entity    TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
+    "! Deprecated (2026-11): written, never read - kept for subclasses,
+    "! removed in a later release
     DATA mv_vh_field  TYPE string.
     DATA mv_confirmed TYPE abap_bool.
 
@@ -100,6 +105,8 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
         is_field     TYPE z2ui5_cl_rap_util=>ty_s_field_info
         client       TYPE REF TO z2ui5_if_client.
 
+    "! Deprecated (2026-11): nothing calls it - select_rows( ) reads the
+    "! same; kept for subclasses, removed in a later release
     METHODS load_dropdown_data
       IMPORTING
         entity_name   TYPE string
@@ -373,16 +380,8 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
                     ns = `core`
           )->a( n = `text`
                 t = COND #( WHEN ls_group-group_label IS NOT INITIAL THEN ls_group-group_label ELSE ls_group-qualifier ) ).
-      DATA lt_in_group TYPE z2ui5_cl_rap_util=>ty_t_field_info.
-      CLEAR lt_in_group.
-      LOOP AT ms_entity-fields INTO ls_field WHERE is_hidden = abap_false.
-        READ TABLE ls_field-field_groups INTO DATA(ls_membership) WITH KEY qualifier = ls_group-qualifier.
-        IF sy-subrc = 0.
-          ls_field-field_group_pos = ls_membership-position.
-          APPEND ls_field TO lt_in_group.
-        ENDIF.
-      ENDLOOP.
-      SORT lt_in_group BY field_group_pos.
+      DATA(lt_in_group) = z2ui5_cl_rap_util=>get_field_group_fields( it_fields  = ms_entity-fields
+                                                                     qualifier = ls_group-qualifier ).
       LOOP AT lt_in_group INTO ls_field.
         render_dialog_field( io_form  = lo_form
                              is_field = ls_field
@@ -468,14 +467,17 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
 
   METHOD handle_value_help_confirm.
 
-    DATA(lo_vh) = get_value_help_result( client ).
+    DATA lo_vh TYPE REF TO z2ui5_cl_rap_value_help.
+
+    "one read of the value help's result - a second showed its load
+    "error twice
+    apply_value_help( EXPORTING client     = client
+                                it_fields  = ms_entity-fields
+                      IMPORTING value_help = lo_vh
+                      CHANGING  target     = ms_cds->* ).
     IF lo_vh IS BOUND.
       mt_vh_data = lo_vh->result_table( ).
     ENDIF.
-
-    apply_value_help( EXPORTING client    = client
-                                it_fields = ms_entity-fields
-                      CHANGING  target    = ms_cds->* ).
     CLEAR mv_vh_field.
 
     render_action_dialog( client ).
