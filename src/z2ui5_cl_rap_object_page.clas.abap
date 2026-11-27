@@ -245,6 +245,10 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
     "! parameter dialog - empty for an action of this record (added
     "! 2026-10, third round)
     DATA mv_pending_child TYPE string.
+    "! reload_data found no record (and no draft) by the keys, or the read
+    "! failed (mv_read_error) - added 2026-11; a redefined reload_data
+    "! that does not call it leaves it false
+    DATA mv_not_found TYPE abap_bool.
     "! the last action created a record and its object page was called -
     "! nothing else is rendered in this roundtrip
     DATA mv_opened_created TYPE abap_bool.
@@ -435,8 +439,15 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         VALUE(result) TYPE abap_bool.
 
     "! read the record again by its keys - after a save, and when the page
-    "! was opened with keys instead of a record
+    "! was opened with keys instead of a record; mv_not_found says whether
+    "! it was not found
     METHODS reload_data.
+
+    "! no record to show: why (the read's error, else "no record found"),
+    "! and leave (added 2026-11)
+    METHODS show_not_found
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
 
     "! the CDS entity an association leads to - the extension answers it;
     "! redefine it to answer it in a subclass
@@ -820,7 +831,12 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ms_data->* = val.
     ELSEIF cds_view_name IS NOT INITIAL.
       mv_entity_name = to_upper( cds_view_name ).
-      CREATE DATA ms_data TYPE (mv_entity_name).
+      "no type of that name: ms_data stays unbound - main shows the error
+      TRY.
+          CREATE DATA ms_data TYPE (mv_entity_name).
+        CATCH cx_sy_create_data_error.
+          CLEAR ms_data.
+      ENDTRY.
     ENDIF.
     IF cds_view_name IS NOT INITIAL.
       mv_entity_name = to_upper( cds_view_name ).
@@ -869,6 +885,12 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       IF mt_keys IS NOT INITIAL
         OR ( mv_is_create = abap_false AND line_exists( ms_entity-fields[ is_large_object = abap_true ] ) ).
         reload_data( ).
+        "opened by keys no record has (any more), or the read failed:
+        "nothing to show - a record handed over stays as it was
+        IF mt_keys IS NOT INITIAL AND mv_not_found = abap_true.
+          show_not_found( client ).
+          RETURN.
+        ENDIF.
       ENDIF.
 
       "a draft of the record: the user's own opens to be edited further,
@@ -1080,8 +1102,13 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
           RETURN.
         ENDIF.
         mv_draft = abap_false.
-        "the active record as it is - the draft had the changes
+        "the active record as it is - the draft had the changes; a draft
+        "that was never activated is gone with it
         reload_data( ).
+        IF mv_not_found = abap_true.
+          client->nav_app_leave( ).
+          RETURN.
+        ENDIF.
         ms_data_backup->* = ms_data->*.
       ELSE.
         ms_data->* = ms_data_backup->*.
@@ -1437,6 +1464,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     "the keys: those the page was opened with (or RAP assigned), else the
     "record's own - read each time, not kept, so an edited record is not
     "looked up by keys it no longer has
+    CLEAR: mv_read_error, mv_not_found.
     DATA(lt_keys) = mt_keys.
     IF lt_keys IS INITIAL.
       LOOP AT ms_entity-keys INTO DATA(lv_key).
@@ -1455,6 +1483,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     LOOP AT lt_keys INTO DATA(ls_key).
       DATA(lv_name) = to_upper( ls_key-name ).
       IF NOT line_exists( ms_entity-fields[ name = lv_name ] ).
+        mv_not_found = abap_true.
         RETURN.
       ENDIF.
       APPEND lv_name TO lt_names.
@@ -1466,6 +1495,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                  host        = create_host( entity_name = mv_entity_name
                                                             values      = lt_keys ) ).
     IF lr_rows IS NOT BOUND.
+      mv_not_found = abap_true.
       RETURN.
     ENDIF.
     FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
@@ -1480,18 +1510,32 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     "what a factory action of a draft business object creates (since
     "2026-10, third round). It opens to be edited
     IF is_draft_enabled( get_bdef( ) ) = abap_false.
+      mv_not_found = abap_true.
       RETURN.
     ENDIF.
     DATA(lr_host) = create_host( entity_name = mv_entity_name
                                  values      = lt_keys ).
     IF lr_host IS NOT BOUND.
+      mv_not_found = abap_true.
       RETURN.
     ENDIF.
     ASSIGN lr_host->* TO FIELD-SYMBOL(<ls_host_row>).
     MOVE-CORRESPONDING <ls_host_row> TO ms_data->*.
     IF resume_draft( ) = abap_false.
       CLEAR ms_data->*.
+      mv_not_found = abap_true.
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD show_not_found.
+
+    client->message_box_display( text = COND #( WHEN mv_read_error IS INITIAL
+                                                THEN get_text( cs_text-not_found )
+                                                ELSE get_load_error( mv_entity_name ) )
+                                 type = `error` ).
+    client->nav_app_leave( ).
 
   ENDMETHOD.
 
