@@ -1395,9 +1395,14 @@ CLASS ltcl_export IMPLEMENTATION.
                                         exp = `%2FDMO%2FC_TRAVEL%20a%26b%3D%C3%A4` ).
     cl_abap_unit_assert=>assert_equals( act = z2ui5_cl_rap_util=>url_decode( `%2FDMO%2FC_TRAVEL+a%26b%3D%C3%A4` )
                                         exp = `/DMO/C_TRAVEL a&b=ä` ).
-    "a lone % is text
+    "a lone % is text, and so is one without two hex digits
     cl_abap_unit_assert=>assert_equals( act = z2ui5_cl_rap_util=>url_decode( `50%` )
                                         exp = `50%` ).
+    cl_abap_unit_assert=>assert_equals( act = z2ui5_cl_rap_util=>url_decode( `a%ZZb%4` )
+                                        exp = `a%ZZb%4` ).
+    cl_abap_unit_assert=>assert_equals( act = z2ui5_cl_rap_util=>url_encode( `a b~c-d_e.f` )
+                                        exp = `a%20b~c-d_e.f` ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>url_encode( `` ) ).
   ENDMETHOD.
 
 
@@ -2127,6 +2132,14 @@ CLASS ltcl_messages_files IMPLEMENTATION.
     cl_abap_unit_assert=>assert_initial( ls_file-mime_type ).
 
     cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>parse_data_uri( `SGVsbG8=` ) ).
+
+    "not Base64: percent-encoded bytes as they are, also the ones that are
+    "no UTF-8
+    ls_file = z2ui5_cl_rap_util=>parse_data_uri( `data:text/plain,a%FF+b%20c` ).
+    cl_abap_unit_assert=>assert_equals( exp = CONV xstring( `61FF20622063` )
+                                        act = ls_file-content ).
+    cl_abap_unit_assert=>assert_equals( exp = `text/plain`
+                                        act = ls_file-mime_type ).
     cl_abap_unit_assert=>assert_equals(
       exp = `data:text/plain;base64,SGVsbG8=`
       act = z2ui5_cl_rap_util=>to_data_uri( content   = CONV xstring( `48656C6C6F` )
