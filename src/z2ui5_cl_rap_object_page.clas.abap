@@ -2348,6 +2348,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     DATA lt_arg TYPE string_table.
     DATA ls_crit TYPE z2ui5_cl_rap_util=>ty_s_action.
+    DATA lv_crit_type TYPE string.
 
     LOOP AT get_action_entries( it_actions = it_actions
                                 it_groups  = it_groups ) INTO DATA(ls_entry).
@@ -2376,27 +2377,21 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       "the criticality as the button's type - written as a literal of
       "sap.m.ButtonType, so the view gate can check it
       ls_crit = ls_entry-action.
-      DATA(lv_button_type) = `Default`.
       IF row IS SUPPLIED.
-        CASE get_action_button_type( is_action = ls_crit
-                                     row       = row ).
-          WHEN `Accept`.
-            lv_button_type = `Accept`.
-          WHEN `Reject`.
-            lv_button_type = `Reject`.
-          WHEN `Emphasized`.
-            lv_button_type = `Emphasized`.
-        ENDCASE.
+        lv_crit_type = get_action_button_type( is_action = ls_crit
+                                               row       = row ).
       ELSE.
-        CASE get_action_button_type( ls_crit ).
-          WHEN `Accept`.
-            lv_button_type = `Accept`.
-          WHEN `Reject`.
-            lv_button_type = `Reject`.
-          WHEN `Emphasized`.
-            lv_button_type = `Emphasized`.
-        ENDCASE.
+        lv_crit_type = get_action_button_type( ls_crit ).
       ENDIF.
+      DATA(lv_button_type) = `Default`.
+      CASE lv_crit_type.
+        WHEN `Accept`.
+          lv_button_type = `Accept`.
+        WHEN `Reject`.
+          lv_button_type = `Reject`.
+        WHEN `Emphasized`.
+          lv_button_type = `Emphasized`.
+      ENDCASE.
       lt_arg = args_before.
       APPEND ls_entry-action-name TO lt_arg.
       io_container->tag( `Button`
