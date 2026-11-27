@@ -143,10 +143,30 @@ CLASS z2ui5_cl_rap_tree DEFINITION
 
     "! delete the node key by its delete mode: the descendants first
     "! (SUBTREE), the children moved to its parent (MOVE_UP), or nothing
-    "! when it has children (LEAF) - stops at the first write that fails
+    "! when it has children (LEAF) - stops at the first write that fails.
+    "! The children are read from the entity (read_child_nodes), not taken
+    "! from the loaded rows, which a filter or max_rows may have cut
     METHODS delete_node
       IMPORTING
         key           TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_s_result.
+
+    "! the rows of the entity whose parent field is key - all of them,
+    "! whatever the filters and max_rows let the list load (added 2026-11)
+    METHODS read_child_nodes
+      IMPORTING
+        key           TYPE string
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
+    "! delete the descendants of the node key, the deepest first - visited
+    "! holds the nodes seen, so a cycle ends (added 2026-11)
+    METHODS delete_descendants
+      IMPORTING
+        key           TYPE string
+      CHANGING
+        visited       TYPE string_table
       RETURNING
         VALUE(result) TYPE ty_s_result.
 
@@ -665,10 +685,13 @@ CLASS z2ui5_cl_rap_tree IMPLEMENTATION.
   METHOD delete_node.
 
     FIELD-SYMBOLS <ls_node> TYPE any.
+    FIELD-SYMBOLS <lt_children> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <ls_child> TYPE any.
     FIELD-SYMBOLS <lv_parent> TYPE any.
     FIELD-SYMBOLS <lv_new_parent> TYPE any.
     DATA lr_original TYPE REF TO data.
+    DATA lr_children TYPE REF TO data.
+    DATA lt_visited TYPE string_table.
 
     IF ms_caps-can_delete = abap_false.
       result-messages = VALUE #( ( get_text( cs_text-read_only ) ) ).
@@ -679,15 +702,22 @@ CLASS z2ui5_cl_rap_tree IMPLEMENTATION.
       RETURN.
     ENDIF.
     ASSIGN lr_node->* TO <ls_node>.
-    DATA(lt_children) = z2ui5_cl_rap_util=>get_tree_children( it_tree = mt_tree
-                                                              key     = key ).
 
     CASE get_delete_mode( key ).
       WHEN z2ui5_cl_rap_util=>cs_tree_delete-leaf.
-        IF lt_children IS NOT INITIAL.
-          result-messages = VALUE #( ( get_text( cs_text-has_children ) ) ).
+        lr_children = read_child_nodes( key ).
+        IF lr_children IS NOT BOUND.
+          result-messages = VALUE #( ( get_load_error( mv_cds_view ) ) ).
           RETURN.
         ENDIF.
+        ASSIGN lr_children->* TO <lt_children>.
+        "a root that is its own parent is no child of itself
+        LOOP AT <lt_children> ASSIGNING <ls_child>.
+          IF get_node_key( <ls_child> ) <> key.
+            result-messages = VALUE #( ( get_text( cs_text-has_children ) ) ).
+            RETURN.
+          ENDIF.
+        ENDLOOP.
 
       WHEN z2ui5_cl_rap_util=>cs_tree_delete-move_up.
         "the children get the node's parent
@@ -695,12 +725,16 @@ CLASS z2ui5_cl_rap_tree IMPLEMENTATION.
         IF sy-subrc <> 0.
           RETURN.
         ENDIF.
-        LOOP AT lt_children INTO DATA(lv_child).
-          DATA(lr_child) = get_node_row( lv_child ).
-          IF lr_child IS NOT BOUND.
+        lr_children = read_child_nodes( key ).
+        IF lr_children IS NOT BOUND.
+          result-messages = VALUE #( ( get_load_error( mv_cds_view ) ) ).
+          RETURN.
+        ENDIF.
+        ASSIGN lr_children->* TO <lt_children>.
+        LOOP AT <lt_children> ASSIGNING <ls_child>.
+          IF get_node_key( <ls_child> ) = key.
             CONTINUE.
           ENDIF.
-          ASSIGN lr_child->* TO <ls_child>.
           CREATE DATA lr_original LIKE <ls_child>.
           ASSIGN lr_original->* TO FIELD-SYMBOL(<ls_original>).
           <ls_original> = <ls_child>.
@@ -720,25 +754,72 @@ CLASS z2ui5_cl_rap_tree IMPLEMENTATION.
 
       WHEN OTHERS.
         "the subtree, the deepest nodes first
-        LOOP AT z2ui5_cl_rap_util=>get_tree_descendants( it_tree = mt_tree
-                                                         key     = key ) INTO DATA(lv_descendant).
-          DATA(lr_descendant) = get_node_row( lv_descendant ).
-          IF lr_descendant IS NOT BOUND.
-            CONTINUE.
-          ENDIF.
-          ASSIGN lr_descendant->* TO <ls_child>.
-          result = write_row( entity_name = mv_cds_view
-                              operation   = `DELETE`
-                              row         = <ls_child> ).
-          IF result-success = abap_false.
-            RETURN.
-          ENDIF.
-        ENDLOOP.
+        APPEND key TO lt_visited.
+        result = delete_descendants( EXPORTING key     = key
+                                     CHANGING  visited = lt_visited ).
+        IF result-success = abap_false.
+          RETURN.
+        ENDIF.
     ENDCASE.
 
     result = write_row( entity_name = mv_cds_view
                         operation   = `DELETE`
                         row         = <ls_node> ).
+
+  ENDMETHOD.
+
+
+  METHOD read_child_nodes.
+
+    "every child - a bound a query provider's paging understands too
+    CONSTANTS lc_max_children TYPE i VALUE 1000000.
+
+    IF ms_hierarchy-parent_field IS INITIAL.
+      RETURN.
+    ENDIF.
+    "compared with a typed host variable, as a key is - the parent field
+    "has the node field's type, a RAW one included
+    result = select_rows( entity_name = mv_cds_view
+                          where       = build_key_condition( VALUE #( ( ms_hierarchy-parent_field ) ) )
+                          max_rows    = lc_max_children
+                          host        = create_host( entity_name = mv_cds_view
+                                                     values      = VALUE #( ( name  = ms_hierarchy-parent_field
+                                                                              value = key ) ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD delete_descendants.
+
+    FIELD-SYMBOLS <lt_children> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <ls_child> TYPE any.
+
+    "nothing to delete is a success
+    result-success = abap_true.
+    DATA(lr_children) = read_child_nodes( key ).
+    IF lr_children IS NOT BOUND.
+      result = VALUE #( messages = VALUE #( ( get_load_error( mv_cds_view ) ) ) ).
+      RETURN.
+    ENDIF.
+    ASSIGN lr_children->* TO <lt_children>.
+    LOOP AT <lt_children> ASSIGNING <ls_child>.
+      DATA(lv_child) = get_node_key( <ls_child> ).
+      IF lv_child IS INITIAL OR line_exists( visited[ table_line = lv_child ] ).
+        CONTINUE.
+      ENDIF.
+      APPEND lv_child TO visited.
+      result = delete_descendants( EXPORTING key     = lv_child
+                                   CHANGING  visited = visited ).
+      IF result-success = abap_false.
+        RETURN.
+      ENDIF.
+      result = write_row( entity_name = mv_cds_view
+                          operation   = `DELETE`
+                          row         = <ls_child> ).
+      IF result-success = abap_false.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
 
   ENDMETHOD.
 
