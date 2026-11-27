@@ -250,6 +250,25 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
     DATA ms_caps TYPE ty_s_capabilities.
     DATA mt_child TYPE ty_t_child.
     DATA mt_keys TYPE ty_t_name_value.
+
+    " the metadata of a child entity, as the extension adjusted it - read
+    " once per page, not on every reload of the children (added 2026-11)
+    TYPES:
+      BEGIN OF ty_s_entity_cache,
+        name   TYPE string,
+        entity TYPE z2ui5_cl_rap_util=>ty_s_entity_info,
+      END OF ty_s_entity_cache.
+    TYPES ty_t_entity_cache TYPE STANDARD TABLE OF ty_s_entity_cache WITH EMPTY KEY.
+    DATA mt_entity_cache TYPE ty_t_entity_cache.
+
+    "! the metadata of a child entity (read_entity, adjust_entity) - kept
+    "! in mt_entity_cache, so the children's sections and MultiInputs are
+    "! read again without their metadata (added 2026-11)
+    METHODS get_child_entity
+      IMPORTING
+        entity_name   TYPE string
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
     "! an action waiting for its parameter dialog to return
     DATA mv_pending_action TYPE string.
     "! the record's place in a RAP business object (see the constructor)
@@ -1696,6 +1715,20 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD get_child_entity.
+
+    READ TABLE mt_entity_cache INTO DATA(ls_cached) WITH KEY name = entity_name.
+    IF sy-subrc = 0.
+      result = ls_cached-entity.
+      RETURN.
+    ENDIF.
+    result = z2ui5_cl_rap_util=>read_entity( entity_name ).
+    adjust_entity( CHANGING cs_entity = result ).
+    APPEND VALUE #( name = entity_name entity = result ) TO mt_entity_cache.
+
+  ENDMETHOD.
+
+
   METHOD load_child_rows.
 
     DATA lt_comp TYPE cl_abap_structdescr=>component_table.
@@ -1720,8 +1753,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         section_id  = ls_section-id
         component   = |SECTION_{ lines( mt_child ) + 1 }|
         association = to_upper( ls_section-association )
-        entity      = z2ui5_cl_rap_util=>read_entity( lv_target ) ).
-      adjust_entity( CHANGING cs_entity = ls_child-entity ).
+        entity      = get_child_entity( lv_target ) ).
 
       "the child rows of this record - compared with typed host variables
       get_child_filter( EXPORTING is_child  = ls_child
@@ -1787,8 +1819,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         section_id = cs_section_id-change_docs
         component  = |SECTION_{ lines( mt_child ) + 1 }|
         read_only  = abap_true
-        entity     = z2ui5_cl_rap_util=>read_entity( lv_docs_entity ) ).
-      adjust_entity( CHANGING cs_entity = ls_docs-entity ).
+        entity     = get_child_entity( to_upper( lv_docs_entity ) ) ).
       DATA lt_docs_values TYPE ty_t_name_value.
       DATA lt_docs_names TYPE string_table.
       FIELD-SYMBOLS <lv_docs_value> TYPE any.
@@ -1830,8 +1861,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       DATA(ls_path) = VALUE ty_s_path_child(
         component = |PATH_{ lines( mt_path ) + 1 }|
         field     = ls_path_field
-        entity    = z2ui5_cl_rap_util=>read_entity( lv_path_target ) ).
-      adjust_entity( CHANGING cs_entity = ls_path-entity ).
+        entity    = get_child_entity( lv_path_target ) ).
       IF NOT line_exists( ls_path-entity-fields[ name = ls_path_field-element ] ).
         CONTINUE.
       ENDIF.
