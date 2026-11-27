@@ -66,7 +66,10 @@ const fail = (msg) => {
 const git = (argv, cwd) => execFileSync("git", argv, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
 const keyOf = (url) => (url ?? "").toLowerCase().replace(/^.*github\.com[/:]/, "").replace(/\.git$/, "").replace(/\/$/, "");
 
-// JSON with comments and trailing commas, as the abaplint configs are written
+// JSON with comments and trailing commas, as the abaplint configs are
+// written. An unclosed block comment is an error: the loop used to restart at
+// 0 on it (indexOf -1, plus 1) and never came back - the reader of abap2UI5's
+// shared rename.mjs had the same bug and the same fix
 function readJsonc(file) {
   const text = readFileSync(file, "utf8");
   let out = "";
@@ -81,7 +84,9 @@ function readJsonc(file) {
       while (i < text.length && text[i] !== "\n") i++;
       out += "\n";
     } else if (c === "/" && text[i + 1] === "*") {
-      i = text.indexOf("*/", i + 2) + 1;
+      const end = text.indexOf("*/", i + 2);
+      if (end === -1) fail(`${relative(ROOT, file)}: a /* comment is never closed`);
+      i = end + 1;
     } else {
       out += c;
     }

@@ -46,8 +46,11 @@ jobs:
     - name: Derive branch name
       run: |
         ns=$(printf '%s' "$NAMESPACE" | tr '[:upper:]' '[:lower:]')
-        if ! printf '%s' "$ns" | grep -Eq '^([a-z][a-z0-9_]{0,9}|/[a-z0-9][a-z0-9_]{0,7}/)$'; then
-          echo "::error::Invalid name '$NAMESPACE' (a customer name: letter + letters/digits/underscore, max. 10 characters, e.g. ZMYUI5 - or a namespace with both slashes, max. 10 characters, e.g. /CA2UI5/)"
+        # a customer name does not end in "_": the "_" is added, and
+        # tools/bsp_rename reads a "__" prefix as the name WITH its separator
+        # (the rule of abap2UI5's build-rename and of abap2UI5/distributions)
+        if ! printf '%s' "$ns" | grep -Eq '^([a-z]([a-z0-9_]{0,8}[a-z0-9])?|/[a-z0-9][a-z0-9_]{0,7}/)$'; then
+          echo "::error::Invalid name '$NAMESPACE' (a customer name: letter + letters/digits/underscore, not ending in '_', max. 10 characters, e.g. ZMYUI5 - or a namespace with both slashes, max. 10 characters, e.g. /CA2UI5/)"
           exit 1
         fi
         echo "BRANCH=rename_$(printf '%s' "$ns" | tr -d '/')" >> "$GITHUB_ENV"
