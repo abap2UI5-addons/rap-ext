@@ -42,6 +42,7 @@ const UNITS = [
   'z2ui5_if_rap_ext',
   'z2ui5_cl_rap_floorplan',
   'z2ui5_cl_rap_list_report',
+  'z2ui5_cl_rap_worklist',
   'z2ui5_cl_rap_tree',
   'z2ui5_cl_rap_fcl',
   'z2ui5_cl_rap_fcl_client',

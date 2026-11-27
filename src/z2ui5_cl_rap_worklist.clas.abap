@@ -62,6 +62,7 @@ CLASS z2ui5_cl_rap_worklist DEFINITION
     METHODS render_filter_bar REDEFINITION.
     METHODS render_toolbar REDEFINITION.
     METHODS get_selection_fields REDEFINITION.
+    METHODS apply_variant REDEFINITION.
 
     "! the values of segment_field with their counts
     METHODS load_segments
@@ -96,6 +97,21 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     ENDIF.
 
     super->z2ui5_if_app~main( client ).
+
+  ENDMETHOD.
+
+
+  METHOD apply_variant.
+
+    "the views are those of the entity, the list report's included - their
+    "filters would restrict the items here without a filter bar to show
+    "them: the worklist keeps its own filters (added 2026-11)
+    DATA(ls_data) = is_data.
+    CLEAR: ls_data-filters, ls_data-filter_fields.
+    LOOP AT mt_filter INTO DATA(ls_filter).
+      APPEND VALUE #( name = ls_filter-name value = ls_filter-value ) TO ls_data-filters.
+    ENDLOOP.
+    super->apply_variant( ls_data ).
 
   ENDMETHOD.
 

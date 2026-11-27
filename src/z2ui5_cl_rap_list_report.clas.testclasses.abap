@@ -28,6 +28,7 @@ CLASS ltcl_list_report DEFINITION FINAL
     METHODS filter_tokens              FOR TESTING RAISING cx_static_check.
     METHODS variant_layout_round_trip  FOR TESTING RAISING cx_static_check.
     METHODS variant_filter_fields      FOR TESTING RAISING cx_static_check.
+    METHODS worklist_keeps_filters     FOR TESTING RAISING cx_static_check.
     METHODS column_order               FOR TESTING RAISING cx_static_check.
     METHODS order_by_group_first       FOR TESTING RAISING cx_static_check.
     METHODS presentation_variants      FOR TESTING RAISING cx_static_check.
@@ -324,6 +325,27 @@ CLASS ltcl_list_report IMPLEMENTATION.
     cl_abap_unit_assert=>assert_true( mo_cut->mt_filter[ name = `TRAVELID` ]-is_added ).
     cl_abap_unit_assert=>assert_true( xsdbool( line_exists( mo_cut->mt_filter[ name = `STATUS` ] ) ) ).
     cl_abap_unit_assert=>assert_false( xsdbool( line_exists( mo_cut->mt_filter[ name = `AGENCY` ] ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD worklist_keeps_filters.
+
+    "a worklist has no filter bar: a view (the list report's of the same
+    "entity) changes its columns, never its filters
+    DATA(lo_worklist) = CAST z2ui5_cl_rap_list_report( NEW z2ui5_cl_rap_worklist( cds_view_name = `Z_TRAVEL` ) ).
+    lo_worklist->ms_entity = mo_cut->ms_entity.
+    lo_worklist->mt_filter = VALUE #( ( name = `STATUS` value = `=O` ) ).
+    lo_worklist->apply_variant( VALUE #( filter_fields  = VALUE #( ( `TRAVELID` ) )
+                                         filters        = VALUE #( ( name = `TRAVELID` value = `=42` )
+                                                                   ( name = `STATUS`   value = `=X` ) )
+                                         hidden_columns = VALUE #( ( `NOTES` ) ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 1
+                                        act = lines( lo_worklist->mt_filter ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `=O`
+                                        act = lo_worklist->mt_filter[ name = `STATUS` ]-value ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `NOTES` ) )
+                                        act = lo_worklist->mt_hidden_column ).
 
   ENDMETHOD.
 
