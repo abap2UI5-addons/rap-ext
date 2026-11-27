@@ -2276,6 +2276,22 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! text for a LIKE pattern with ESCAPE '#': its #, % and _ escaped,
+    "! its quotes doubled - * is left for the caller
+    CLASS-METHODS escape_like
+      IMPORTING
+        val           TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
+    "! an entity annotation that says @ObjectModel.resultSet.sizeCategory: #XS
+    CLASS-METHODS is_size_xs_annotation
+      IMPORTING
+        key           TYPE string
+        value         TYPE string
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
     "! a CHAR or STRING field: no operator means "contains" in a filter
     CLASS-METHODS is_text_field
       IMPORTING
@@ -2508,7 +2524,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
       APPEND VALUE ty_s_annotation( key = lv_key value = lv_val ) TO cs_entity-entity_annotations.
 
-      IF lv_key CS `OBJECTMODEL.RESULTSET.SIZECATEGORY` AND lv_val CS `XS`.
+      IF is_size_xs_annotation( key = lv_key value = lv_val ) = abap_true.
         cs_entity-is_dropdown = abap_true.
       ENDIF.
       IF lv_key = `SEARCH.SEARCHABLE` AND is_true( lv_val ).
@@ -3825,7 +3841,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
     DATA(ls_raw) = read_raw_annotations( entity_name ).
     LOOP AT ls_raw-entity INTO DATA(ls_anno).
-      IF to_upper( ls_anno-key ) CS `OBJECTMODEL.RESULTSET.SIZECATEGORY` AND ls_anno-value CS `XS`.
+      IF is_size_xs_annotation( key = ls_anno-key value = ls_anno-value ) = abap_true.
         result = abap_true.
         RETURN.
       ENDIF.
@@ -3849,6 +3865,19 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     result = replace( val = result sub = `'` with = `''` occ = 0 ).
     result = |'{ result }'|.
 
+  ENDMETHOD.
+
+
+  METHOD escape_like.
+    result = replace( val = val sub = `#` with = `##` occ = 0 ).
+    result = replace( val = result sub = `%` with = `#%` occ = 0 ).
+    result = replace( val = result sub = `_` with = `#_` occ = 0 ).
+    result = replace( val = result sub = `'` with = `''` occ = 0 ).
+  ENDMETHOD.
+
+
+  METHOD is_size_xs_annotation.
+    result = xsdbool( to_upper( key ) CS `OBJECTMODEL.RESULTSET.SIZECATEGORY` AND value CS `XS` ).
   ENDMETHOD.
 
 
@@ -3906,11 +3935,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         lv_cond = |{ lv_name } { lv_part(1) } { literal( is_field = is_field value = substring( val = lv_part off = 1 ) ) }|.
       ELSEIF lv_text_field = abap_true.
         "LIKE: the user's * is the wildcard, their own % and _ are escaped
-        DATA(lv_like) = lv_part.
-        lv_like = replace( val = lv_like sub = `#` with = `##` occ = 0 ).
-        lv_like = replace( val = lv_like sub = `%` with = `#%` occ = 0 ).
-        lv_like = replace( val = lv_like sub = `_` with = `#_` occ = 0 ).
-        lv_like = replace( val = lv_like sub = `'` with = `''` occ = 0 ).
+        DATA(lv_like) = escape_like( lv_part ).
         IF lv_like CS `*`.
           lv_like = replace( val = lv_like sub = `*` with = `%` occ = 0 ).
         ELSE.
@@ -3955,11 +3980,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     IF lv_search IS INITIAL.
       RETURN.
     ENDIF.
-    lv_search = replace( val = lv_search sub = `#` with = `##` occ = 0 ).
-    lv_search = replace( val = lv_search sub = `%` with = `#%` occ = 0 ).
-    lv_search = replace( val = lv_search sub = `_` with = `#_` occ = 0 ).
-    lv_search = replace( val = lv_search sub = `'` with = `''` occ = 0 ).
-    lv_search = replace( val = lv_search sub = `*` with = `%` occ = 0 ).
+    lv_search = replace( val = escape_like( lv_search ) sub = `*` with = `%` occ = 0 ).
 
     "a text or string field - a virtual element is no column. A
     "@Search.defaultSearchElement is searched also when it is @UI.hidden
