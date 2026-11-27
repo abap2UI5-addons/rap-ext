@@ -2654,18 +2654,23 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    "field groups not covered by facets, in order of appearance
-    LOOP AT ms_entity-fields INTO ls_field WHERE is_hidden = abap_false.
-      LOOP AT ls_field-field_groups INTO DATA(ls_group).
-        IF NOT line_exists( result[ field_group = ls_group-qualifier ] ).
-          APPEND VALUE ty_s_section(
-            id          = ls_group-qualifier
-            title       = COND #( WHEN ls_group-group_label IS NOT INITIAL THEN ls_group-group_label ELSE ls_group-qualifier )
-            field_group = ls_group-qualifier
-            type        = `FIELDGROUP` ) TO result.
-        ENDIF.
+    "without @UI.facet: every field group a section, in order of
+    "appearance. With facets only what they name - a field group of the
+    "header, of a line item column or of a quick view is no section of
+    "its own (since 2026-11)
+    IF ms_entity-facets IS INITIAL.
+      LOOP AT ms_entity-fields INTO ls_field WHERE is_hidden = abap_false.
+        LOOP AT ls_field-field_groups INTO DATA(ls_group).
+          IF NOT line_exists( result[ field_group = ls_group-qualifier ] ).
+            APPEND VALUE ty_s_section(
+              id          = ls_group-qualifier
+              title       = COND #( WHEN ls_group-group_label IS NOT INITIAL THEN ls_group-group_label ELSE ls_group-qualifier )
+              field_group = ls_group-qualifier
+              type        = `FIELDGROUP` ) TO result.
+          ENDIF.
+        ENDLOOP.
       ENDLOOP.
-    ENDLOOP.
+    ENDIF.
 
     "no field groups at all -> single section with all visible fields
     IF NOT line_exists( result[ type = `FIELDGROUP` ] ) AND NOT line_exists( result[ type = `IDENTIFICATION` ] ).
