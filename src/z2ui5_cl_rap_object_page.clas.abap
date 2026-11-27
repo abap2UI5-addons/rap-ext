@@ -62,6 +62,9 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         child_action   TYPE string VALUE `CHILD_ACTION`,
         "the answer to "keep or discard your draft?" when leaving the page
         leave_decision TYPE string VALUE `LEAVE_DECISION`,
+        "the message box saying the record is gone was closed: leave then,
+        "so the user sees the message before the page goes
+        not_found_ok   TYPE string VALUE `NOT_FOUND_OK`,
         "added 2026-10, third round (object page): the MultiInput of a 1:n
         "child - a token typed (arg the component), deleted (the component,
         "the token's key), its value help (the component); a row of a child
@@ -989,6 +992,11 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    IF client->check_on_event( cs_event-not_found_ok ).
+      client->nav_app_leave( ).
+      RETURN.
+    ENDIF.
+
     IF client->check_on_event( cs_event-back ).
       "leaving a draft: keep it (the page reads it back next time) or
       "discard it - the user decides (since 2026-10, third round)
@@ -1529,8 +1537,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     client->message_box_display( text = COND #( WHEN mv_read_error IS INITIAL
                                                 THEN get_text( cs_text-not_found )
                                                 ELSE get_load_error( mv_entity_name ) )
-                                 type = `error` ).
-    client->nav_app_leave( ).
+                                 type    = `error`
+                                 onclose = cs_event-not_found_ok ).
 
   ENDMETHOD.
 
