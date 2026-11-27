@@ -4323,7 +4323,6 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     DATA lt_flags TYPE string_table.
     DATA lt_row_keys TYPE ty_t_name_value.
     DATA lv_flag TYPE abap_bool.
-    FIELD-SYMBOLS <lt_in> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lt_out> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lv_row_key> TYPE any.
     FIELD-SYMBOLS <lv_row_flag> TYPE any.
@@ -4331,23 +4330,15 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     IF rows IS NOT BOUND.
       RETURN.
     ENDIF.
-    DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( rows ) ).
-    DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
-    lt_comp = lo_line->get_components( ).
     DATA(lo_flag) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_data( lv_flag ) ).
     lt_flags = VALUE #( ( cs_row_flag-updatable ) ( cs_row_flag-deletable ) ( cs_row_flag-new ) ).
     LOOP AT lt_flags INTO DATA(lv_flag_name).
-      IF NOT line_exists( lt_comp[ name = lv_flag_name ] ).
-        APPEND VALUE #( name = lv_flag_name
-                        type = lo_flag ) TO lt_comp.
-      ENDIF.
+      APPEND VALUE #( name = lv_flag_name
+                      type = lo_flag ) TO lt_comp.
     ENDLOOP.
-    DATA(lo_out_line) = cl_abap_structdescr=>create( lt_comp ).
-    DATA(lo_out_table) = cl_abap_tabledescr=>create( p_line_type = lo_out_line ).
-    CREATE DATA result TYPE HANDLE lo_out_table.
-    ASSIGN rows->* TO <lt_in>.
+    result = add_table_columns( data       = rows
+                                it_columns = lt_comp ).
     ASSIGN result->* TO <lt_out>.
-    MOVE-CORRESPONDING <lt_in> TO <lt_out>.
 
     "what GET PERMISSIONS answers: the static field control of the child
     "(its read-only fields), and per instance whether it may be changed or

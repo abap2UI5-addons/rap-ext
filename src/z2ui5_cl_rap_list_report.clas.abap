@@ -3002,7 +3002,6 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   METHOD apply_row_states.
 
     DATA lt_comp TYPE cl_abap_structdescr=>component_table.
-    DATA lr_extended TYPE REF TO data.
     FIELD-SYMBOLS <lt_old> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lt_new> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lv_enabled> TYPE any.
@@ -3019,31 +3018,18 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     DATA(lt_inline) = get_line_item_actions( abap_true ).
 
     "the columns: an inline action's enabled, the draft status
-    TRY.
-        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( mr_data ) ).
-        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
-        lt_comp = lo_line->get_components( ).
-        DATA(lo_bool) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `ABAP_BOOL` ) ).
-        DATA(lo_string) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `STRING` ) ).
-        IF ms_perm-answered = abap_true.
-          LOOP AT lt_inline INTO ls_inline.
-            APPEND VALUE #( name = |{ cs_row_column-action_prefix }{ sy-tabix }| type = lo_bool ) TO lt_comp.
-          ENDLOOP.
-        ENDIF.
-        IF mv_is_draft_bo = abap_true.
-          APPEND VALUE #( name = cs_row_column-draft type = lo_string ) TO lt_comp.
-          APPEND VALUE #( name = cs_row_column-draft_text type = lo_string ) TO lt_comp.
-        ENDIF.
-        IF lines( lt_comp ) > lines( lo_line->get_components( ) ).
-          DATA(lo_new_table) = cl_abap_tabledescr=>create( cl_abap_structdescr=>create( lt_comp ) ).
-          CREATE DATA lr_extended TYPE HANDLE lo_new_table.
-          ASSIGN mr_data->* TO <lt_old>.
-          ASSIGN lr_extended->* TO <lt_new>.
-          MOVE-CORRESPONDING <lt_old> TO <lt_new>.
-          mr_data = lr_extended.
-        ENDIF.
-      CATCH cx_root ##NO_HANDLER.
-    ENDTRY.
+    DATA(lo_bool) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `ABAP_BOOL` ) ).
+    DATA(lo_string) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `STRING` ) ).
+    IF ms_perm-answered = abap_true.
+      LOOP AT lt_inline INTO ls_inline.
+        APPEND VALUE #( name = |{ cs_row_column-action_prefix }{ sy-tabix }| type = lo_bool ) TO lt_comp.
+      ENDLOOP.
+    ENDIF.
+    IF mv_is_draft_bo = abap_true.
+      APPEND VALUE #( name = cs_row_column-draft type = lo_string ) TO lt_comp.
+      APPEND VALUE #( name = cs_row_column-draft_text type = lo_string ) TO lt_comp.
+    ENDIF.
+    add_row_columns( lt_comp ).
 
     ASSIGN mr_data->* TO <lt_new>.
     IF ms_perm-answered = abap_true AND lt_inline IS NOT INITIAL.
@@ -3773,10 +3759,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
   METHOD apply_text_columns.
 
     DATA lt_comp TYPE cl_abap_structdescr=>component_table.
-    DATA lr_extended TYPE REF TO data.
     DATA lt_fields TYPE z2ui5_cl_rap_util=>ty_t_field_info.
     DATA lt_columns TYPE string_table.
-    FIELD-SYMBOLS <lt_old> TYPE STANDARD TABLE.
+    DATA lv_column TYPE string.
     FIELD-SYMBOLS <lt_new> TYPE STANDARD TABLE.
     FIELD-SYMBOLS <lv_text> TYPE any.
 
@@ -3798,27 +3783,11 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    TRY.
-        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( mr_data ) ).
-        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
-        lt_comp = lo_line->get_components( ).
-        DATA(lo_string) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `STRING` ) ).
-        LOOP AT lt_columns INTO DATA(lv_column).
-          IF NOT line_exists( lt_comp[ name = lv_column ] ).
-            APPEND VALUE #( name = lv_column type = lo_string ) TO lt_comp.
-          ENDIF.
-        ENDLOOP.
-        IF lines( lt_comp ) > lines( lo_line->get_components( ) ).
-          DATA(lo_new_table) = cl_abap_tabledescr=>create( cl_abap_structdescr=>create( lt_comp ) ).
-          CREATE DATA lr_extended TYPE HANDLE lo_new_table.
-          ASSIGN mr_data->* TO <lt_old>.
-          ASSIGN lr_extended->* TO <lt_new>.
-          MOVE-CORRESPONDING <lt_old> TO <lt_new>.
-          mr_data = lr_extended.
-        ENDIF.
-      CATCH cx_root.
-        RETURN.
-    ENDTRY.
+    DATA(lo_string) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_name( `STRING` ) ).
+    LOOP AT lt_columns INTO lv_column.
+      APPEND VALUE #( name = lv_column type = lo_string ) TO lt_comp.
+    ENDLOOP.
+    add_row_columns( lt_comp ).
 
     ASSIGN mr_data->* TO <lt_new>.
     LOOP AT lt_fields INTO ls_field.
@@ -4288,43 +4257,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
 
   METHOD add_row_columns.
-
-    DATA lt_comp TYPE cl_abap_structdescr=>component_table.
-    DATA lr_extended TYPE REF TO data.
-    FIELD-SYMBOLS <lt_old> TYPE STANDARD TABLE.
-    FIELD-SYMBOLS <lt_new> TYPE STANDARD TABLE.
-    FIELD-SYMBOLS <ls_old> TYPE any.
-    FIELD-SYMBOLS <ls_new> TYPE any.
-
-    IF mr_data IS NOT BOUND.
-      RETURN.
-    ENDIF.
-    TRY.
-        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( mr_data ) ).
-        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
-        lt_comp = lo_line->get_components( ).
-        DATA(lv_before) = lines( lt_comp ).
-        LOOP AT it_columns INTO DATA(ls_column).
-          IF NOT line_exists( lt_comp[ name = ls_column-name ] ).
-            APPEND ls_column TO lt_comp.
-          ENDIF.
-        ENDLOOP.
-        IF lines( lt_comp ) = lv_before.
-          RETURN.
-        ENDIF.
-        DATA(lo_new_table) = cl_abap_tabledescr=>create( cl_abap_structdescr=>create( lt_comp ) ).
-        CREATE DATA lr_extended TYPE HANDLE lo_new_table.
-        ASSIGN mr_data->* TO <lt_old>.
-        ASSIGN lr_extended->* TO <lt_new>.
-        "row by row - the transpiled runtime moves no generic tables
-        LOOP AT <lt_old> ASSIGNING <ls_old>.
-          APPEND INITIAL LINE TO <lt_new> ASSIGNING <ls_new>.
-          MOVE-CORRESPONDING <ls_old> TO <ls_new>.
-        ENDLOOP.
-        mr_data = lr_extended.
-      CATCH cx_root ##NO_HANDLER.
-    ENDTRY.
-
+    mr_data = add_table_columns( data       = mr_data
+                                 it_columns = it_columns ).
   ENDMETHOD.
 
 

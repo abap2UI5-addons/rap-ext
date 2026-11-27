@@ -569,6 +569,17 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
       RETURNING
         VALUE(result) TYPE REF TO data.
 
+    "! data (a table) with the columns of it_columns added - the ones it
+    "! has already are kept; data itself when none is new or the type
+    "! cannot be built. The rows are copied one by one: the transpiled
+    "! runtime moves no generic table into another (added 2026-11)
+    METHODS add_table_columns
+      IMPORTING
+        data          TYPE REF TO data
+        it_columns    TYPE cl_abap_structdescr=>component_table
+      RETURNING
+        VALUE(result) TYPE REF TO data.
+
     "! an empty table of the entity - with_selection adds the column
     "! cv_select_column, as select_rows( ) does
     METHODS create_entity_table
@@ -2394,6 +2405,46 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         ENDIF.
       ENDIF.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD add_table_columns.
+
+    DATA lt_comp TYPE cl_abap_structdescr=>component_table.
+    FIELD-SYMBOLS <lt_old> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <lt_new> TYPE STANDARD TABLE.
+    FIELD-SYMBOLS <ls_old> TYPE any.
+    FIELD-SYMBOLS <ls_new> TYPE any.
+
+    result = data.
+    IF data IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    TRY.
+        DATA(lo_table) = CAST cl_abap_tabledescr( cl_abap_typedescr=>describe_by_data_ref( data ) ).
+        DATA(lo_line) = CAST cl_abap_structdescr( lo_table->get_table_line_type( ) ).
+        lt_comp = lo_line->get_components( ).
+        DATA(lv_before) = lines( lt_comp ).
+        LOOP AT it_columns INTO DATA(ls_column).
+          IF NOT line_exists( lt_comp[ name = ls_column-name ] ).
+            APPEND ls_column TO lt_comp.
+          ENDIF.
+        ENDLOOP.
+        IF lines( lt_comp ) = lv_before.
+          RETURN.
+        ENDIF.
+        DATA(lo_new_table) = cl_abap_tabledescr=>create( cl_abap_structdescr=>create( lt_comp ) ).
+        CREATE DATA result TYPE HANDLE lo_new_table.
+        ASSIGN data->* TO <lt_old>.
+        ASSIGN result->* TO <lt_new>.
+        LOOP AT <lt_old> ASSIGNING <ls_old>.
+          APPEND INITIAL LINE TO <lt_new> ASSIGNING <ls_new>.
+          MOVE-CORRESPONDING <ls_old> TO <ls_new>.
+        ENDLOOP.
+      CATCH cx_root.
+        result = data.
+    ENDTRY.
 
   ENDMETHOD.
 
