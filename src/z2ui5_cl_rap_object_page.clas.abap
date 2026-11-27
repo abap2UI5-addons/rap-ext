@@ -1154,6 +1154,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       DATA(lv_saved) = COND abap_bool( WHEN mv_draft = abap_true THEN save_draft( client )
                                        ELSE save_data( client ) ).
       IF lv_saved = abap_true.
+        "what the business object reported on the save (Travel 4711
+        "created, a warning) - shown with the saved message, as Fiori does
+        DATA(lt_saved_messages) = mt_messages.
         mv_saved = abap_true.
         mv_editable = abap_false.
         mv_is_create = abap_false.
@@ -1173,7 +1176,15 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         CLEAR mt_pending.
         load_child_rows( ).
         render_page( client ).
-        client->message_toast_display( get_text( cs_text-saved ) ).
+        IF lt_saved_messages IS INITIAL.
+          client->message_toast_display( get_text( cs_text-saved ) ).
+        ELSE.
+          show_messages( client   = client
+                         messages = VALUE #( ( get_text( cs_text-saved ) ) )
+                         details  = lt_saved_messages
+                         fields   = ms_entity-fields
+                         type     = `success` ).
+        ENDIF.
       ELSEIF mt_messages IS NOT INITIAL.
         "the fields the messages are about are marked - built into the view
         render_page( client ).

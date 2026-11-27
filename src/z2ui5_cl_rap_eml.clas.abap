@@ -1041,6 +1041,11 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
           RETURN.
         ENDIF.
 
+        "what the save sequence reported on success too - a number it
+        "drew, a warning of a determination on save
+        collect_messages( EXPORTING responses = lt_commit_reported
+                          CHANGING  messages  = result-messages
+                                    details   = result-details ).
         result-success = abap_true.
 
       CATCH cx_root INTO DATA(lx).
