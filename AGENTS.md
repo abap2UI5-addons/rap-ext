@@ -116,9 +116,8 @@ as CI does.
   builder trees, and a real headless `XMLView.create`. Its settings (paths,
   UI5 floor, fail level) live in `abap2ui5lint.jsonc`;
   `abap2ui5lint-baseline.json` records the accepted findings (the
-  overview page's public `mt_card_data`, kept for the public contract; the
-  protected `ms_data_backup` and `mr_selected`, created with the entity's
-  named type; two messages before `nav_app_leave( )` that wait for a core
+  overview page's public `mt_card_data`, kept for the public contract; two
+  messages before `nav_app_leave( )` that wait for a core
   release with `keep_messages` - each explained in `abap2ui5lint.jsonc`),
   and only shrinks.
 - CI runs the three gates on every push and PR in one workflow,
@@ -379,10 +378,12 @@ classes, so those method names and signatures are a **public contract**:
   PUBLIC attribute.** The core detaches public data references before the
   draft is serialized and re-creates them from S-RTTI; a protected one is
   serialized as it is, which an anonymous type does not survive. That is
-  why `mr_data`, `mr_value_lists`, `mr_card_rows`, `mr_child_rows` and the
-  value help's `mr_result_table` are public, and why a protected reference
-  (the value help's `mr_selected`) is created with the entity's named type.
-  Only public attributes can be bound at all.
+  why `mr_data`, `mr_value_lists`, `mr_card_rows`, `mr_child_rows`, the
+  object page's `ms_data_backup` and the value help's `mr_result_table` and
+  `mr_selected` are public (the last two were protected and relied on the
+  entity's named type until 2026-11; the linter's nonpublic-data-reference
+  holds every generic reference to this rule now). Only public attributes
+  can be bound at all.
 
 ## abapGit conventions
 
