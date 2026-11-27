@@ -36,14 +36,6 @@
   // with BINDING_ERROR; that was verified at runtime, transpiled against
   // the core, as was the fix (see the overview page's unit test).
   //
-  // Two more, accepted when the linter moved to 0.13 (reported since 0.12):
-  // - message-before-navigation in the object page's main (the load error
-  //   before nav_app_leave on init, the "deleted" toast before
-  //   nav_app_leave): the remedy, keep_messages on the navigation, is in no
-  //   abap2UI5 release yet (the core pin is 1.151.0); the other one, showing
-  //   the message from the calling app, changes the floorplans' behaviour.
-  //   Revisit when the core releases keep_messages.
-  //
   // An entry whose finding is gone is stale and fails, so this file only
   // shrinks; refresh it with `npx abap2ui5lint --update-baseline`.
   "baseline": "abap2ui5lint-baseline.json"
