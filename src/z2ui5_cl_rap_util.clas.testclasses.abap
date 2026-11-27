@@ -1971,6 +1971,7 @@ CLASS ltcl_messages_files DEFINITION FINAL
     METHODS large_object_annotations  FOR TESTING RAISING cx_static_check.
     METHODS base64_round_trip         FOR TESTING RAISING cx_static_check.
     METHODS data_uri                  FOR TESTING RAISING cx_static_check.
+    METHODS file_name_of_path         FOR TESTING RAISING cx_static_check.
     METHODS mime_type_accepted        FOR TESTING RAISING cx_static_check.
     METHODS file_check                FOR TESTING RAISING cx_static_check.
     METHODS file_extensions           FOR TESTING RAISING cx_static_check.
@@ -2147,6 +2148,19 @@ CLASS ltcl_messages_files IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       exp = `data:application/octet-stream;base64,SGVsbG8=`
       act = z2ui5_cl_rap_util=>to_data_uri( CONV xstring( `48656C6C6F` ) ) ).
+  ENDMETHOD.
+
+
+  METHOD file_name_of_path.
+    cl_abap_unit_assert=>assert_equals( exp = `a.png`
+                                        act = z2ui5_cl_rap_util=>file_name_of_path( `C:\fakepath\a.png` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `b.pdf`
+                                        act = z2ui5_cl_rap_util=>file_name_of_path( `/home/me/b.pdf` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `c d.txt`
+                                        act = z2ui5_cl_rap_util=>file_name_of_path( `x\y/c d.txt` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `e.csv`
+                                        act = z2ui5_cl_rap_util=>file_name_of_path( `e.csv` ) ).
+    cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>file_name_of_path( `dir/` ) ).
   ENDMETHOD.
 
 

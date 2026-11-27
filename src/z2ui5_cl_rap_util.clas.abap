@@ -1444,6 +1444,14 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! the file name of a path as a browser hands it over (C:\fakepath\a.png,
+    "! /home/me/a.png): its last part after a slash or a backslash
+    CLASS-METHODS file_name_of_path
+      IMPORTING
+        path          TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
     "! mime_type is one of accepted (@Semantics.largeObject
     "! .acceptableMimeTypes): equal, or of the group of an entry with *
     "! (image/*, */*), case-insensitive. Nothing accepted: every type
@@ -6046,6 +6054,22 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     READ TABLE lt_map INTO DATA(ls_map) WITH KEY name = lv_extension.
     IF sy-subrc = 0.
       result = ls_map-value.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD file_name_of_path.
+
+    DATA(lv_slash) = find( val = path sub = `/` occ = -1 ).
+    DATA(lv_backslash) = find( val = path sub = `\` occ = -1 ).
+    IF lv_backslash > lv_slash.
+      lv_slash = lv_backslash.
+    ENDIF.
+    IF lv_slash >= 0.
+      result = substring( val = path off = lv_slash + 1 ).
+    ELSE.
+      result = path.
     ENDIF.
 
   ENDMETHOD.
