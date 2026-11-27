@@ -999,10 +999,14 @@ CLASS z2ui5_cl_rap_util DEFINITION
     "! Values become literals of the field's type with their quotes doubled,
     "! and a LIKE escapes the user's own % and _ - the field name comes from
     "! the metadata, never from the user.
+    "! exact = abap_true: value is one literal - no ;, no operator, no
+    "! pattern (added 2026-11: a value that contains ; or .. compared
+    "! exactly); an initial one is the empty field
     CLASS-METHODS build_filter_condition
       IMPORTING
         is_field      TYPE ty_s_field_info
         value         TYPE string
+        exact         TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE string.
 
@@ -2250,6 +2254,13 @@ CLASS z2ui5_cl_rap_util DEFINITION
         value         TYPE string
       RETURNING
         VALUE(result) TYPE string.
+
+    "! a CHAR or STRING field: no operator means "contains" in a filter
+    CLASS-METHODS is_text_field
+      IMPORTING
+        is_field      TYPE ty_s_field_info
+      RETURNING
+        VALUE(result) TYPE abap_bool.
 
     TYPES ty_t_token_groups TYPE STANDARD TABLE OF string_table WITH EMPTY KEY.
 
@@ -3812,12 +3823,23 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD is_text_field.
+    result = xsdbool( is_field-type_kind = `CHAR` OR is_field-type_kind = `STRING` ).
+  ENDMETHOD.
+
+
   METHOD build_filter_condition.
 
     DATA lt_or TYPE string_table.
     DATA lt_not TYPE string_table.
     DATA(lv_name) = is_field-name.
-    DATA(lv_text_field) = xsdbool( is_field-type_kind = `CHAR` ).
+    DATA(lv_text_field) = is_text_field( is_field ).
+
+    IF exact = abap_true.
+      result = COND #( WHEN value IS INITIAL THEN |{ lv_name } IS INITIAL|
+                       ELSE |{ lv_name } = { literal( is_field = is_field value = value ) }| ).
+      RETURN.
+    ENDIF.
 
     SPLIT value AT `;` INTO TABLE DATA(lt_parts).
     LOOP AT lt_parts INTO DATA(lv_part).
@@ -3840,6 +3862,9 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         "= alone: the field is empty (a No of a boolean, the "empty"
         "condition) - added 2026-10, third round
         lv_cond = |{ lv_name } IS INITIAL|.
+      ELSEIF lv_part(1) = `=`.
+        "=value is the value itself, a .. in it included
+        lv_cond = |{ lv_name } = { literal( is_field = is_field value = substring( val = lv_part off = 1 ) ) }|.
       ELSEIF lv_part CS `..`.
         SPLIT lv_part AT `..` INTO DATA(lv_low) DATA(lv_high).
         CONDENSE lv_low.
@@ -3850,8 +3875,6 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         lv_cond = |{ lv_name } { lv_part(2) } { literal( is_field = is_field value = substring( val = lv_part off = 2 ) ) }|.
       ELSEIF strlen( lv_part ) > 1 AND ( lv_part(1) = `>` OR lv_part(1) = `<` ).
         lv_cond = |{ lv_name } { lv_part(1) } { literal( is_field = is_field value = substring( val = lv_part off = 1 ) ) }|.
-      ELSEIF strlen( lv_part ) > 1 AND lv_part(1) = `=`.
-        lv_cond = |{ lv_name } = { literal( is_field = is_field value = substring( val = lv_part off = 1 ) ) }|.
       ELSEIF lv_text_field = abap_true.
         "LIKE: the user's * is the wildcard, their own % and _ are escaped
         DATA(lv_like) = lv_part.
@@ -6154,6 +6177,10 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       lv_len = strlen( lv_part ).
       IF lv_part = `=`.
         ls_condition-operator = cs_condition_op-empty.
+      ELSEIF lv_part(1) = `=`.
+        "=value is the value itself, a .. in it included
+        ls_condition-operator = cs_condition_op-eq.
+        ls_condition-low = substring( val = lv_part off = 1 ).
       ELSEIF lv_part CS `..`.
         ls_condition-operator = cs_condition_op-bt.
         SPLIT lv_part AT `..` INTO ls_condition-low ls_condition-high.
@@ -6171,9 +6198,6 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ELSEIF lv_len > 1 AND lv_part(1) = `<`.
         ls_condition-operator = cs_condition_op-lt.
         ls_condition-low = substring( val = lv_part off = 1 ).
-      ELSEIF lv_len > 1 AND lv_part(1) = `=`.
-        ls_condition-operator = cs_condition_op-eq.
-        ls_condition-low = substring( val = lv_part off = 1 ).
       ELSEIF lv_len > 2 AND lv_part(1) = `*` AND substring( val = lv_part off = lv_len - 1 ) = `*`.
         ls_condition-operator = cs_condition_op-contains.
         ls_condition-low = substring( val = lv_part off = 1 len = lv_len - 2 ).
@@ -6185,7 +6209,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         ls_condition-low = substring( val = lv_part off = 1 ).
       ELSE.
         "no operator: contains for text, equals for the rest
-        ls_condition-operator = COND #( WHEN is_field-type_kind = `CHAR` OR is_field-type_kind = `STRING`
+        ls_condition-operator = COND #( WHEN is_text_field( is_field ) = abap_true
                                         THEN cs_condition_op-contains
                                         ELSE cs_condition_op-eq ).
         ls_condition-low = lv_part.

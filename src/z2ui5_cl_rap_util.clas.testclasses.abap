@@ -650,6 +650,8 @@ CLASS ltcl_filter DEFINITION FINAL
     METHODS empty_is_nothing    FOR TESTING RAISING cx_static_check.
     METHODS search_fields       FOR TESTING RAISING cx_static_check.
     METHODS raw_is_no_text      FOR TESTING RAISING cx_static_check.
+    METHODS string_is_text      FOR TESTING RAISING cx_static_check.
+    METHODS exact_value_literal FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -767,6 +769,44 @@ CLASS ltcl_filter IMPLEMENTATION.
     cl_abap_unit_assert=>assert_initial( z2ui5_cl_rap_util=>build_search_condition(
       it_fields = VALUE #( ( name = `UUID` type_kind = `RAW` ) ( name = `RATE` type_kind = `FLTP` ) )
       search    = `x` ) ).
+
+  ENDMETHOD.
+
+  METHOD string_is_text.
+
+    " a STRING field is text like a CHAR one - contains, not equals
+    cl_abap_unit_assert=>assert_equals( exp = `F LIKE '%abc%' ESCAPE '#'`
+                                        act = cond( type_kind = `STRING` value = `abc` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_condition( ( operator = `CONTAINS` low = `abc` ) )
+      act = z2ui5_cl_rap_util=>filter_to_conditions( is_field = VALUE #( name = `F` type_kind = `STRING` )
+                                                     value    = `abc` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD exact_value_literal.
+
+    " =a..b is the value a..b, not a range
+    cl_abap_unit_assert=>assert_equals( exp = `F = 'a..b'`
+                                        act = cond( type_kind = cs_type-char value = `=a..b` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `NOT ( F = 'a..b' )`
+                                        act = cond( type_kind = cs_type-char value = `!=a..b` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_condition( ( operator = `EQ` low = `a..b` ) )
+      act = z2ui5_cl_rap_util=>filter_to_conditions( is_field = VALUE #( name = `F` type_kind = `CHAR` )
+                                                     value    = `=a..b` ) ).
+    " exact: the whole value, a ; and an operator in it included
+    cl_abap_unit_assert=>assert_equals(
+      exp = `F = 'x;>y..z'`
+      act = z2ui5_cl_rap_util=>build_filter_condition( is_field = VALUE #( name = `F` type_kind = `CHAR` )
+                                                       value    = `x;>y..z`
+                                                       exact    = abap_true ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `F IS INITIAL`
+      act = z2ui5_cl_rap_util=>build_filter_condition( is_field = VALUE #( name = `F` type_kind = `CHAR` )
+                                                       value    = ``
+                                                       exact    = abap_true ) ).
 
   ENDMETHOD.
 

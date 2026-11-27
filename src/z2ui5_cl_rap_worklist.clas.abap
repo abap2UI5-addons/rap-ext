@@ -127,7 +127,8 @@ CLASS z2ui5_cl_rap_worklist IMPLEMENTATION.
     DATA(lv_cond) = COND string( WHEN mv_segment = cv_segment_empty
                                  THEN |{ ls_field-name } IS INITIAL|
                                  ELSE build_filter_condition( is_field = ls_field
-                                                              value    = |={ mv_segment }| ) ).
+                                                              value    = mv_segment
+                                                              exact    = abap_true ) ).
     result = COND #( WHEN result IS INITIAL THEN lv_cond ELSE |{ result } AND { lv_cond }| ).
 
   ENDMETHOD.

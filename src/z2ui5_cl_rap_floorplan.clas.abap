@@ -437,11 +437,13 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         VALUE(result) TYPE i.
 
     "! the WHERE condition for the user's filter text on one field - the
-    "! syntax is z2ui5_cl_rap_util=>build_filter_condition's
+    "! syntax is z2ui5_cl_rap_util=>build_filter_condition's; exact =
+    "! abap_true compares with the value as it is (added 2026-11)
     METHODS build_filter_condition
       IMPORTING
         is_field      TYPE z2ui5_cl_rap_util=>ty_s_field_info
         value         TYPE string
+        exact         TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE string.
 
@@ -1823,7 +1825,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD build_filter_condition.
     result = z2ui5_cl_rap_util=>build_filter_condition( is_field = is_field
-                                                        value    = value ).
+                                                        value    = value
+                                                        exact    = exact ).
   ENDMETHOD.
 
 
@@ -2486,7 +2489,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     READ TABLE ls_target-fields INTO DATA(ls_language) WITH KEY is_language = abap_true.
     DATA(lv_language) = COND string( WHEN sy-subrc = 0
                                      THEN z2ui5_cl_rap_util=>build_filter_condition( is_field = ls_language
-                                                                                     value    = |={ sy-langu }| ) ).
+                                                                                     value    = |{ sy-langu }|
+                                                                                     exact    = abap_true ) ).
 
     "one condition per distinct value of the rows - at most 200
     ASSIGN data->* TO <lt_rows>.
@@ -2505,7 +2509,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
           RETURN.
         ENDIF.
         APPEND z2ui5_cl_rap_util=>build_filter_condition( is_field = ls_target_field
-                                                          value    = |={ condense( |{ <lv_value> }| ) }| ) TO lt_and.
+                                                          value    = condense( |{ <lv_value> }| )
+                                                          exact    = abap_true ) TO lt_and.
       ENDLOOP.
       APPEND lv_key TO lt_keys.
       APPEND |( { concat_lines_of( table = lt_and sep = ` AND ` ) } )| TO lt_groups.
