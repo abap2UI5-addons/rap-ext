@@ -346,6 +346,13 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! the editing status filter as SQL, where the entity has its draft
+    "! fields (HASDRAFTENTITY, DRAFTENTITYLASTCHANGEDBY or INPROCESSBYUSER)
+    "! - empty without them, then apply_row_states( ) filters the rows read
+    METHODS get_editing_status_where
+      RETURNING
+        VALUE(result) TYPE string.
+
     "! the ORDER BY of load_data: the sort field, then the keys, so that a
     "! page of rows is the same page on every load
     METHODS get_order_by
@@ -1168,7 +1175,42 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       APPEND |( { mv_variant_where } )| TO lt_and.
     ENDIF.
 
+    "the editing status before UP TO max_rows: own drafts beyond the first
+    "rows are found, and the count is right
+    lv_cond = get_editing_status_where( ).
+    IF lv_cond IS NOT INITIAL.
+      APPEND |( { lv_cond } )| TO lt_and.
+    ENDIF.
+
     result = concat_lines_of( table = lt_and sep = ` AND ` ).
+
+  ENDMETHOD.
+
+
+  METHOD get_editing_status_where.
+
+    IF mv_is_draft_bo = abap_false OR mv_editing_status IS INITIAL
+      OR to_upper( mv_editing_status ) = z2ui5_cl_rap_util=>cs_editing_status-all
+      OR NOT line_exists( ms_entity-fields[ name = `HASDRAFTENTITY` ] ).
+      RETURN.
+    ENDIF.
+    "the owner as fill_draft_status( ) reads it
+    DATA(lv_owner) = COND string(
+      WHEN line_exists( ms_entity-fields[ name = `DRAFTENTITYLASTCHANGEDBY` ] ) THEN `DRAFTENTITYLASTCHANGEDBY`
+      WHEN line_exists( ms_entity-fields[ name = `INPROCESSBYUSER` ] ) THEN `INPROCESSBYUSER` ).
+    IF lv_owner IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA(lv_user) = |'{ replace( val = condense( CONV string( sy-uname ) ) sub = `'` with = `''` occ = 0 ) }'|.
+    "z2ui5_cl_rap_util=>get_draft_status( ): a draft without an owner is
+    "the user's own
+    result = SWITCH #( to_upper( mv_editing_status )
+      WHEN z2ui5_cl_rap_util=>cs_editing_status-own_draft
+        THEN |HASDRAFTENTITY <> ' ' AND ( { lv_owner } = { lv_user } OR { lv_owner } = ' ' )|
+      WHEN z2ui5_cl_rap_util=>cs_editing_status-locked
+        THEN |HASDRAFTENTITY <> ' ' AND { lv_owner } <> { lv_user } AND { lv_owner } <> ' '|
+      WHEN z2ui5_cl_rap_util=>cs_editing_status-unchanged
+        THEN |HASDRAFTENTITY = ' '| ).
 
   ENDMETHOD.
 
@@ -3029,10 +3071,12 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     IF mv_is_draft_bo = abap_true.
       fill_draft_status( mr_data ).
-      "the editing status filter - applied to the rows read, so the count
-      "is theirs and no "more" follows
+      "the editing status filter of an entity without its draft fields -
+      "applied to the rows read, so the count is theirs and no "more"
+      "follows; with them it is part of the WHERE (get_editing_status_where)
       IF mv_editing_status IS NOT INITIAL
-        AND mv_editing_status <> z2ui5_cl_rap_util=>cs_editing_status-all.
+        AND mv_editing_status <> z2ui5_cl_rap_util=>cs_editing_status-all
+        AND get_editing_status_where( ) IS INITIAL.
         DATA lr_kept TYPE REF TO data.
         CREATE DATA lr_kept LIKE <lt_new>.
         ASSIGN lr_kept->* TO <lt_old>.

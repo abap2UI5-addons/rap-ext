@@ -192,9 +192,11 @@ instance feature control on `acceptTravel` / `rejectTravel` and Edit).
       draft can be read at all, and note the user shown), no Edit or Delete
 - [ ] list report: the editing status column shows "Draft" / "Locked by
       ..." per row, the filter All / Own draft / Locked by another user /
-      Unchanged selects the rows (applied to the rows read - the count is
-      theirs); an entity with `HASDRAFTENTITY` / `DRAFTENTITYLASTCHANGEDBY`
-      elements uses them instead
+      Unchanged selects the rows; an entity with `HASDRAFTENTITY` /
+      `DRAFTENTITYLASTCHANGEDBY` (or `INPROCESSBYUSER`) elements filters in
+      the SQL - an own draft beyond the first 500 rows is found, the count
+      is right (check that the WHERE activates on these elements); without
+      them the filter applies to the rows read and the count is theirs
 - [ ] a factory action that creates a draft (`copyTravel` of the draft
       scenario): the created record opens in edit mode from its draft
 - [ ] a draft left by another app (the RAP Fiori app): Edit answers with the
