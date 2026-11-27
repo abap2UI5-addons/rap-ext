@@ -16,6 +16,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_called TYPE abap_bool.
     DATA mv_timer TYPE string.
     DATA mv_onclose TYPE string.
+    DATA mv_arg TYPE string.
 
 ENDCLASS.
 
@@ -80,6 +81,7 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_event_arg.
+    result = mv_arg.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_app.
@@ -181,6 +183,12 @@ CLASS ltd_page IMPLEMENTATION.
       client->nav_app_leave( ).
     ELSEIF client->check_on_event( `CHILD` ).
       client->nav_app_call( NEW ltd_page( ) ).
+    ELSEIF client->check_on_event( `CHANGE` ).
+      "edit mode with a child row waiting for Save
+      mv_editable = abap_true.
+      mv_children_changed = abap_true.
+    ELSEIF client->check_on_event( `SAVE` ).
+      mv_saved = abap_true.
     ENDIF.
   ENDMETHOD.
 
@@ -234,12 +242,12 @@ ENDCLASS.
 CLASS ltd_fcl IMPLEMENTATION.
 
   METHOD render_skeleton.
-    result = `<mvc:View xmlns="sap.m" xmlns:mvc="sap.ui.core.mvc" xmlns:f="sap.f" displayBlock="true" height="100%">`
-          && `<f:FlexibleColumnLayout layout="{= ${/MV_LAYOUT} || 'OneColumn' }">`
-          && `<f:beginColumnPages>` && cs_placeholder-begin && `</f:beginColumnPages>`
-          && `<f:midColumnPages>` && cs_placeholder-mid && `</f:midColumnPages>`
-          && `<f:endColumnPages>` && cs_placeholder-end && `</f:endColumnPages>`
-          && `</f:FlexibleColumnLayout></mvc:View>`.
+    result = `<mvc:View xmlns="sap.m" xmlns:mvc="sap.ui.core.mvc" xmlns:zfcl="sap.f" displayBlock="true" height="100%">`
+          && `<zfcl:FlexibleColumnLayout layout="{= ${/MV_LAYOUT} || 'OneColumn' }">`
+          && `<zfcl:beginColumnPages>` && cs_placeholder-begin && `</zfcl:beginColumnPages>`
+          && `<zfcl:midColumnPages>` && cs_placeholder-mid && `</zfcl:midColumnPages>`
+          && `<zfcl:endColumnPages>` && cs_placeholder-end && `</zfcl:endColumnPages>`
+          && `</zfcl:FlexibleColumnLayout></mvc:View>`.
   ENDMETHOD.
 
 ENDCLASS.
@@ -263,6 +271,8 @@ CLASS ltcl_fcl DEFINITION FINAL
     METHODS back_closes_column   FOR TESTING RAISING cx_static_check.
     METHODS child_in_end_column  FOR TESTING RAISING cx_static_check.
     METHODS events_and_proxy     FOR TESTING RAISING cx_static_check.
+    METHODS dirty_page_asks      FOR TESTING RAISING cx_static_check.
+    METHODS saved_page_replaced  FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -289,7 +299,7 @@ CLASS ltcl_fcl IMPLEMENTATION.
   METHOD start_shows_the_list.
     cl_abap_unit_assert=>assert_equals( exp = `OneColumn` act = mo_cut->mv_layout ).
     cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view
-                                         exp = `*<f:FlexibleColumnLayout*<f:beginColumnPages><Page title="List"/></f:beginColumnPages>*` ).
+                                         exp = `*<zfcl:FlexibleColumnLayout*<zfcl:beginColumnPages><Page title="List"/></zfcl:beginColumnPages>*` ).
     "the Shell of the floorplan's view is gone
     cl_abap_unit_assert=>assert_false( xsdbool( mo_client->mv_view CS `<Shell>` ) ).
   ENDMETHOD.
@@ -300,7 +310,7 @@ CLASS ltcl_fcl IMPLEMENTATION.
     cl_abap_unit_assert=>assert_bound( mo_cut->mo_mid ).
     cl_abap_unit_assert=>assert_equals( exp = `TwoColumnsMidExpanded` act = mo_cut->mv_layout ).
     cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view
-                                         exp = `*<f:midColumnPages><Page title="Page"/></f:midColumnPages>*` ).
+                                         exp = `*<zfcl:midColumnPages><Page title="Page"/></zfcl:midColumnPages>*` ).
     "the namespaces of the page's view are declared on the root
     cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view
                                          exp = `<mvc:View * xmlns:uxap="sap.uxap"*` ).
@@ -380,6 +390,46 @@ CLASS ltcl_fcl IMPLEMENTATION.
     "nothing called, nothing left, nothing returned
     cl_abap_unit_assert=>assert_false( li_proxy->check_nav_pending( ) ).
     cl_abap_unit_assert=>assert_false( li_proxy->check_on_nav_back( ) ).
+
+  ENDMETHOD.
+
+  METHOD dirty_page_asks.
+
+    roundtrip( `BEGIN~OPEN` ).
+    DATA(li_first) = mo_cut->mo_mid.
+    roundtrip( `MID~CHANGE` ).
+
+    "another row: the page with changes stays until the user decides
+    roundtrip( `BEGIN~OPEN` ).
+    cl_abap_unit_assert=>assert_equals( exp = z2ui5_cl_rap_fcl=>cv_event_discard act = mo_client->mv_onclose ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_cut->mo_mid = li_first ) ).
+
+    "Cancel keeps it
+    mo_client->mv_arg = z2ui5_cl_rap_floorplan=>get_default_text( z2ui5_cl_rap_floorplan=>cs_text-cancel ).
+    roundtrip( z2ui5_cl_rap_fcl=>cv_event_discard ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_cut->mo_mid = li_first ) ).
+
+    "Discard opens the other row
+    roundtrip( `BEGIN~OPEN` ).
+    mo_client->mv_arg = z2ui5_cl_rap_floorplan=>get_default_text( z2ui5_cl_rap_floorplan=>cs_text-discard_changes ).
+    roundtrip( z2ui5_cl_rap_fcl=>cv_event_discard ).
+    cl_abap_unit_assert=>assert_bound( mo_cut->mo_mid ).
+    cl_abap_unit_assert=>assert_false( xsdbool( mo_cut->mo_mid = li_first ) ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view
+                                         exp = `*<zfcl:midColumnPages><Page title="Page"/></zfcl:midColumnPages>*` ).
+
+  ENDMETHOD.
+
+
+  METHOD saved_page_replaced.
+
+    roundtrip( `BEGIN~OPEN` ).
+    roundtrip( `MID~SAVE` ).
+    cl_abap_unit_assert=>assert_false( mo_list->mv_returned ).
+    "another row: the list is told the saved page returned
+    roundtrip( `BEGIN~OPEN` ).
+    cl_abap_unit_assert=>assert_true( mo_list->mv_returned ).
+    cl_abap_unit_assert=>assert_bound( mo_cut->mo_mid ).
 
   ENDMETHOD.
 

@@ -396,6 +396,9 @@ CLASS z2ui5_cl_rap_fcl IMPLEMENTATION.
 
   METHOD render_skeleton.
 
+    "sap.f under a prefix of its own - a column's view may declare f for
+    "another library (xmlns:f="sap.ui.layout.form"), and the composed
+    "view keeps the first declaration of a prefix (since 2026-11)
     DATA(lo_fcl_view) = z2ui5_cl_ui5_view_builder=>factory( ).
     lo_fcl_view->ele( n  = `View`
                       ns = `mvc`
@@ -403,30 +406,30 @@ CLASS z2ui5_cl_rap_fcl IMPLEMENTATION.
               v = `sap.m`
         )->a( n = `xmlns:mvc`
               v = `sap.ui.core.mvc`
-        )->a( n = `xmlns:f`
+        )->a( n = `xmlns:zfcl`
               v = `sap.f`
         )->a( n = `displayBlock`
               v = `true`
         )->a( n = `height`
               v = `100%`
         )->ele( n  = `FlexibleColumnLayout`
-                ns = `f`
+                ns = `zfcl`
             )->a( n = `layout`
                   v = `{= $` && client->_bind( mv_layout ) && ` || 'OneColumn' }`
             )->ele( n  = `beginColumnPages`
-                    ns = `f`
+                    ns = `zfcl`
                 )->tag( `Text`
                     )->a( n = `text`
                           v = `Z2UI5_RAP_FCL_BEGIN`
             )->end(
             )->ele( n  = `midColumnPages`
-                    ns = `f`
+                    ns = `zfcl`
                 )->tag( `Text`
                     )->a( n = `text`
                           v = `Z2UI5_RAP_FCL_MID`
             )->end(
             )->ele( n  = `endColumnPages`
-                    ns = `f`
+                    ns = `zfcl`
                 )->tag( `Text`
                     )->a( n = `text`
                           v = `Z2UI5_RAP_FCL_END` ).
