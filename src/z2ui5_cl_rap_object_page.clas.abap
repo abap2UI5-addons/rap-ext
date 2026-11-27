@@ -2138,10 +2138,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                        context     = ms_context
                                        is_draft    = mv_draft
                              CHANGING  param       = <ls_param> ).
-      DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = <ls_param>
-                                                        title = ls_action-label ).
-      lo_dialog->set_extension( mo_ext ).
-      client->nav_app_call( lo_dialog ).
+      call_action_dialog( client = client
+                          param  = <ls_param>
+                          title  = ls_action-label ).
       RETURN.
     ENDIF.
 
@@ -2203,21 +2202,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                       context     = ms_context ).
         RETURN.
       ENDIF.
-      IF ls_result-messages IS INITIAL.
-        client->message_toast_display( get_text( cs_text-action_done ) ).
-      ELSE.
-        show_messages( client   = client
-                       messages = ls_result-messages
-                       details  = ls_result-details
-                       fields   = ms_entity-fields
-                       type     = `success` ).
-      ENDIF.
-    ELSE.
-      show_messages( client   = client
-                     messages = ls_result-messages
-                     details  = ls_result-details
-                     fields   = ms_entity-fields ).
     ENDIF.
+    show_action_result( client    = client
+                        is_result = ls_result
+                        fields    = ms_entity-fields ).
 
   ENDMETHOD.
 
@@ -2265,10 +2253,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                        context     = ls_context
                                        is_draft    = mv_draft
                              CHANGING  param       = <ls_param> ).
-      DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = <ls_param>
-                                                        title = ls_action-label ).
-      lo_dialog->set_extension( mo_ext ).
-      client->nav_app_call( lo_dialog ).
+      call_action_dialog( client = client
+                          param  = <ls_param>
+                          title  = ls_action-label ).
       RETURN.
     ENDIF.
 
@@ -2325,21 +2312,10 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                       context     = ls_context ).
         RETURN.
       ENDIF.
-      IF ls_result-messages IS INITIAL.
-        client->message_toast_display( get_text( cs_text-action_done ) ).
-      ELSE.
-        show_messages( client   = client
-                       messages = ls_result-messages
-                       details  = ls_result-details
-                       fields   = ms_entity-fields
-                       type     = `success` ).
-      ENDIF.
-    ELSE.
-      show_messages( client   = client
-                     messages = ls_result-messages
-                     details  = ls_result-details
-                     fields   = ms_entity-fields ).
     ENDIF.
+    show_action_result( client    = client
+                        is_result = ls_result
+                        fields    = ms_entity-fields ).
 
   ENDMETHOD.
 
@@ -2412,12 +2388,11 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD open_created.
 
-    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( cds_view_name = entity_name
-                                                keys          = keys
-                                                context       = context ).
-    lo_op->set_extension( mo_ext ).
     mv_opened_created = abap_true.
-    client->nav_app_call( lo_op ).
+    call_object_page( client      = client
+                      entity_name = entity_name
+                      keys        = keys
+                      context     = context ).
 
   ENDMETHOD.
 

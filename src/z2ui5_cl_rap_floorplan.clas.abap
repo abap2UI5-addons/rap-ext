@@ -787,6 +787,32 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         details  TYPE ty_t_message OPTIONAL
         fields   TYPE z2ui5_cl_rap_util=>ty_t_field_info OPTIONAL.
 
+    "! what an action that ran says: a toast when it succeeded without a
+    "! message, else its messages (success or error) - a factory action's
+    "! new record is opened by the caller (added 2026-11)
+    METHODS show_action_result
+      IMPORTING
+        client    TYPE REF TO z2ui5_if_client
+        is_result TYPE ty_s_result
+        fields    TYPE z2ui5_cl_rap_util=>ty_t_field_info OPTIONAL.
+
+    "! the parameter dialog of an action (z2ui5_cl_rap_action_dialog) with
+    "! param, called - the action runs on its return (added 2026-11)
+    METHODS call_action_dialog
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client
+        param  TYPE data
+        title  TYPE string.
+
+    "! the object page of the record of entity_name with keys, called -
+    "! the record a factory action created (added 2026-11)
+    METHODS call_object_page
+      IMPORTING
+        client      TYPE REF TO z2ui5_if_client
+        entity_name TYPE string
+        keys        TYPE ty_t_name_value
+        context     TYPE ty_s_rap_context OPTIONAL.
+
     "! the dialog with a sap.m.MessageView of mt_message_items - grouped by
     "! entity when grouped is set (added 2026-10, third round)
     METHODS render_message_view
@@ -3327,6 +3353,47 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
       CATCH cx_root.
         CLEAR result.
     ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD show_action_result.
+
+    IF is_result-success = abap_true AND is_result-messages IS INITIAL.
+      client->message_toast_display( get_text( cs_text-action_done ) ).
+    ELSEIF is_result-success = abap_true.
+      show_messages( client   = client
+                     messages = is_result-messages
+                     details  = is_result-details
+                     fields   = fields
+                     type     = `success` ).
+    ELSE.
+      show_messages( client   = client
+                     messages = is_result-messages
+                     details  = is_result-details
+                     fields   = fields ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD call_action_dialog.
+
+    DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = param
+                                                      title = title ).
+    lo_dialog->set_extension( mo_ext ).
+    client->nav_app_call( lo_dialog ).
+
+  ENDMETHOD.
+
+
+  METHOD call_object_page.
+
+    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( cds_view_name = entity_name
+                                                keys          = keys
+                                                context       = context ).
+    lo_op->set_extension( mo_ext ).
+    client->nav_app_call( lo_op ).
 
   ENDMETHOD.
 

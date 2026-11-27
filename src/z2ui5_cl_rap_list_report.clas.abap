@@ -2084,10 +2084,9 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                                        rows        = get_action_rows( )
                              CHANGING  param       = <ls_param> ).
       READ TABLE ms_entity-actions INTO DATA(ls_action) WITH KEY name = mv_pending_action.
-      DATA(lo_dialog) = NEW z2ui5_cl_rap_action_dialog( val   = <ls_param>
-                                                        title = ls_action-label ).
-      lo_dialog->set_extension( mo_ext ).
-      client->nav_app_call( lo_dialog ).
+      call_action_dialog( client = client
+                          param  = <ls_param>
+                          title  = ls_action-label ).
       RETURN.
     ENDIF.
 
@@ -2134,28 +2133,15 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
                                   invocation_grouping = ls_action-invocation_grouping ).
     "#ISOLATED: some rows may have changed even when others failed
     load_data( ).
-    IF ls_result-success = abap_true.
-      "a factory action: the record it created
-      IF ls_result-keys IS NOT INITIAL.
-        open_created( client = client
-                      keys   = ls_result-keys ).
-        RETURN.
-      ENDIF.
-      IF ls_result-messages IS INITIAL.
-        client->message_toast_display( get_text( cs_text-action_done ) ).
-      ELSE.
-        show_messages( client   = client
-                       messages = ls_result-messages
-                       details  = ls_result-details
-                       fields   = ms_entity-fields
-                       type     = `success` ).
-      ENDIF.
-    ELSE.
-      show_messages( client   = client
-                     messages = ls_result-messages
-                     details  = ls_result-details
-                     fields   = ms_entity-fields ).
+    "a factory action: the record it created
+    IF ls_result-success = abap_true AND ls_result-keys IS NOT INITIAL.
+      open_created( client = client
+                    keys   = ls_result-keys ).
+      RETURN.
     ENDIF.
+    show_action_result( client    = client
+                        is_result = ls_result
+                        fields    = ms_entity-fields ).
 
   ENDMETHOD.
 
@@ -2232,11 +2218,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD open_created.
 
-    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( cds_view_name = mv_cds_view
-                                                keys          = keys ).
-    lo_op->set_extension( mo_ext ).
     mv_opened_created = abap_true.
-    client->nav_app_call( lo_op ).
+    call_object_page( client      = client
+                      entity_name = mv_cds_view
+                      keys        = keys ).
 
   ENDMETHOD.
 
