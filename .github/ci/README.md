@@ -27,7 +27,7 @@ home, and a find-and-replace of the `uses:` lines in the callers.
 | [`addon-702.yaml`](../workflows/addon-702.yaml) | the downport to the branch `702`, then abaplint on that branch | `contents: write` |
 | [`addon-build-rename.yaml`](../workflows/addon-build-rename.yaml) | the branch `rename_<name>` for a parallel installation | `contents: write` |
 | [`addon-pages.yaml`](../workflows/addon-pages.yaml) | the VitePress site from `site/`, deployed from the `branch` input (`main` by default) | `contents: read`, `pages: write`, `id-token: write` |
-| [`addon-bump-deps.yaml`](../workflows/addon-bump-deps.yaml) | the monthly pull request: npm, pinned actions, `extra`, `.github/deps.json` | `contents: write`, `pull-requests: write`; secret `DEPS_TOKEN` passed explicitly |
+| [`addon-bump-deps.yaml`](../workflows/addon-bump-deps.yaml) | the monthly pull request: the shared files from abap2UI5, npm, pinned actions, `extra`, `.github/deps.json` | `contents: write`, `pull-requests: write`; secret `DEPS_TOKEN` passed explicitly |
 
 Every job inside declares its own permissions; a job that runs the code of a
 pull request has `contents: read` whatever the caller grants. Secrets are
@@ -110,6 +110,19 @@ node <a checkout of rap-ext>/.github/ci/pin-deps.mjs clean
 ```
 
 `.deps/` and `.ci-template/` belong in the addon's `.gitignore`.
+
+### The scripts every addon carries: `update-deps.mjs`, `rename.mjs`
+
+`.github/scripts/update-deps.mjs` and `.github/scripts/rename.mjs` are the
+same bytes in every addon (and in the abap2UI5 repositories that have
+them). Their source is `.github/shared/` in
+[abap2UI5](https://github.com/abap2UI5/abap2UI5), whose `npm run
+check:shared` compares every copy and names the addons `owner/repo` in its
+manifest (`shared-file-gate.mjs`). `addon-bump-deps.yaml` pulls them: its
+first step after the checkout asks that manifest for `$GITHUB_REPOSITORY`
+and copies what it lists, so the monthly pull request carries a fix made
+there - and runs it, since the npm step comes after. Change them in
+abap2UI5, never in an addon: a local edit is pulled over next month.
 
 ### Bumping
 

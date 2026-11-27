@@ -76,6 +76,16 @@ test("fills the folder of every pinned dependency with the pinned commit, leaves
   assert.ok(!existsSync(join(root, "layout-management")) && !existsSync(join(root, ".deps")));
 });
 
+test("an unclosed block comment in a config is an error, not an endless loop", () => {
+  const base = mkdtempSync(join(tmpdir(), "pin-deps-gh-"));
+  const [sha] = sibling(base, "abap2UI5-addons/popups", ["v1"]);
+  const root = addon({ "abap2UI5-addons/popups": { branch: "main", sha } }, { "abaplint.jsonc": cfg([dep("abap2UI5-addons/popups", "/popups")]) + "\n/* never closed\n" });
+  const r = spawnSync(process.execPath, [SCRIPT], { cwd: root, encoding: "utf8", timeout: 20000, env: { ...process.env, PIN_DEPS_GIT_BASE: base, GITHUB_ENV: "" } });
+  assert.equal(r.signal, null, "pin-deps hung");
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /abaplint\.jsonc: a \/\* comment is never closed/);
+});
+
 test("refuses a folder a 702 dependency shares with a pinned one", () => {
   const base = mkdtempSync(join(tmpdir(), "pin-deps-gh-"));
   const [sha] = sibling(base, "abap2UI5-addons/popups", ["v1"]);
