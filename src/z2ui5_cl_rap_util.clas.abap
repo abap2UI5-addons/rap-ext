@@ -276,6 +276,10 @@ CLASS z2ui5_cl_rap_util DEFINITION
         "added 2026-10, third round (analytical list): @Aggregation.default
         "(SUM, MIN, MAX, AVG, COUNT_DISTINCT - normalize_aggregation)
         aggregation_default       TYPE string,
+        "added 2026-11: a STRING column the dictionary types STRG (no
+        "SSTRING) - a LOB, which ABAP SQL neither UPPERs nor LIKEs, so it
+        "is not searched; set where the DDIC field list is read (on premise)
+        is_lob_string             TYPE abap_bool,
       END OF ty_s_field_info.
 
     TYPES ty_t_field_info TYPE STANDARD TABLE OF ty_s_field_info WITH DEFAULT KEY.
@@ -2433,6 +2437,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         "the data element text - @EndUserText.label overrides it below
         ls_field-label = COND #( WHEN ls_dfies-scrtext_m IS NOT INITIAL THEN ls_dfies-scrtext_m
                                  ELSE ls_dfies-fieldtext ).
+        ls_field-is_lob_string = xsdbool( ls_field-type_kind = `STRING` AND ls_dfies-datatype = `STRG` ).
       ENDIF.
 
       APPEND ls_field TO result-fields.
@@ -7248,8 +7253,9 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
   METHOD get_search_fields.
     DATA(lv_only_searchable) = xsdbool( line_exists( it_fields[ is_searchable = abap_true is_virtual = abap_false ] ) ).
+    "a LOB string (STRG) has no UPPER and no LIKE in ABAP SQL
     LOOP AT it_fields INTO DATA(ls_field)
-      WHERE ( type_kind = `CHAR` OR type_kind = `STRING` ) AND is_virtual = abap_false.
+      WHERE ( type_kind = `CHAR` OR type_kind = `STRING` ) AND is_virtual = abap_false AND is_lob_string = abap_false.
       IF lv_only_searchable = abap_true AND ls_field-is_searchable = abap_false.
         CONTINUE.
       ENDIF.

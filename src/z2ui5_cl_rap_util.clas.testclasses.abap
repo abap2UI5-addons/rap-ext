@@ -1550,9 +1550,11 @@ CLASS ltcl_reading IMPLEMENTATION.
       ( name = `ID`   type_kind = `CHAR` )
       ( name = `NOTE` type_kind = `STRING` )
       ( name = `CALC` type_kind = `CHAR` is_virtual = abap_true )
-      ( name = `HIDE` type_kind = `CHAR` is_hidden = abap_true ) ).
+      ( name = `HIDE` type_kind = `CHAR` is_hidden = abap_true )
+      ( name = `TEXT` type_kind = `STRING` is_lob_string = abap_true ) ).
 
-    " no search element - every visible text and string field, no virtual one
+    " no search element - every visible text and string field, no virtual
+    " one and no LOB string (STRG: no UPPER, no LIKE in ABAP SQL)
     cl_abap_unit_assert=>assert_equals(
       exp = `( UPPER( ID ) LIKE '%X%' ESCAPE '#' OR UPPER( NOTE ) LIKE '%X%' ESCAPE '#' )`
       act = z2ui5_cl_rap_util=>build_search_condition( it_fields = lt_fields search = `x` ) ).
