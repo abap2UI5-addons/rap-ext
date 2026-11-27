@@ -6,7 +6,8 @@
 "! - view_display keeps the view (mv_view) - the host puts the views of
 "!   its columns into one
 "! - _event names the column (z2ui5_cl_rap_util=>to_column_event), and
-"!   so do the events of window_bind_tab and timer_set; get, get_event
+"!   so do the events of window_bind_tab, timer_set and the onclose of
+"!   message_box_display and message_toast_display; get, get_event
 "!   and check_on_event answer the event without it - so the host knows
 "!   which floorplan an event is for, and the floorplan sees its own
 "!   events. The timer is the host's: one for all columns, the last
@@ -65,6 +66,14 @@ CLASS z2ui5_cl_rap_fcl_client DEFINITION
     DATA mi_app_prev TYPE REF TO z2ui5_if_app.
     "! the floorplan is in the first column
     DATA mv_first TYPE abap_bool.
+
+    "! a backend event of the floorplan as an event of its column
+    "! (z2ui5_cl_rap_util=>to_column_event) - an empty one stays empty
+    METHODS column_event
+      IMPORTING
+        event         TYPE clike
+      RETURNING
+        VALUE(result) TYPE string.
 
   PRIVATE SECTION.
 
@@ -242,7 +251,7 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
                                     type             = type
                                     title            = title
                                     styleclass       = styleclass
-                                    onclose          = onclose
+                                    onclose          = column_event( onclose )
                                     actions          = actions
                                     emphasizedaction = emphasizedaction
                                     initialfocus     = initialfocus
@@ -254,7 +263,7 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
   METHOD z2ui5_if_client~message_toast_display.
     mi_client->message_toast_display( text     = text
                                       duration = duration
-                                      onclose  = onclose ).
+                                      onclose  = column_event( onclose ) ).
   ENDMETHOD.
 
 
@@ -265,12 +274,7 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
     IF arg IS SUPPLIED.
       APPEND CONV string( arg ) TO lt_arg.
     ENDIF.
-    DATA(lv_event) = CONV string( val ).
-    IF lv_event IS NOT INITIAL.
-      lv_event = z2ui5_cl_rap_util=>to_column_event( column = mv_column
-                                                     event  = lv_event ).
-    ENDIF.
-    result = mi_client->_event( val    = lv_event
+    result = mi_client->_event( val    = column_event( val )
                                 t_arg  = lt_arg
                                 s_ctrl = s_ctrl ).
   ENDMETHOD.
@@ -307,8 +311,7 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
     result = mi_client->window_bind_tab(
                  val    = val
                  total  = total
-                 event  = z2ui5_cl_rap_util=>to_column_event( column = mv_column
-                                                              event  = CONV string( event ) )
+                 event  = column_event( event )
                  window = window ).
   ENDMETHOD.
 
@@ -377,14 +380,18 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
 
   METHOD z2ui5_if_client~timer_set.
     "the tick is an event of the column, like _event - an empty one stops
-    DATA(lv_event) = CONV string( event ).
-    IF lv_event IS NOT INITIAL.
-      lv_event = z2ui5_cl_rap_util=>to_column_event( column = mv_column
-                                                     event  = lv_event ).
-    ENDIF.
-    mi_client->timer_set( event    = lv_event
+    mi_client->timer_set( event    = column_event( event )
                           delay_ms = delay_ms
                           no_busy  = no_busy ).
+  ENDMETHOD.
+
+
+  METHOD column_event.
+    result = event.
+    IF result IS NOT INITIAL.
+      result = z2ui5_cl_rap_util=>to_column_event( column = mv_column
+                                                   event  = result ).
+    ENDIF.
   ENDMETHOD.
 
 
