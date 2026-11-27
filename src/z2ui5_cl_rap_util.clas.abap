@@ -2027,6 +2027,17 @@ CLASS z2ui5_cl_rap_util DEFINITION
     CLASS-DATA gt_cache TYPE STANDARD TABLE OF ty_s_cache WITH DEFAULT KEY.
 
     TYPES:
+      BEGIN OF ty_s_key_cache,
+        name TYPE string,
+        keys TYPE string_table,
+      END OF ty_s_key_cache.
+
+    "! The keys per entity (get_key_fields) for the rest of the ABAP
+    "! session - asked per row, and read_entity reads the whole entity
+    "! (added 2026-11)
+    CLASS-DATA gt_key_cache TYPE STANDARD TABLE OF ty_s_key_cache WITH DEFAULT KEY.
+
+    TYPES:
       BEGIN OF ty_s_assoc_cache,
         name         TYPE string,
         associations TYPE ty_t_association,
@@ -3513,7 +3524,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
     gv_anno_reader = to_upper( reader ).
     "what was read with the other reader is read again
-    CLEAR: gt_cache, gt_assoc_cache.
+    CLEAR: gt_cache, gt_assoc_cache, gt_key_cache.
 
   ENDMETHOD.
 
@@ -3778,7 +3789,14 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
 
 
   METHOD get_key_fields.
-    result = read_entity( entity_name )-keys.
+    DATA(lv_name) = to_upper( entity_name ).
+    READ TABLE gt_key_cache INTO DATA(ls_cached) WITH KEY name = lv_name.
+    IF sy-subrc = 0.
+      result = ls_cached-keys.
+      RETURN.
+    ENDIF.
+    result = read_entity( lv_name )-keys.
+    APPEND VALUE #( name = lv_name keys = result ) TO gt_key_cache.
   ENDMETHOD.
 
 
