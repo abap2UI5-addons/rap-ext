@@ -7184,9 +7184,15 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         "the position of the parent in result, 0 for a root
         out   TYPE i,
       END OF ty_s_stack.
-    DATA lt_children TYPE STANDARD TABLE OF ty_s_child WITH EMPTY KEY.
+    "by parent - a node finds its children without a scan of every row;
+    "pos keeps the siblings' order (since 2026-11)
+    DATA lt_children TYPE SORTED TABLE OF ty_s_child WITH UNIQUE KEY parent pos.
     DATA lt_keys TYPE SORTED TABLE OF string WITH UNIQUE KEY table_line.
-    DATA lt_placed TYPE SORTED TABLE OF string WITH UNIQUE KEY table_line.
+    "the positions placed: every row is placed once - a node whose key
+    "repeats (a composite node key, an empty one) is a row of its own, not
+    "dropped (since 2026-11)
+    DATA lt_placed TYPE SORTED TABLE OF i WITH UNIQUE KEY table_line.
+    DATA lv_scan TYPE i.
     DATA lt_roots TYPE STANDARD TABLE OF i WITH EMPTY KEY.
     DATA lt_stack TYPE STANDARD TABLE OF ty_s_stack WITH EMPTY KEY.
     DATA lt_push TYPE STANDARD TABLE OF i WITH EMPTY KEY.
@@ -7204,7 +7210,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         OR NOT line_exists( lt_keys[ table_line = ls_node-parent ] ).
         APPEND lv_pos TO lt_roots.
       ELSE.
-        APPEND VALUE #( parent = ls_node-parent pos = lv_pos ) TO lt_children.
+        INSERT VALUE #( parent = ls_node-parent pos = lv_pos ) INTO TABLE lt_children.
       ENDIF.
     ENDLOOP.
 
@@ -7216,17 +7222,19 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         lv_next_root = lv_next_root + 1.
       ELSE.
         CLEAR lv_pos.
-        LOOP AT it_nodes INTO ls_node.
-          IF NOT line_exists( lt_placed[ table_line = ls_node-key ] ).
-            lv_pos = sy-tabix.
+        "the rows of a cycle, and those under a key placed already
+        WHILE lv_scan < lines( it_nodes ).
+          lv_scan = lv_scan + 1.
+          IF NOT line_exists( lt_placed[ table_line = lv_scan ] ).
+            lv_pos = lv_scan.
             EXIT.
           ENDIF.
-        ENDLOOP.
+        ENDWHILE.
         IF lv_pos = 0.
           EXIT.
         ENDIF.
       ENDIF.
-      IF line_exists( lt_placed[ table_line = it_nodes[ lv_pos ]-key ] ).
+      IF line_exists( lt_placed[ table_line = lv_pos ] ).
         CONTINUE.
       ENDIF.
 
@@ -7235,10 +7243,10 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         ls_top = lt_stack[ lines( lt_stack ) ].
         DELETE lt_stack INDEX lines( lt_stack ).
         ls_node = it_nodes[ ls_top-pos ].
-        IF line_exists( lt_placed[ table_line = ls_node-key ] ).
+        IF line_exists( lt_placed[ table_line = ls_top-pos ] ).
           CONTINUE.
         ENDIF.
-        INSERT ls_node-key INTO TABLE lt_placed.
+        INSERT ls_top-pos INTO TABLE lt_placed.
         ls_node-index = COND #( WHEN ls_node-index IS INITIAL THEN ls_top-pos ELSE ls_node-index ).
         ls_node-level = ls_top-level.
         ls_node-expanded = xsdbool( expand_all = abap_true OR line_exists( expanded[ table_line = ls_node-key ] ) ).
@@ -7250,7 +7258,8 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         ENDIF.
         CLEAR lt_push.
         LOOP AT lt_children INTO DATA(ls_child) WHERE parent = ls_node-key.
-          IF NOT line_exists( lt_placed[ table_line = it_nodes[ ls_child-pos ]-key ] ).
+          IF NOT line_exists( lt_placed[ table_line = ls_child-pos ] )
+            AND NOT line_exists( lt_push[ table_line = ls_child-pos ] ).
             APPEND ls_child-pos TO lt_push.
           ENDIF.
         ENDLOOP.
