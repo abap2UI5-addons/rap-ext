@@ -1147,7 +1147,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       where          = lv_where
       max_rows       = mv_max_rows
       with_selection = has_selection( )
-      order_by       = get_order_by( ) ).
+      order_by       = get_order_by( )
+      count_too      = abap_true ).
     IF mr_data IS BOUND.
       DATA(lv_count) = count_rows( entity_name = mv_cds_view
                                    where       = lv_where ).

@@ -427,6 +427,10 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         "a structure where compares with as @<LS_HOST>-name (cv_host,
         "build_key_condition) - added 2026-10
         host           TYPE REF TO data OPTIONAL
+        "a custom entity: its query provider counts the rows in the same
+        "call, and the count_rows( ) of the same where that follows takes
+        "that number instead of calling it again (added 2026-11)
+        count_too      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result)  TYPE REF TO data.
 
@@ -961,6 +965,12 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
     "! read that worked (select_rows, count_rows; added 2026-10, third
     "! round)
     DATA mv_read_error TYPE string.
+
+    "! the count a query provider returned with the rows (select_rows( )
+    "! with count_too) and the entity and where it is of - count_rows( )
+    "! takes it once
+    DATA mv_query_count TYPE i.
+    DATA mv_query_count_of TYPE string.
 
     "! How the rows of entity_name are read: through its query provider (a
     "! custom entity) or by ABAP SQL, and which of its elements are virtual
@@ -1551,8 +1561,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     DATA lv_fields TYPE string.
     DATA lv_order_by TYPE string.
     DATA lv_corresponding TYPE abap_bool.
+    DATA lv_count TYPE i.
 
-    CLEAR mv_read_error.
+    CLEAR: mv_read_error, mv_query_count, mv_query_count_of.
     IF host IS BOUND.
       ASSIGN host->* TO <ls_host>.
     ENDIF.
@@ -1574,13 +1585,19 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
         "a custom entity: its query provider reads it - ABAP SQL cannot
         IF ls_read-query_class IS NOT INITIAL.
-          query_rows( entity_name = entity_name
-                      query_class = ls_read-query_class
-                      where       = lv_where
-                      host        = host
-                      max_rows    = max_rows
-                      order_by    = order_by
-                      data        = result ).
+          query_rows( EXPORTING entity_name     = entity_name
+                                query_class     = ls_read-query_class
+                                where           = lv_where
+                                host            = host
+                                max_rows        = max_rows
+                                order_by        = order_by
+                                data            = result
+                                count_requested = count_too
+                      IMPORTING count           = lv_count ).
+          IF count_too = abap_true.
+            mv_query_count = lv_count.
+            mv_query_count_of = |{ to_upper( entity_name ) }\|{ where }|.
+          ENDIF.
         ELSE.
           "a virtual element has no column: the others are selected, and
           "a condition or sort criterion on it is left out
@@ -1667,6 +1684,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     DATA lt_virtual TYPE string_table.
 
     CLEAR mv_read_error.
+    "counted with the rows of the same where - the provider runs once
+    DATA(lv_counted) = xsdbool( mv_query_count_of IS NOT INITIAL
+                                AND mv_query_count_of = |{ to_upper( entity_name ) }\|{ where }| ).
+    DATA(lv_query_count) = mv_query_count.
+    CLEAR: mv_query_count, mv_query_count_of.
+    IF lv_counted = abap_true.
+      result = lv_query_count.
+      RETURN.
+    ENDIF.
     DATA(lv_where) = get_ext_where( entity_name = entity_name
                                     where       = where ).
     DATA(ls_read) = get_read_info( entity_name ).
