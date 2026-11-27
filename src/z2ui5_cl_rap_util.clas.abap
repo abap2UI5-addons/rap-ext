@@ -2539,7 +2539,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       <ls_el>-element = to_upper( <ls_el>-element ).
       <ls_el>-key = to_upper( <ls_el>-key ).
     ENDLOOP.
-    SORT lt_elements BY element.
+    SORT lt_elements STABLE BY element.
 
     DATA lv_element TYPE string.
     LOOP AT lt_elements INTO DATA(ls_el).
@@ -2590,7 +2590,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    SORT cs_entity-facets BY position.
+    SORT cs_entity-facets STABLE BY position.
     "by position - an action without one behind the others, in the order
     "of the annotations
     SORT cs_entity-actions STABLE BY source position.
@@ -3397,7 +3397,7 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ls_entry-prop = lv_rest.
       APPEND ls_entry TO result.
     ENDLOOP.
-    SORT result BY idx.
+    SORT result STABLE BY idx.
 
   ENDMETHOD.
 
