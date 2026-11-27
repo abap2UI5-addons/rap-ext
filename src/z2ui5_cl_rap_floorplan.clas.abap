@@ -136,6 +136,11 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         has_children   TYPE string VALUE `HAS_CHILDREN`,
         open           TYPE string VALUE `OPEN`,
         toggle         TYPE string VALUE `TOGGLE`,
+        "added 2026-11 (leaving or cancelling edit mode without draft)
+        discard_changes TYPE string VALUE `DISCARD_CHANGES`,
+        leave_changes  TYPE string VALUE `LEAVE_CHANGES`,
+        "&1 is the number of rows
+        export_cut     TYPE string VALUE `EXPORT_CUT`,
       END OF cs_text.
 
     " Where z2ui5_if_rap_ext~extend_view may add controls
@@ -1414,6 +1419,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-has_children  THEN `Der Knoten hat Unterknoten`
         WHEN cs_text-open          THEN `Öffnen`
         WHEN cs_text-toggle        THEN `Auf- oder zuklappen`
+        WHEN cs_text-discard_changes THEN `Änderungen verwerfen`
+        WHEN cs_text-leave_changes THEN `Ihre Änderungen sind nicht gesichert. Verwerfen?`
+        WHEN cs_text-export_cut    THEN `Nur die ersten &1 Zeilen wurden exportiert`
         ELSE key ).
     ELSE.
       "the text pool of this class, original language English - translate
@@ -1517,6 +1525,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
         WHEN cs_text-has_children   THEN 'The node has children'(096)
         WHEN cs_text-open           THEN 'Open'(097)
         WHEN cs_text-toggle         THEN 'Expand or collapse'(098)
+        WHEN cs_text-discard_changes THEN 'Discard changes'(099)
+        WHEN cs_text-leave_changes  THEN 'Your changes are not saved. Discard them?'(100)
+        WHEN cs_text-export_cut     THEN 'Only the first &1 rows were exported'(101)
         ELSE key ).
     ENDIF.
 

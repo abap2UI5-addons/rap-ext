@@ -738,7 +738,8 @@ Renders a Fiori-Elements-style list report for any CDS view, driven entirely by 
 - Sorting in the database - a select of the columns and a direction button, the default from `@UI.presentationVariant`; "More" loads the next rows from the database
 - Actions from `@UI.lineItem` `#FOR_ACTION` (toolbar on the selected rows, or inline per row); links and launchpad navigations from `#WITH_URL`, `#WITH_NAVIGATION_PATH`, `#WITH_INTENT_BASED_NAVIGATION` and `#FOR_INTENT_BASED_NAVIGATION`
 - Mandatory and single-value filters from `@Consumption.filter`
-- Views per user (filters, the filter fields, search, sort order, the columns - hidden, order, width -, the group field; one the default, each public or private and applied automatically or not), a columns dialog (visible, order, width, group by), and the export of every matching row as a CSV file
+- Views per user (filters, the filter fields, search, sort order, the columns - hidden, order, width -, the group field; one the default, each public or private and applied automatically or not), a columns dialog (visible, order, width, group by), and the export of every matching row as a CSV file - up to 10,000 rows
+(`cv_export_max`); a larger result is cut there, and the list says so
 - Filters by type (lists, dates, date ranges, MultiInputs with tokens), "define conditions", "adapt filters", the error state of a missing mandatory filter
 - Grouping (`@UI.presentationVariant.groupBy` or the user's group field): the rows ordered by it in the database, a group header per value
 - The start from `@UI.selectionPresentationVariant` (sort, group, a qualified `@UI.lineItem`, the selection variant's filter values); `initial_load` (`AUTO` - unless the default view does not apply automatically -, `ENABLED`, `DISABLED`: the rows only on Go)

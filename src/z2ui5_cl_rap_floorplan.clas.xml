@@ -600,6 +600,24 @@
      <ENTRY>Expand or collapse</ENTRY>
      <LENGTH>18</LENGTH>
     </item>
+    <item>
+     <ID>I</ID>
+     <KEY>099</KEY>
+     <ENTRY>Discard changes</ENTRY>
+     <LENGTH>15</LENGTH>
+    </item>
+    <item>
+     <ID>I</ID>
+     <KEY>100</KEY>
+     <ENTRY>Your changes are not saved. Discard them?</ENTRY>
+     <LENGTH>41</LENGTH>
+    </item>
+    <item>
+     <ID>I</ID>
+     <KEY>101</KEY>
+     <ENTRY>Only the first &amp;1 rows were exported</ENTRY>
+     <LENGTH>36</LENGTH>
+    </item>
    </TPOOL>
   </asx:values>
  </asx:abap>
