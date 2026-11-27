@@ -2005,7 +2005,9 @@ CLASS z2ui5_cl_rap_util DEFINITION
 
     "! choose who reads the annotations for the rest of the session -
     "! cs_anno_reader-auto (the default), -ddic or -xco; forgets what was
-    "! read so far
+    "! read so far. abap2UI5 is stateless: the session is one roundtrip,
+    "! so call it at the start of every roundtrip (README, "How the reader
+    "! is chosen")
     CLASS-METHODS set_annotation_reader
       IMPORTING
         reader TYPE string.
