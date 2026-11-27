@@ -81,13 +81,16 @@ as CI does.
   `scripts/core-pin.mjs`; `bump-deps.yaml` moves it monthly, in its one
   pull request whose checks lint against the new tag (`bump-core.yml` by hand), and the scheduled run of `ci.yaml` lints against
   the core's `main` as the canary. Do not drop the key: abaplint then clones
-  `main` silently. **Exception, 2026-11:** the pin is `main` (maintainer
-  decision) - `z2ui5_cl_rap_fcl_client` and the test double in
-  `z2ui5_cl_rap_fcl.clas.testclasses.abap` implement `window_bind_tab` and
-  `window_get_row` of `z2ui5_if_client`, which no release has yet, and an
-  interface method that is not implemented is a syntax warning in a system
-  with a newer core. Move it back to a tag with the first release that has
-  them; until then a monthly bump to an older release turns `lint` red.
+  `main` silently. **The pin is at least 1.151.0:** `z2ui5_cl_rap_fcl_client`
+  and the test double in `z2ui5_cl_rap_fcl.clas.testclasses.abap` implement
+  every method of `z2ui5_if_client`, so they follow the interface of the
+  pinned release exactly - 1.151.0 removed `_bind_edit`, the
+  `*_model_update` methods and `window_get_row`, changed `window_bind_tab`
+  (`total`, `event`) and added `get_start_param`, `check_nav_pending`,
+  `get_nav_tag`, `check_on_nav_back`, `timer_set` and `timer_stop`. A core
+  release that changes the interface turns `lint` red in the bump's pull
+  request: move both classes with it, and prefix every backend event the
+  client hands on with its column (`to_column_event`), as `_event` does.
 - `npm run unit` (`scripts/unit.mjs`) transpiles the classes listed in its
   `UNITS` with open-abap-core, together with the public API (`src/02`) of the
   abap2UI5 release `abaplint.jsonc` pins (cloned at that tag), and runs their

@@ -827,7 +827,7 @@ CLASS z2ui5_cl_rap_overview_page IMPLEMENTATION.
       lv_state = is_card-kpi_state.
     ENDIF.
     IF lv_kpi_value IS INITIAL.
-      lv_kpi_value = CONV string( is_card-count ).
+      lv_kpi_value = is_card-count.
     ENDIF.
     DATA(lv_index) = mv_card_index.
     READ TABLE mt_cards INDEX lv_index INTO DATA(ls_card).

@@ -59,10 +59,9 @@ What it is not:
   [ABAP Cloud](#abap-cloud) (checked against the ABAP Cloud language
   version, `npm run lint:cloud`)
 - [abap2UI5](https://github.com/abap2UI5/abap2UI5) - the checks run against
-  the version pinned in `abaplint.jsonc`; for now (2026-11) that is `main`,
-  not a release: the flexible column layout implements the client methods
-  `window_bind_tab` and `window_get_row`, which are not in 1.148.0 - with an
-  older core `z2ui5_cl_rap_fcl_client` does not activate
+  the version pinned in `abaplint.jsonc`, 1.151.0: the flexible column
+  layout's client implements the client interface of that release - with
+  an older core `z2ui5_cl_rap_fcl_client` does not activate
 - UI5 1.77 or higher in the browser (the object page uses
   `sap.uxap.ObjectPageSubSection.showTitle`)
 - for the RAP parts of the demo: the `/DMO/` flight reference scenario
@@ -1333,11 +1332,13 @@ Additive for callers and subclasses, with these exceptions a subclass may notice
   branch `cloud` carries a version of it without them (see
   [ABAP Cloud](#abap-cloud)). `get_environment( )` is fixed per branch now
   instead of asked from RTTI. Public signatures are unchanged.
-- **abap2UI5 `main` needed for now.** The flexible column layout's client
-  implements the client methods `window_bind_tab` and `window_get_row` that
-  abap2UI5 `main` added after 1.148.0, and `abaplint.jsonc` pins the core to
-  `main` until a release has them. On a system with an older core, pull
-  abap2UI5 `main` first.
+- **abap2UI5 1.151.0 needed.** The flexible column layout's client
+  implements the client interface of abap2UI5 1.151.0, the release
+  `abaplint.jsonc` pins: without `_bind_edit`, the `*_model_update` methods
+  and `window_get_row`, with `window_bind_tab( val total event )` and the
+  methods that release added (`get_start_param`, `check_nav_pending`,
+  `get_nav_tag`, `check_on_nav_back`, `timer_set`, `timer_stop`). On a
+  system with an older core, pull abap2UI5 1.151.0 first.
 
 ## Development
 

@@ -4,12 +4,13 @@
 "! It hands every call to the real client, except what makes a floorplan
 "! an app of its own:
 "! - view_display keeps the view (mv_view) - the host puts the views of
-"!   its columns into one; view_model_update does nothing, the core
-"!   sends a changed model by itself
-"! - _event names the column (z2ui5_cl_rap_util=>to_column_event), get,
-"!   get_event and check_on_event answer the event without it - so the
-"!   host knows which floorplan an event is for, and the floorplan sees
-"!   its own events
+"!   its columns into one
+"! - _event names the column (z2ui5_cl_rap_util=>to_column_event), and
+"!   so do the events of window_bind_tab and timer_set; get, get_event
+"!   and check_on_event answer the event without it - so the host knows
+"!   which floorplan an event is for, and the floorplan sees its own
+"!   events. The timer is the host's: one for all columns, the last
+"!   timer_set wins
 "! - nav_app_call of an object page is noted (mo_call) - the host opens
 "!   it in the next column; any other app (a value help, a dialog) is
 "!   called, and the host notes the column it returns to
@@ -17,7 +18,9 @@
 "!   the host closes the column; in the first it leaves the host
 "! - check_on_init, check_on_navigated and get_app_prev answer what the
 "!   host says; check_app_prev_stack is true beyond the first column
-"!   (the back button closes the column)
+"!   (the back button closes the column); check_on_nav_back is true
+"!   when a column right of it closed or what it called returned, and
+"!   check_nav_pending once the floorplan called or left
 "!
 "! It lives for one call of a floorplan's main - it is never kept, so it
 "! never travels through the draft.
@@ -93,10 +96,6 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD z2ui5_if_client~view_model_update.
-  ENDMETHOD.
-
-
   METHOD z2ui5_if_client~set_session_stateful.
     mi_client->set_session_stateful( val ).
   ENDMETHOD.
@@ -135,11 +134,6 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD z2ui5_if_client~nest_view_model_update.
-    mi_client->nest_view_model_update( ).
-  ENDMETHOD.
-
-
   METHOD z2ui5_if_client~nest2_view_display.
     mi_client->nest2_view_display( val            = val
                                    id             = id
@@ -153,28 +147,13 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD z2ui5_if_client~nest2_view_model_update.
-    mi_client->nest2_view_model_update( ).
-  ENDMETHOD.
-
-
   METHOD z2ui5_if_client~popup_display.
     mi_client->popup_display( val ).
   ENDMETHOD.
 
 
-  METHOD z2ui5_if_client~popup_model_update.
-    mi_client->popup_model_update( ).
-  ENDMETHOD.
-
-
   METHOD z2ui5_if_client~popup_destroy.
     mi_client->popup_destroy( ).
-  ENDMETHOD.
-
-
-  METHOD z2ui5_if_client~popover_model_update.
-    mi_client->popover_model_update( ).
   ENDMETHOD.
 
 
@@ -193,6 +172,11 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
     result = mi_client->get( ).
     result-event = mv_event.
     result-check_on_navigated = mv_navigated.
+  ENDMETHOD.
+
+
+  METHOD z2ui5_if_client~get_start_param.
+    result = mi_client->get_start_param( name ).
   ENDMETHOD.
 
 
@@ -228,12 +212,14 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
       RETURN.
     ENDIF.
     IF r_data IS SUPPLIED.
-      result = mi_client->nav_app_leave( app    = app
-                                         event  = event
-                                         r_data = r_data ).
+      result = mi_client->nav_app_leave( app           = app
+                                         event         = event
+                                         r_data        = r_data
+                                         keep_messages = keep_messages ).
     ELSE.
-      result = mi_client->nav_app_leave( app   = app
-                                         event = event ).
+      result = mi_client->nav_app_leave( app           = app
+                                         event         = event
+                                         keep_messages = keep_messages ).
     ENDIF.
   ENDMETHOD.
 
@@ -245,7 +231,9 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
       RETURN.
     ENDIF.
     mv_called = abap_true.
-    result = mi_client->nav_app_call( app ).
+    result = mi_client->nav_app_call( app           = app
+                                      tag           = tag
+                                      keep_messages = keep_messages ).
   ENDMETHOD.
 
 
@@ -258,7 +246,8 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
                                     actions          = actions
                                     emphasizedaction = emphasizedaction
                                     initialfocus     = initialfocus
-                                    details          = details ).
+                                    details          = details
+                                    icon             = icon ).
   ENDMETHOD.
 
 
@@ -308,35 +297,19 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD z2ui5_if_client~_bind_edit.
-    result = mi_client->_bind_edit( val                  = val
-                                    path                 = path
-                                    custom_mapper        = custom_mapper
-                                    custom_mapper_back   = custom_mapper_back
-                                    custom_filter        = custom_filter
-                                    custom_filter_back   = custom_filter_back
-                                    tab                  = tab
-                                    tab_index            = tab_index
-                                    switch_default_model = switch_default_model ).
-  ENDMETHOD.
-
-
   METHOD z2ui5_if_client~_bind_path.
     result = mi_client->_bind_path( val ).
   ENDMETHOD.
 
 
   METHOD z2ui5_if_client~window_bind_tab.
-    result = mi_client->window_bind_tab( val      = val
-                                         window   = window
-                                         t_sort   = t_sort
-                                         t_filter = t_filter ).
-  ENDMETHOD.
-
-
-  METHOD z2ui5_if_client~window_get_row.
-    result = mi_client->window_get_row( val = val
-                                        row = row ).
+    "the browser's requests are events of the column, like _event
+    result = mi_client->window_bind_tab(
+                 val    = val
+                 total  = total
+                 event  = z2ui5_cl_rap_util=>to_column_event( column = mv_column
+                                                              event  = CONV string( event ) )
+                 window = window ).
   ENDMETHOD.
 
 
@@ -381,6 +354,42 @@ CLASS z2ui5_cl_rap_fcl_client IMPLEMENTATION.
     ELSE.
       result = mi_client->get_app_prev( ).
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD z2ui5_if_client~check_nav_pending.
+    result = xsdbool( mo_call IS BOUND OR mv_called = abap_true OR mv_leave = abap_true
+                      OR mi_client->check_nav_pending( ) = abap_true ).
+  ENDMETHOD.
+
+
+  METHOD z2ui5_if_client~get_nav_tag.
+    result = mi_client->get_nav_tag( ).
+  ENDMETHOD.
+
+
+  METHOD z2ui5_if_client~check_on_nav_back.
+    "a closed column (the host names what closed) or what the column called
+    result = xsdbool( mv_navigated = abap_true
+                      AND ( mi_app_prev IS BOUND OR mi_client->check_on_nav_back( ) = abap_true ) ).
+  ENDMETHOD.
+
+
+  METHOD z2ui5_if_client~timer_set.
+    "the tick is an event of the column, like _event - an empty one stops
+    DATA(lv_event) = CONV string( event ).
+    IF lv_event IS NOT INITIAL.
+      lv_event = z2ui5_cl_rap_util=>to_column_event( column = mv_column
+                                                     event  = lv_event ).
+    ENDIF.
+    mi_client->timer_set( event    = lv_event
+                          delay_ms = delay_ms
+                          no_busy  = no_busy ).
+  ENDMETHOD.
+
+
+  METHOD z2ui5_if_client~timer_stop.
+    mi_client->timer_stop( ).
   ENDMETHOD.
 
 ENDCLASS.

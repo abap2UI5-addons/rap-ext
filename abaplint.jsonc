@@ -22,11 +22,10 @@
       // (abap2UI5 CONVENTIONS §9). scripts/core-pin.mjs reads and moves it,
       // bump-core.yml moves it weekly after the gates passed on the new tag,
       // and the weekly canary in abap-standard.yaml runs once against main.
-      // For now (2026-11) it IS main: the column layout's client implements
-      // window_bind_tab and window_get_row, which no release has yet - back
-      // to a tag with the first release that has them.
+      // 1.151.0 at least: the column layout's client implements every method
+      // of z2ui5_if_client, and that release changed the interface.
       "url": "https://github.com/abap2UI5/abap2UI5",
-      "branch": "main",
+      "branch": "1.151.0",
       "folder": "/abap2UI5",
       "files": "/src/**/*.*"
     }
