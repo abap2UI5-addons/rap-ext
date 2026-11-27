@@ -6,6 +6,8 @@ name: addon-bump-deps
 # another month (GitHub's cron cannot say "the last Sunday"). A manual
 # dispatch always goes on.
 #
+#   - the files abap2UI5 is the source of (its .github/shared/, the manifest
+#     of its shared-file-gate.mjs): update-deps.mjs and rename.mjs, first
 #   - npm and pinned GitHub Actions: the addon's .github/scripts/update-deps.mjs
 #     (the same file in every repository of abap2UI5 and abap2UI5-addons);
 #     with the DEPS_TOKEN secret also `--actions`, which moves every
@@ -71,6 +73,46 @@ jobs:
       with:
         node-version: ${{ inputs.node-version }}
 
+    # the files abap2UI5 is the source of and this addon carries a copy of
+    # (.github/scripts/update-deps.mjs, .github/scripts/rename.mjs) - the
+    # manifest comes from abap2UI5's shared-file-gate.mjs, which names the
+    # addons as owner/repo. Before the npm step, so the month's update runs
+    # the current update-deps.mjs. An addon that is no consumer gets an
+    # empty manifest and nothing changes
+    - name: Check out abap2UI5 for the shared files
+      if: steps.when.outputs.go == 'true'
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: abap2UI5/abap2UI5
+        ref: main
+        path: .abap2UI5
+        persist-credentials: false
+        sparse-checkout: |
+          .claude
+          .github
+          docs
+    - name: Copy every shared file
+      if: steps.when.outputs.go == 'true'
+      run: |
+        set -euo pipefail
+        GATE=.abap2UI5/.github/scripts/shared-file-gate.mjs
+        test -f "$GATE" || { echo "::error::$GATE is missing - abap2UI5 moved the gate, fix the path here"; exit 1; }
+        node "$GATE" --manifest "$GITHUB_REPOSITORY" > "$RUNNER_TEMP/manifest.txt"
+        while IFS=$'\t' read -r src dst; do
+          [ -n "$src" ] || continue
+          test -f ".abap2UI5/$src" || { echo "::error::.abap2UI5/$src does not exist"; exit 1; }
+          mkdir -p "$(dirname "$dst")"
+          cp ".abap2UI5/$src" "$dst"
+          echo "  $src -> $dst"
+        done < "$RUNNER_TEMP/manifest.txt"
+        rm -rf .abap2UI5
+        if ! git diff --quiet; then
+          # appended to the summary after update-deps.mjs, which writes it anew;
+          # the backticks are Markdown, not a shell expansion
+          # shellcheck disable=SC2016
+          git diff --name-only | sed 's/^/- `/; s/$/` synced from abap2UI5/' > "$RUNNER_TEMP/shared.md"
+        fi
+
     - name: npm dependencies and GitHub Actions
       if: steps.when.outputs.go == 'true'
       env:
@@ -80,6 +122,13 @@ jobs:
         flags=""
         if [ -n "$DEPS_TOKEN" ]; then flags="--actions"; fi
         node .github/scripts/update-deps.mjs $flags --summary "$RUNNER_TEMP/summary.md"
+        if [ -s "$RUNNER_TEMP/shared.md" ]; then
+          {
+            printf '**Shared files**\n\n'
+            cat "$RUNNER_TEMP/shared.md"
+            printf '\n'
+          } >> "$RUNNER_TEMP/summary.md"
+        fi
 
     - name: What else the addon pins
       if: steps.when.outputs.go == 'true' && inputs.extra != ''
