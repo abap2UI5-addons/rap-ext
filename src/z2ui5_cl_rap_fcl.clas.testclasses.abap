@@ -14,6 +14,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_navigated TYPE abap_bool.
     DATA mv_view TYPE string.
     DATA mv_called TYPE abap_bool.
+    DATA mv_timer TYPE string.
 
 ENDCLASS.
 
@@ -25,9 +26,6 @@ CLASS ltd_client IMPLEMENTATION.
 
   METHOD z2ui5_if_client~view_display.
     mv_view = val.
-  ENDMETHOD.
-
-  METHOD z2ui5_if_client~view_model_update.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~set_session_stateful.
@@ -51,28 +49,16 @@ CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~nest_view_destroy.
   ENDMETHOD.
 
-  METHOD z2ui5_if_client~nest_view_model_update.
-  ENDMETHOD.
-
   METHOD z2ui5_if_client~nest2_view_display.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nest2_view_destroy.
   ENDMETHOD.
 
-  METHOD z2ui5_if_client~nest2_view_model_update.
-  ENDMETHOD.
-
   METHOD z2ui5_if_client~popup_display.
   ENDMETHOD.
 
-  METHOD z2ui5_if_client~popup_model_update.
-  ENDMETHOD.
-
   METHOD z2ui5_if_client~popup_destroy.
-  ENDMETHOD.
-
-  METHOD z2ui5_if_client~popover_model_update.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~popover_display.
@@ -87,6 +73,9 @@ CLASS ltd_client IMPLEMENTATION.
 
   METHOD z2ui5_if_client~get_event.
     result = mv_event.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~get_start_param.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_event_arg.
@@ -122,18 +111,11 @@ CLASS ltd_client IMPLEMENTATION.
     result = `{/BOUND}`.
   ENDMETHOD.
 
-  METHOD z2ui5_if_client~_bind_edit.
-    result = `{/BOUND}`.
-  ENDMETHOD.
-
   METHOD z2ui5_if_client~_bind_path.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~window_bind_tab.
-    result = `{/BOUND}`.
-  ENDMETHOD.
-
-  METHOD z2ui5_if_client~window_get_row.
+    result = |WIN:{ event }|.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~follow_up_action.
@@ -155,6 +137,22 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_app_prev.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~check_nav_pending.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~get_nav_tag.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~check_on_nav_back.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~timer_set.
+    mv_timer = event.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~timer_stop.
   ENDMETHOD.
 
 ENDCLASS.
@@ -348,6 +346,23 @@ CLASS ltcl_fcl IMPLEMENTATION.
     cl_abap_unit_assert=>assert_true( li_proxy->check_on_event( `SAVE` ) ).
     cl_abap_unit_assert=>assert_equals( exp = `SAVE` act = li_proxy->get( )-event ).
     cl_abap_unit_assert=>assert_true( li_proxy->check_app_prev_stack( ) ).
+
+    "and in the events the browser raises by itself: a windowed table, a timer
+    DATA lt_rows TYPE string_table.
+    cl_abap_unit_assert=>assert_equals( exp = `WIN:MID~ROWS`
+                                        act = li_proxy->window_bind_tab( val   = lt_rows
+                                                                         total = 0
+                                                                         event = `ROWS` ) ).
+    li_proxy->timer_set( event    = `TICK`
+                         delay_ms = 1000 ).
+    cl_abap_unit_assert=>assert_equals( exp = `MID~TICK` act = mo_client->mv_timer ).
+    li_proxy->timer_set( event    = ``
+                         delay_ms = 0 ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_timer ).
+
+    "nothing called, nothing left, nothing returned
+    cl_abap_unit_assert=>assert_false( li_proxy->check_nav_pending( ) ).
+    cl_abap_unit_assert=>assert_false( li_proxy->check_on_nav_back( ) ).
 
   ENDMETHOD.
 
