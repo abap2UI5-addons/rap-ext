@@ -882,7 +882,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                                     THEN get_text( cs_text-load_error )
                                                     ELSE get_load_error( mv_entity_name ) )
                                      type = `error` ).
-        client->nav_app_leave( ).
+        client->nav_app_leave( keep_messages = abap_true ).
         RETURN.
       ENDIF.
       IF mv_entity_name IS INITIAL.
@@ -1168,7 +1168,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       IF delete_data( client ).
         mv_saved = abap_true.
         client->message_toast_display( get_text( cs_text-deleted ) ).
-        client->nav_app_leave( ).
+        client->nav_app_leave( keep_messages = abap_true ).
       ENDIF.
       RETURN.
     ENDIF.
