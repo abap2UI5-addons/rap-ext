@@ -598,6 +598,8 @@ CLASS z2ui5_cl_rap_list_report DEFINITION
       IMPORTING
         client TYPE REF TO z2ui5_if_client.
 
+    "! Deprecated (2026-11): nothing calls it - use normalize_key_value( ),
+    "! which it hands on to; kept for subclasses, removed in a later release
     METHODS normalize_value
       IMPORTING
         val           TYPE string

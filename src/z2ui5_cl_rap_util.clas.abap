@@ -938,14 +938,18 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE ty_s_entity_info.
 
-    "! Read entity-level annotations only (no field details)
+    "! Read entity-level annotations only (no field details).
+    "! Deprecated (2026-11): no caller - use read_entity( ); removed in a
+    "! later release
     CLASS-METHODS read_entity_annotations
       IMPORTING
         entity_name   TYPE clike
       RETURNING
         VALUE(result) TYPE ty_s_entity_info.
 
-    "! Read annotations for a single field
+    "! Read annotations for a single field.
+    "! Deprecated (2026-11): no caller - use read_raw_annotations( ) or
+    "! read_entity( ); removed in a later release
     CLASS-METHODS read_field_annotations
       IMPORTING
         entity_name   TYPE clike
@@ -968,7 +972,9 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string_table.
 
-    "! Get all annotations for an entity (raw key-value pairs)
+    "! Get all annotations for an entity (raw key-value pairs).
+    "! Deprecated (2026-11): no caller - use read_raw_annotations( );
+    "! removed in a later release
     CLASS-METHODS get_all_annotations
       IMPORTING
         entity_name   TYPE clike

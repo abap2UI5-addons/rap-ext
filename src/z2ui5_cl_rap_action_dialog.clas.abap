@@ -40,7 +40,10 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
 
     DATA ms_cds TYPE REF TO data.
 
-    "! the rows the last value help returned (a table of its entity)
+    "! the rows the last value help returned (a table of its entity).
+    "! Deprecated (2026-11): the dialog itself does not read it (the value
+    "! help's result is applied by apply_value_help); kept for callers,
+    "! removed in a later release
     DATA mt_vh_data TYPE REF TO data.
 
     METHODS result
@@ -54,6 +57,8 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
   PROTECTED SECTION.
     DATA mv_title     TYPE string.
     DATA ms_entity    TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
+    "! Deprecated (2026-11): written, never read - kept for subclasses,
+    "! removed in a later release
     DATA mv_vh_field  TYPE string.
     DATA mv_confirmed TYPE abap_bool.
 
@@ -100,6 +105,8 @@ CLASS z2ui5_cl_rap_action_dialog DEFINITION
         is_field     TYPE z2ui5_cl_rap_util=>ty_s_field_info
         client       TYPE REF TO z2ui5_if_client.
 
+    "! Deprecated (2026-11): nothing calls it - select_rows( ) reads the
+    "! same; kept for subclasses, removed in a later release
     METHODS load_dropdown_data
       IMPORTING
         entity_name   TYPE string
