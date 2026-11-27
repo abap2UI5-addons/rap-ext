@@ -1444,6 +1444,14 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! the file name of a path as a browser hands it over (C:\fakepath\a.png,
+    "! /home/me/a.png): its last part after a slash or a backslash
+    CLASS-METHODS file_name_of_path
+      IMPORTING
+        path          TYPE string
+      RETURNING
+        VALUE(result) TYPE string.
+
     "! mime_type is one of accepted (@Semantics.largeObject
     "! .acceptableMimeTypes): equal, or of the group of an entry with *
     "! (image/*, */*), case-insensitive. Nothing accepted: every type
@@ -2041,6 +2049,20 @@ CLASS z2ui5_cl_rap_util DEFINITION
     CLASS-METHODS get_mime_map
       RETURNING
         VALUE(result) TYPE ty_t_name_value.
+
+    "! the kernel's Base64 class, called dynamically: released for ABAP
+    "! Cloud and there on 7.58, so base64_encode and base64_decode fall back
+    "! to their own loop only where it cannot be called
+    CONSTANTS gc_base64_class TYPE string VALUE `CL_WEB_HTTP_UTILITY`.
+
+    "! the bytes of a percent-encoded text (UTF-8; + is a blank, a % without
+    "! two hex digits is text) - url_decode and parse_data_uri both read
+    "! through it
+    CLASS-METHODS percent_decode
+      IMPORTING
+        val           TYPE clike
+      RETURNING
+        VALUE(result) TYPE xstring.
 
     TYPES:
       BEGIN OF ty_s_cache,
@@ -4761,6 +4783,27 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     DATA lv_b2 TYPE i.
     DATA lv_b3 TYPE i.
 
+    IF val IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    "the kernel first - one call instead of a loop over every byte (a file
+    "of some MB is millions of steps in ABAP); the loop below only where
+    "the class cannot be called
+    TRY.
+        CALL METHOD (gc_base64_class)=>(`ENCODE_X_BASE64`)
+          EXPORTING
+            unencoded = val
+          RECEIVING
+            encoded   = result.
+        IF result IS NOT INITIAL.
+          RETURN.
+        ENDIF.
+      CATCH cx_root ##NO_HANDLER.
+        "the loop below
+    ENDTRY.
+    CLEAR result.
+
     DATA(lv_length) = xstrlen( val ).
     DATA(lv_offset) = 0.
     WHILE lv_offset < lv_length.
@@ -4794,57 +4837,93 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
   METHOD url_encode.
 
     CONSTANTS lc_unreserved TYPE string VALUE `ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~`.
-    DATA lv_byte TYPE x LENGTH 1.
     DATA lv_char TYPE string.
+    DATA lv_run TYPE string.
+    DATA lv_bytes TYPE xstring.
+    DATA lv_byte TYPE x LENGTH 1.
+    DATA lv_offset TYPE i.
 
-    DATA(lv_bytes) = to_utf8( CONV string( val ) ).
-    DATA(lv_offset) = 0.
-    WHILE lv_offset < xstrlen( lv_bytes ).
-      lv_byte = lv_bytes+lv_offset(1).
-      "a byte below 128 is the ASCII character itself - a string, so that
-      "a blank is a blank and not an empty pattern
-      IF lv_byte < '80'.
-        lv_char = cl_abap_conv_codepage=>create_in( )->convert( CONV xstring( lv_byte ) ).
-        IF lv_char <> ` ` AND lc_unreserved CS lv_char.
-          result = result && lv_char.
-          lv_offset = lv_offset + 1.
+    "the characters to encode are collected and converted to UTF-8 as one
+    "run (abap-util's url_encode): one conversion per run instead of one per
+    "byte, and a character outside the BMP keeps its two UTF-16 halves
+    "together
+    DATA(lv_text) = CONV string( val ).
+    DATA(lv_length) = strlen( lv_text ).
+    DATA(lv_pos) = 0.
+    WHILE lv_pos <= lv_length.
+      IF lv_pos < lv_length.
+        lv_char = substring( val = lv_text off = lv_pos len = 1 ).
+        "a blank is checked by itself: as a pattern it is empty
+        IF lv_char = ` ` OR lv_char CN lc_unreserved.
+          lv_run = lv_run && lv_char.
+          lv_pos = lv_pos + 1.
           CONTINUE.
         ENDIF.
       ENDIF.
-      result = |{ result }%{ lv_byte }|.
-      lv_offset = lv_offset + 1.
+      IF lv_run IS NOT INITIAL.
+        lv_bytes = to_utf8( lv_run ).
+        lv_offset = 0.
+        WHILE lv_offset < xstrlen( lv_bytes ).
+          lv_byte = lv_bytes+lv_offset(1).
+          result = |{ result }%{ lv_byte }|.
+          lv_offset = lv_offset + 1.
+        ENDWHILE.
+        CLEAR lv_run.
+      ENDIF.
+      IF lv_pos < lv_length.
+        result = result && lv_char.
+      ENDIF.
+      lv_pos = lv_pos + 1.
     ENDWHILE.
 
   ENDMETHOD.
 
 
   METHOD url_decode.
+    result = cl_abap_conv_codepage=>create_in( )->convert( percent_decode( val ) ).
+  ENDMETHOD.
 
-    DATA lv_bytes TYPE xstring.
+
+  METHOD percent_decode.
+
+    DATA lv_char TYPE string.
+    DATA lv_hex TYPE string.
+    DATA lv_run TYPE string.
+    DATA lv_run_bytes TYPE xstring.
     DATA lv_byte TYPE x LENGTH 1.
 
+    "the text between two escapes is converted as one run - one conversion
+    "per run instead of one per character
     DATA(lv_text) = CONV string( val ).
     DATA(lv_length) = strlen( lv_text ).
     DATA(lv_pos) = 0.
     WHILE lv_pos < lv_length.
-      DATA(lv_char) = substring( val = lv_text off = lv_pos len = 1 ).
+      lv_char = substring( val = lv_text off = lv_pos len = 1 ).
+      CLEAR lv_hex.
       IF lv_char = `%` AND lv_pos + 2 < lv_length.
-        DATA(lv_hex) = to_upper( substring( val = lv_text off = lv_pos + 1 len = 2 ) ).
-        IF lv_hex CO `0123456789ABCDEF`.
-          lv_byte = lv_hex.
-          CONCATENATE lv_bytes lv_byte INTO lv_bytes IN BYTE MODE.
-          lv_pos = lv_pos + 3.
-          CONTINUE.
+        lv_hex = to_upper( substring( val = lv_text off = lv_pos + 1 len = 2 ) ).
+      ENDIF.
+      IF lv_hex IS NOT INITIAL AND lv_hex CO `0123456789ABCDEF`.
+        IF lv_run IS NOT INITIAL.
+          lv_run_bytes = to_utf8( lv_run ).
+          CONCATENATE result lv_run_bytes INTO result IN BYTE MODE.
+          CLEAR lv_run.
         ENDIF.
+        lv_byte = lv_hex.
+        CONCATENATE result lv_byte INTO result IN BYTE MODE.
+        lv_pos = lv_pos + 3.
+        CONTINUE.
       ENDIF.
       IF lv_char = `+`.
         lv_char = ` `.
       ENDIF.
-      DATA(lv_char_bytes) = to_utf8( lv_char ).
-      CONCATENATE lv_bytes lv_char_bytes INTO lv_bytes IN BYTE MODE.
+      lv_run = lv_run && lv_char.
       lv_pos = lv_pos + 1.
     ENDWHILE.
-    result = cl_abap_conv_codepage=>create_in( )->convert( lv_bytes ).
+    IF lv_run IS NOT INITIAL.
+      lv_run_bytes = to_utf8( lv_run ).
+      CONCATENATE result lv_run_bytes INTO result IN BYTE MODE.
+    ENDIF.
 
   ENDMETHOD.
 
@@ -5851,7 +5930,9 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     IF lv_is_base64 = abap_true.
       result-content = base64_decode( lv_data ).
     ELSE.
-      result-content = to_utf8( url_decode( lv_data ) ).
+      "the bytes as they are - through a string, bytes that are no UTF-8
+      "would not survive
+      result-content = percent_decode( lv_data ).
     ENDIF.
     result-file_name = file_name.
     IF result-mime_type IS INITIAL OR result-mime_type = `application/octet-stream`.
@@ -5883,6 +5964,32 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     DATA lv_bits TYPE i.
     DATA lv_count TYPE i.
     DATA lv_value TYPE i.
+    DATA lv_encoded TYPE string.
+
+    "the kernel first (see base64_encode), on the text without blanks and
+    "line breaks, which the loop below skips too; the loop only where the
+    "class cannot be called or answers nothing
+    lv_encoded = val.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf(1) IN lv_encoded WITH ``.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN lv_encoded WITH ``.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab IN lv_encoded WITH ``.
+    REPLACE ALL OCCURRENCES OF ` ` IN lv_encoded WITH ``.
+    IF lv_encoded IS INITIAL.
+      RETURN.
+    ENDIF.
+    TRY.
+        CALL METHOD (gc_base64_class)=>(`DECODE_X_BASE64`)
+          EXPORTING
+            encoded = lv_encoded
+          RECEIVING
+            decoded = result.
+        IF result IS NOT INITIAL.
+          RETURN.
+        ENDIF.
+      CATCH cx_root ##NO_HANDLER.
+        "the loop below
+    ENDTRY.
+    CLEAR result.
 
     "6 bits per character, a byte as soon as 8 are there; = and anything
     "outside the alphabet (blanks, line breaks) carries no bits
@@ -5947,6 +6054,22 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     READ TABLE lt_map INTO DATA(ls_map) WITH KEY name = lv_extension.
     IF sy-subrc = 0.
       result = ls_map-value.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD file_name_of_path.
+
+    DATA(lv_slash) = find( val = path sub = `/` occ = -1 ).
+    DATA(lv_backslash) = find( val = path sub = `\` occ = -1 ).
+    IF lv_backslash > lv_slash.
+      lv_slash = lv_backslash.
+    ENDIF.
+    IF lv_slash >= 0.
+      result = substring( val = path off = lv_slash + 1 ).
+    ELSE.
+      result = path.
     ENDIF.
 
   ENDMETHOD.

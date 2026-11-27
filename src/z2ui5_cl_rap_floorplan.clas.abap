@@ -3684,14 +3684,7 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     ENDIF.
 
     "the browser hands over a path - the name is its last part
-    DATA(lv_slash) = find( val = lv_file_name sub = `/` occ = -1 ).
-    DATA(lv_backslash) = find( val = lv_file_name sub = `\` occ = -1 ).
-    IF lv_backslash > lv_slash.
-      lv_slash = lv_backslash.
-    ENDIF.
-    IF lv_slash >= 0.
-      lv_file_name = substring( val = lv_file_name off = lv_slash + 1 ).
-    ENDIF.
+    lv_file_name = z2ui5_cl_rap_util=>file_name_of_path( lv_file_name ).
 
     DATA(ls_file) = z2ui5_cl_rap_util=>parse_data_uri( uri       = lv_uri
                                                         file_name = lv_file_name ).
