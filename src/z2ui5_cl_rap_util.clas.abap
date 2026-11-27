@@ -967,6 +967,16 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE abap_bool.
 
+    "! every field of key_fields is named in params (case does not matter)
+    "! - parameters that identify one record, not a filter; false without
+    "! key fields (added 2026-11)
+    CLASS-METHODS names_every_key
+      IMPORTING
+        key_fields    TYPE string_table
+        params        TYPE ty_t_name_value
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
     "! Get list of key fields for an entity - the DDIC keys, else the
     "! elements of @ObjectModel.semanticKey
     CLASS-METHODS get_key_fields
@@ -3874,6 +3884,26 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
         APPEND VALUE ty_s_annotation( key = ls_el-key value = ls_el-value ) TO result.
       ENDIF.
     ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD names_every_key.
+
+    DATA lt_named TYPE string_table.
+
+    IF key_fields IS INITIAL.
+      RETURN.
+    ENDIF.
+    LOOP AT params INTO DATA(ls_param).
+      APPEND to_upper( ls_param-name ) TO lt_named.
+    ENDLOOP.
+    LOOP AT key_fields INTO DATA(lv_key).
+      IF NOT line_exists( lt_named[ table_line = to_upper( lv_key ) ] ).
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+    result = abap_true.
 
   ENDMETHOD.
 

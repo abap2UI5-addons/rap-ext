@@ -2,7 +2,8 @@
 "! link or a bookmark that outlives the abap2UI5 draft:
 "!   ...?app_start=zcl_my_rap_start&amp;floorplan=OBJECT_PAGE&amp;entity=I_COUNTRY&amp;Country=DE
 "! or the same as startup parameters of a launchpad tile. floorplan is
-"! OBJECT_PAGE (the default when keys are given), LIST_REPORT or WORKLIST;
+"! OBJECT_PAGE (the default when the parameters name every key field -
+"! since 2026-11; before, any parameter did), LIST_REPORT or WORKLIST;
 "! every other parameter is a key of the object page - or, for a list
 "! report or a worklist, the value of the filter of the field it names
 "! (since 2026-10, third round; map_parameters, a parameter that names no
@@ -90,6 +91,15 @@ CLASS z2ui5_cl_rap_start DEFINITION
       RETURNING
         VALUE(result) TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value.
 
+    "! params name every key field of entity_name - a link to one record
+    "! (z2ui5_cl_rap_util=>names_every_key; added 2026-11)
+    METHODS names_every_key
+      IMPORTING
+        entity_name   TYPE string
+        params        TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
     "! open the floorplan the parameters name, if the entity is allowed
     METHODS open
       IMPORTING
@@ -163,6 +173,17 @@ CLASS z2ui5_cl_rap_start IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD names_every_key.
+
+    DATA lt_params TYPE z2ui5_cl_rap_util=>ty_t_name_value.
+
+    lt_params = params.
+    result = z2ui5_cl_rap_util=>names_every_key( key_fields = z2ui5_cl_rap_util=>get_key_fields( entity_name )
+                                                 params     = lt_params ).
+
+  ENDMETHOD.
+
+
   METHOD open.
 
     DATA lt_keys TYPE z2ui5_cl_rap_floorplan=>ty_t_name_value.
@@ -196,9 +217,18 @@ CLASS z2ui5_cl_rap_start IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    "no floorplan named: the object page when the parameters name every
+    "key field, else the list report with them as filters - a tile's
+    "filter is no record (since 2026-11)
     IF lv_floorplan IS INITIAL.
-      lv_floorplan = COND #( WHEN lt_others IS INITIAL THEN z2ui5_cl_rap_floorplan=>cs_floorplan-list_report
-                             ELSE z2ui5_cl_rap_floorplan=>cs_floorplan-object_page ).
+      lv_floorplan = z2ui5_cl_rap_floorplan=>cs_floorplan-list_report.
+      IF lt_others IS NOT INITIAL
+        AND names_every_key( entity_name = lv_entity
+                             params      = map_parameters( floorplan   = z2ui5_cl_rap_floorplan=>cs_floorplan-object_page
+                                                           entity_name = lv_entity
+                                                           params      = lt_others ) ) = abap_true.
+        lv_floorplan = z2ui5_cl_rap_floorplan=>cs_floorplan-object_page.
+      ENDIF.
     ENDIF.
     IF lv_floorplan <> z2ui5_cl_rap_floorplan=>cs_floorplan-worklist
       AND lv_floorplan <> z2ui5_cl_rap_floorplan=>cs_floorplan-object_page.
@@ -213,6 +243,15 @@ CLASS z2ui5_cl_rap_start IMPLEMENTATION.
         APPEND VALUE #( name = to_upper( ls_mapped-name ) value = ls_mapped-value ) TO lt_keys.
       ENDIF.
     ENDLOOP.
+
+    "an object page by a part of the key would show any record of it
+    IF lv_floorplan = z2ui5_cl_rap_floorplan=>cs_floorplan-object_page
+      AND names_every_key( entity_name = lv_entity
+                           params      = lt_keys ) = abap_false.
+      mv_message = |{ lv_entity }: { z2ui5_cl_rap_floorplan=>get_default_text( z2ui5_cl_rap_floorplan=>cs_text-not_found ) }|.
+      render_message( client ).
+      RETURN.
+    ENDIF.
 
     CASE lv_floorplan.
       WHEN z2ui5_cl_rap_floorplan=>cs_floorplan-worklist.
