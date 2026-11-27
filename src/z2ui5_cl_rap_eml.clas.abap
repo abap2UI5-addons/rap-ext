@@ -1219,10 +1219,15 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
     TRY.
         DATA(lo_message) = CAST if_message( msg ).
         DATA(lv_text) = lo_message->get_text( ).
-        IF lv_text IS INITIAL OR line_exists( messages[ table_line = lv_text ] ).
+        IF lv_text IS INITIAL.
           RETURN.
         ENDIF.
-        APPEND lv_text TO messages.
+        "the text once - the detail once per target, with the fields of
+        "every message of that text: one generic text (Enter a value) for
+        "several fields marks each of them
+        IF NOT line_exists( messages[ table_line = lv_text ] ).
+          APPEND lv_text TO messages.
+        ENDIF.
 
         DATA(ls_detail) = VALUE z2ui5_cl_rap_floorplan=>ty_s_message( text   = lv_text
                                                                       type   = `error`
@@ -1248,7 +1253,17 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
             ENDLOOP.
           ENDIF.
         ENDIF.
-        APPEND ls_detail TO details.
+        READ TABLE details ASSIGNING FIELD-SYMBOL(<ls_same>)
+             WITH KEY text = ls_detail-text target = ls_detail-target type = ls_detail-type.
+        IF sy-subrc <> 0.
+          APPEND ls_detail TO details.
+          RETURN.
+        ENDIF.
+        LOOP AT ls_detail-fields INTO DATA(lv_field).
+          IF NOT line_exists( <ls_same>-fields[ table_line = lv_field ] ).
+            APPEND lv_field TO <ls_same>-fields.
+          ENDIF.
+        ENDLOOP.
       CATCH cx_root ##NO_HANDLER.
     ENDTRY.
 

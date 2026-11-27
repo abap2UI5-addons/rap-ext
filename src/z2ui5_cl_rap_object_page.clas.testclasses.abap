@@ -47,6 +47,7 @@ CLASS ltcl_object_page DEFINITION FINAL
     METHODS token_keys                 FOR TESTING RAISING cx_static_check.
     METHODS change_info_section        FOR TESTING RAISING cx_static_check.
     METHODS row_by_keys_and_index      FOR TESTING RAISING cx_static_check.
+    METHODS field_message_of_record    FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -181,6 +182,23 @@ CLASS ltcl_object_page IMPLEMENTATION.
       exp = VALUE z2ui5_cl_rap_floorplan=>ty_t_name_value( ( name = `ROOTID` value = `7` ) ) ).
     cl_abap_unit_assert=>assert_equals( act = ls_context-parent
                                         exp = `Z_TRAVEL` ).
+
+  ENDMETHOD.
+
+
+  METHOD field_message_of_record.
+
+    " a message about a booking's STATUS does not mark the travel's STATUS;
+    " one text for two fields marks both
+    mo_cut->mt_messages = VALUE #( ( text = `Status of the booking` type = `error`
+                                     fields = VALUE #( ( `STATUS` ) ) target = `Z_BOOKING` )
+                                   ( text = `Enter a value` type = `warning`
+                                     fields = VALUE #( ( `TRAVELID` ) ( `STATUS` ) ) target = `z_travel` ) ).
+    cl_abap_unit_assert=>assert_equals( act = mo_cut->get_field_message( `STATUS` )-text
+                                        exp = `Enter a value` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_cut->get_field_message( `TRAVELID` )-type
+                                        exp = `warning` ).
+    cl_abap_unit_assert=>assert_initial( mo_cut->get_field_message( `TRAVELUUID` ) ).
 
   ENDMETHOD.
 

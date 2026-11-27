@@ -558,6 +558,15 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
       RETURNING
         VALUE(result) TYPE ty_t_name_value.
 
+    "! the message of the last save about field of this record - the first
+    "! one; a message about a child (target) does not mark the field of the
+    "! same name here
+    METHODS get_field_message
+      IMPORTING
+        field         TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_s_message.
+
     "! the context of a record of the association - the BDEF and root of
     "! this record, and this record as the parent of a create
     METHODS get_child_context
@@ -836,6 +845,19 @@ ENDCLASS.
 
 
 CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
+
+  METHOD get_field_message.
+
+    LOOP AT mt_messages INTO DATA(ls_message).
+      IF line_exists( ls_message-fields[ table_line = field ] )
+          AND ( ls_message-target IS INITIAL OR to_upper( ls_message-target ) = mv_entity_name ).
+        result = ls_message.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
 
   METHOD constructor.
     super->constructor( ).
@@ -3358,17 +3380,15 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         "the message of the last save about this field, if there is one
         DATA(lv_value_state) = ``.
         DATA(lv_value_state_text) = ``.
-        LOOP AT mt_messages INTO DATA(ls_message).
-          IF line_exists( ls_message-fields[ table_line = ls_field-name ] ).
-            lv_value_state = SWITCH #( ls_message-type
-              WHEN `error`   THEN `Error`
-              WHEN `warning` THEN `Warning`
-              WHEN `success` THEN `Success`
-              ELSE `Information` ).
-            lv_value_state_text = ls_message-text.
-            EXIT.
-          ENDIF.
-        ENDLOOP.
+        DATA(ls_message) = get_field_message( ls_field-name ).
+        IF ls_message IS NOT INITIAL.
+          lv_value_state = SWITCH #( ls_message-type
+            WHEN `error`   THEN `Error`
+            WHEN `warning` THEN `Warning`
+            WHEN `success` THEN `Success`
+            ELSE `Information` ).
+          lv_value_state_text = ls_message-text.
+        ENDIF.
 
         "a key is set once - on create, never on change (get_field_for_edit)
         render_field_input( io_container     = lo_form
