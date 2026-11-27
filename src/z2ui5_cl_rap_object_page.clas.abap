@@ -443,6 +443,14 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
     "! it was not found
     METHODS reload_data.
 
+    "! discard the draft of the record (DISCARD on its root, committed) -
+    "! false, and its messages shown, when that failed (added 2026-11)
+    METHODS discard_draft
+      IMPORTING
+        client        TYPE REF TO z2ui5_if_client
+      RETURNING
+        VALUE(result) TYPE abap_bool.
+
     "! no record to show: why (the read's error, else "no record found"),
     "! and leave (added 2026-11)
     METHODS show_not_found
@@ -998,15 +1006,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     IF client->check_on_event( cs_event-leave_decision ).
       DATA(lv_leave) = client->get_event_arg( ).
       IF lv_leave = get_text( cs_text-discard_draft ).
-        DATA(ls_leave_discard) = run_draft_action( bdef      = get_bdef( )
-                                                   action    = `DISCARD`
-                                                   root_keys = get_root_keys( )
-                                                   is_draft  = abap_true ).
-        IF ls_leave_discard-success = abap_false.
-          show_messages( client   = client
-                         messages = ls_leave_discard-messages
-                         details  = ls_leave_discard-details
-                         fields   = ms_entity-fields ).
+        IF discard_draft( client ) = abap_false.
           RETURN.
         ENDIF.
         mv_draft = abap_false.
@@ -1064,15 +1064,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         RETURN.
       ENDIF.
       IF client->get_event_arg( ) = get_text( cs_text-discard_draft ).
-        DATA(ls_discard) = run_draft_action( bdef      = get_bdef( )
-                                             action    = `DISCARD`
-                                             root_keys = get_root_keys( )
-                                             is_draft  = abap_true ).
-        IF ls_discard-success = abap_false.
-          show_messages( client   = client
-                         messages = ls_discard-messages
-                         details  = ls_discard-details
-                         fields   = ms_entity-fields ).
+        IF discard_draft( client ) = abap_false.
           RETURN.
         ENDIF.
         IF start_draft( client ) = abap_true.
@@ -1090,15 +1082,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         RETURN.
       ENDIF.
       IF mv_draft = abap_true.
-        DATA(ls_cancel) = run_draft_action( bdef      = get_bdef( )
-                                            action    = `DISCARD`
-                                            root_keys = get_root_keys( )
-                                            is_draft  = abap_true ).
-        IF ls_cancel-success = abap_false.
-          show_messages( client   = client
-                         messages = ls_cancel-messages
-                         details  = ls_cancel-details
-                         fields   = ms_entity-fields ).
+        IF discard_draft( client ) = abap_false.
           RETURN.
         ENDIF.
         mv_draft = abap_false.
@@ -1516,6 +1500,23 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       CLEAR ms_data->*.
       mv_not_found = abap_true.
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD discard_draft.
+
+    DATA(ls_discard) = run_draft_action( bdef      = get_bdef( )
+                                         action    = `DISCARD`
+                                         root_keys = get_root_keys( )
+                                         is_draft  = abap_true ).
+    IF ls_discard-success = abap_false.
+      show_messages( client   = client
+                     messages = ls_discard-messages
+                     details  = ls_discard-details
+                     fields   = ms_entity-fields ).
+    ENDIF.
+    result = ls_discard-success.
 
   ENDMETHOD.
 
