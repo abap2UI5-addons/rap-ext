@@ -1417,15 +1417,23 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     IF get_missing_filters( ) IS NOT INITIAL.
       RETURN.
     ENDIF.
-    "every matching row, not only the loaded ones - in the list's order
+    "every matching row, not only the loaded ones - in the list's order,
+    "up to cv_export_max: one more is read to know the file is cut, and
+    "the user is told (since 2026-11)
+    FIELD-SYMBOLS <lt_export> TYPE STANDARD TABLE.
     DATA(lr_rows) = select_rows( entity_name = mv_cds_view
                                  where       = get_where_clause( )
-                                 max_rows    = cv_export_max
+                                 max_rows    = cv_export_max + 1
                                  order_by    = get_order_by( ) ).
     IF lr_rows IS NOT BOUND.
       client->message_box_display( text = get_load_error( mv_cds_view )
                                    type = `error` ).
       RETURN.
+    ENDIF.
+    ASSIGN lr_rows->* TO <lt_export>.
+    DATA(lv_cut) = xsdbool( lines( <lt_export> ) > cv_export_max ).
+    IF lv_cut = abap_true.
+      DELETE <lt_export> FROM cv_export_max + 1.
     ENDIF.
 
     DATA(lv_csv) = z2ui5_cl_rap_util=>to_csv( data      = lr_rows
@@ -1436,6 +1444,12 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     client->follow_up_action( val   = client->cs_event-download_b64_file
                               t_arg = VALUE #( ( |data:text/csv;charset=utf-8;base64,{ lv_base64 }| )
                                                ( |{ to_lower( lv_name ) }.csv| ) ) ).
+    IF lv_cut = abap_true.
+      client->message_box_display( text = replace( val  = get_text( cs_text-export_cut )
+                                                   sub  = `&1`
+                                                   with = |{ cv_export_max }| )
+                                   type = `warning` ).
+    ENDIF.
 
   ENDMETHOD.
 
@@ -2132,6 +2146,17 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       ENDIF.
       APPEND lv_key TO mt_pending_keys.
     ENDDO.
+
+    "an action on rows without one is refused before its parameter dialog
+    "opens, not after it was filled in (since 2026-11)
+    IF lacks_action_rows( entity_name = mv_cds_view
+                          action      = mv_pending_action
+                          rows        = get_action_rows( ) ) = abap_true.
+      CLEAR: mv_pending_action, mt_pending_keys.
+      show_messages( client   = client
+                     messages = VALUE #( ( get_text( cs_text-no_selection ) ) ) ).
+      RETURN.
+    ENDIF.
 
     DATA(lr_param) = create_action_parameter( entity_name = mv_cds_view
                                               action      = mv_pending_action ).
@@ -3237,6 +3262,14 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
     LOOP AT lt_actions INTO DATA(ls_action).
       DATA(lv_enabled) = z2ui5_cl_rap_util=>is_permitted( ops  = ms_perm-global-actions
                                                           name = ls_action-name ).
+      "an action on rows waits for a selection - the table reports every
+      "change of it where permissions are answered (since 2026-11)
+      IF lv_enabled = abap_true AND ms_perm-answered = abap_true
+        AND lacks_action_rows( entity_name = mv_cds_view
+                               action      = ls_action-name
+                               rows        = lr_selected ) = abap_true.
+        lv_enabled = abap_false.
+      ENDIF.
       IF lv_enabled = abap_true AND ms_perm-answered = abap_true AND lr_selected IS BOUND.
         ASSIGN lr_selected->* TO <lt_selected>.
         LOOP AT <lt_selected> ASSIGNING FIELD-SYMBOL(<ls_selected>).

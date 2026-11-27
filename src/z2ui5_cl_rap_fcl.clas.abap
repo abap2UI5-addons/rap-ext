@@ -15,6 +15,11 @@
 "! again after a save. A value help or an action dialog is called as
 "! before; it returns to the column that called it.
 "!
+"! A page replaced by another (a row pressed while the object page of
+"! another row is open) is treated the same way since 2026-11: with
+"! unsaved changes the user is asked first (cv_event_discard), and after
+"! a save the column to its left reads again.
+"!
 "! Without this class nothing changes: a row press still calls the object
 "! page with nav_app_call. The host is opt-in - start it instead of the
 "! list report:
@@ -37,6 +42,9 @@ CLASS z2ui5_cl_rap_fcl DEFINITION
     "! the event a column's back button sends when the floorplan leaves
     "! through _event_nav_app_leave
     CONSTANTS cv_event_leave TYPE string VALUE `FCL_LEAVE`.
+    "! the answer to "discard your changes?" - asked before a page with
+    "! unsaved changes is replaced in its column (added 2026-11)
+    CONSTANTS cv_event_discard TYPE string VALUE `FCL_DISCARD`.
 
     " the placeholders of render_skeleton, as the builder writes them
     CONSTANTS:
@@ -73,6 +81,11 @@ CLASS z2ui5_cl_rap_fcl DEFINITION
     DATA mv_wait_column TYPE string.
     "! a column changed its view in this roundtrip
     DATA mv_render TYPE abap_bool.
+    "! the page waiting to be opened, and its column, while the user
+    "! decides whether the changes of the page it replaces are discarded
+    "! (added 2026-11)
+    DATA mo_pending TYPE REF TO z2ui5_if_app.
+    DATA mv_pending_column TYPE string.
 
     "! call the floorplan of column with the client of the column - and
     "! do what it asked for: keep its view, open an object page in the
@@ -86,12 +99,24 @@ CLASS z2ui5_cl_rap_fcl DEFINITION
         navigated TYPE abap_bool DEFAULT abap_false
         app_prev  TYPE REF TO z2ui5_if_app OPTIONAL.
 
-    "! open app in column - every column right of it closes
+    "! open app in column - every column right of it closes. A page there
+    "! with unsaved changes is replaced only once the user agreed
+    "! (confirmed; cv_event_discard), and the column left of a page that
+    "! saved is told, as if the page had returned (since 2026-11)
     METHODS open_column
       IMPORTING
-        client TYPE REF TO z2ui5_if_client
-        column TYPE string
-        app    TYPE REF TO z2ui5_if_app.
+        client    TYPE REF TO z2ui5_if_client
+        column    TYPE string
+        app       TYPE REF TO z2ui5_if_app
+        confirmed TYPE abap_bool DEFAULT abap_false.
+
+    "! an object page in column or right of it has changes it would lose
+    "! (z2ui5_cl_rap_object_page->is_dirty) - added 2026-11
+    METHODS is_column_dirty
+      IMPORTING
+        column        TYPE string
+      RETURNING
+        VALUE(result) TYPE abap_bool.
 
     "! close column and every column right of it - the floorplan to its
     "! left is told the page returned
@@ -175,6 +200,23 @@ CLASS z2ui5_cl_rap_fcl IMPLEMENTATION.
       z2ui5_cl_rap_util=>split_column_event( EXPORTING val    = client->get( )-event
                                              IMPORTING column = lv_column
                                                        event  = lv_event ).
+      "the host's own question: replace the page with unsaved changes?
+      IF lv_column IS INITIAL AND lv_event = cv_event_discard.
+        DATA(li_pending) = mo_pending.
+        DATA(lv_pending_column) = mv_pending_column.
+        CLEAR: mo_pending, mv_pending_column.
+        IF li_pending IS BOUND AND client->get_event_arg( )
+          = z2ui5_cl_rap_floorplan=>get_default_text( z2ui5_cl_rap_floorplan=>cs_text-discard_changes ).
+          open_column( client    = client
+                       column    = lv_pending_column
+                       app       = li_pending
+                       confirmed = abap_true ).
+        ENDIF.
+        IF mv_render = abap_true.
+          render( client ).
+        ENDIF.
+        RETURN.
+      ENDIF.
       IF get_column_app( lv_column ) IS NOT BOUND.
         lv_column = cs_column-begin.
       ENDIF.
@@ -253,6 +295,32 @@ CLASS z2ui5_cl_rap_fcl IMPLEMENTATION.
 
   METHOD open_column.
 
+    "the page there (or right of it) holds changes it would lose - the
+    "user decides first
+    IF confirmed = abap_false AND is_column_dirty( column ) = abap_true.
+      mo_pending = app.
+      mv_pending_column = column.
+      client->message_box_display(
+        text    = z2ui5_cl_rap_floorplan=>get_default_text( z2ui5_cl_rap_floorplan=>cs_text-leave_changes )
+        type    = `confirm`
+        actions = VALUE #( ( z2ui5_cl_rap_floorplan=>get_default_text( z2ui5_cl_rap_floorplan=>cs_text-discard_changes ) )
+                           ( z2ui5_cl_rap_floorplan=>get_default_text( z2ui5_cl_rap_floorplan=>cs_text-cancel ) ) )
+        onclose = cv_event_discard ).
+      RETURN.
+    ENDIF.
+
+    "the page replaced saved: the column to its left reads again, as when
+    "a page returns (the list shows the saved values at once)
+    DATA(li_old) = get_column_app( column ).
+    "(an initial reference is no instance - the CAST is not reached)
+    IF li_old IS INSTANCE OF z2ui5_cl_rap_object_page
+      AND CAST z2ui5_cl_rap_object_page( li_old )->was_saved( ) = abap_true.
+      dispatch( client    = client
+                column    = COND #( WHEN column = cs_column-mid THEN cs_column-begin ELSE cs_column-mid )
+                navigated = abap_true
+                app_prev  = li_old ).
+    ENDIF.
+
     IF column = cs_column-mid.
       mo_mid = app.
       CLEAR: mo_end, mv_view_mid, mv_view_end.
@@ -265,6 +333,26 @@ CLASS z2ui5_cl_rap_fcl IMPLEMENTATION.
     dispatch( client = client
               column = column
               init   = abap_true ).
+
+  ENDMETHOD.
+
+
+  METHOD is_column_dirty.
+
+    DATA lt_apps TYPE STANDARD TABLE OF REF TO z2ui5_if_app WITH EMPTY KEY.
+
+    "a page in the middle column goes with the one right of it
+    APPEND get_column_app( column ) TO lt_apps.
+    IF column = cs_column-mid.
+      APPEND mo_end TO lt_apps.
+    ENDIF.
+    LOOP AT lt_apps INTO DATA(li_app) WHERE table_line IS BOUND.
+      IF li_app IS INSTANCE OF z2ui5_cl_rap_object_page
+        AND CAST z2ui5_cl_rap_object_page( li_app )->is_dirty( ) = abap_true.
+        result = abap_true.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
 
   ENDMETHOD.
 
@@ -308,6 +396,9 @@ CLASS z2ui5_cl_rap_fcl IMPLEMENTATION.
 
   METHOD render_skeleton.
 
+    "sap.f under a prefix of its own - a column's view may declare f for
+    "another library (xmlns:f="sap.ui.layout.form"), and the composed
+    "view keeps the first declaration of a prefix (since 2026-11)
     DATA(lo_fcl_view) = z2ui5_cl_ui5_view_builder=>factory( ).
     lo_fcl_view->ele( n  = `View`
                       ns = `mvc`
@@ -315,30 +406,30 @@ CLASS z2ui5_cl_rap_fcl IMPLEMENTATION.
               v = `sap.m`
         )->a( n = `xmlns:mvc`
               v = `sap.ui.core.mvc`
-        )->a( n = `xmlns:f`
+        )->a( n = `xmlns:zfcl`
               v = `sap.f`
         )->a( n = `displayBlock`
               v = `true`
         )->a( n = `height`
               v = `100%`
         )->ele( n  = `FlexibleColumnLayout`
-                ns = `f`
+                ns = `zfcl`
             )->a( n = `layout`
                   v = `{= $` && client->_bind( mv_layout ) && ` || 'OneColumn' }`
             )->ele( n  = `beginColumnPages`
-                    ns = `f`
+                    ns = `zfcl`
                 )->tag( `Text`
                     )->a( n = `text`
                           v = `Z2UI5_RAP_FCL_BEGIN`
             )->end(
             )->ele( n  = `midColumnPages`
-                    ns = `f`
+                    ns = `zfcl`
                 )->tag( `Text`
                     )->a( n = `text`
                           v = `Z2UI5_RAP_FCL_MID`
             )->end(
             )->ele( n  = `endColumnPages`
-                    ns = `f`
+                    ns = `zfcl`
                 )->tag( `Text`
                     )->a( n = `text`
                           v = `Z2UI5_RAP_FCL_END` ).

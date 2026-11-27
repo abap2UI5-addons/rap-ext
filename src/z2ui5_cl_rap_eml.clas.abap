@@ -148,12 +148,15 @@ CLASS z2ui5_cl_rap_eml DEFINITION
     "! GET PERMISSIONS for entity_name - the global and static permissions,
     "! and those of every instance of rows (a table of the entity) when
     "! given. answered stays abap_false when the statement's class or the
-    "! derived types are missing (added 2026-10, third round)
+    "! derived types are missing (added 2026-10, third round). is_draft:
+    "! the instances are drafts - %is_draft is set in their keys, so the
+    "! feature control answers for the draft the user edits (added 2026-11)
     CLASS-METHODS get_permissions
       IMPORTING
         entity_name   TYPE clike
         context       TYPE ty_s_context OPTIONAL
         rows          TYPE REF TO data OPTIONAL
+        is_draft      TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(result) TYPE z2ui5_cl_rap_util=>ty_s_permissions.
 
@@ -1434,6 +1437,9 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
       LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
         APPEND INITIAL LINE TO <lt_keys> ASSIGNING FIELD-SYMBOL(<ls_key>).
         MOVE-CORRESPONDING <ls_row> TO <ls_key>.
+        IF is_draft = abap_true.
+          set_draft( CHANGING instance = <ls_key> ).
+        ENDIF.
       ENDLOOP.
     ENDIF.
     APPEND VALUE #( entity_name = lv_entity

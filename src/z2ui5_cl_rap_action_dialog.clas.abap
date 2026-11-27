@@ -167,7 +167,8 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
     "the suggestions of an input with a value help, while the user types
     IF client->check_on_event( cv_event_suggest ).
       load_suggestions( client    = client
-                        it_fields = ms_entity-fields ).
+                        it_fields = ms_entity-fields
+                        record    = ms_cds->* ).
       RETURN.
     ENDIF.
 

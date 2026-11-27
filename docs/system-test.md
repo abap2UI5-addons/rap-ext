@@ -206,6 +206,31 @@ instance feature control on `acceptTravel` / `rejectTravel` and Edit).
 - [ ] another user's draft: Edit is refused with the business object's message
 - [ ] a change and a create of a booking edit and activate the root
 - [ ] create of a travel: the draft is created and activated in one request
+- [ ] (2026-11) a value chosen in the value help while editing the draft is
+      in the draft at once: Back, "Keep draft", open again - the value is
+      there; a determination on that field ran
+- [ ] (2026-11) feature control of the draft: change a field the BO's
+      instance feature control depends on (Status) - the field control
+      follows the draft's value (`GET PERMISSIONS` with `%is_draft`; check
+      that RAP accepts the flag in the permission keys at all)
+- [ ] (2026-11) Edit refused for another reason (no authorization, a lock
+      taken after the page opened): the business object's message, no
+      Resume/Discard; Resume/Discard only for the user's own draft
+
+## 4b · Without draft: unsaved changes (2026-11)
+
+- [ ] `/DMO/C_TRAVEL_PROCESSOR_M`: Edit, change a field, Back - "discard
+      your changes?": Cancel stays in edit mode, Discard leaves; Back without
+      a change leaves at once; the same for Cancel (Discard restores)
+- [ ] a changed booking cell, an added or deleted booking row counts as a
+      change too
+- [ ] column layout: edit the object page in the middle column, change a
+      field, press another row of the list - asked first; Discard opens the
+      other row. Save in the middle column, press another row - the list
+      shows the saved values
+- [ ] an instance action with parameters in the list's toolbar is disabled
+      until a row is selected (where `GET PERMISSIONS` answers); a child
+      table's action without a selected row says so before its dialog opens
 
 ## 4a · Object page: 1:n children, child tables, side effects, sections
 
@@ -366,6 +391,13 @@ for the custom sections and the change documents.
       and confirm work
 - [ ] typing into an input with a value help suggests values; picking one
       fills the input
+- [ ] (2026-11) the value help's first page, the dropdowns and the
+      suggestions come sorted by the element; an `additionalBinding` with
+      `localConstant` and `usage: #FILTER` restricts the value help and the
+      suggestions; a FILTER binding to an entered field restricts the
+      suggestions
+- [ ] (2026-11) the list's CSV export of more than 10,000 rows warns that it
+      was cut
 
 ## 8a · Object page display
 
@@ -392,6 +424,10 @@ for the custom sections and the change documents.
       chart a trend
 - [ ] a card with `presentation_variant` shows that variant's chart or its
       sorted, sized table
+- [ ] (2026-11) a bar or donut chart card shows the largest values (check
+      the dynamic `ORDER BY measure DESCENDING` on the aggregate's alias
+      activates on the database - else the card falls back to the
+      dimension's order); the donut's shares are of the total of all rows
 
 ## 9a · Custom entities, virtual elements, search
 
@@ -446,6 +482,9 @@ and a projection with a virtual element
       display mode
 - [ ] the object page's link button copies a link that opens the record again
       (the app state link without `get_start_app`, the start app's with it)
+- [ ] (2026-11) without `floorplan`: `&entity=/DMO/C_TRAVEL_PROCESSOR_M&agencyid=070001`
+      opens the list filtered (not the first travel's object page);
+      `floorplan=OBJECT_PAGE` with only a part of the key says "not found"
 
 ## 11 · Tree, analytical list, grid table, column layout (2026-10, third round)
 

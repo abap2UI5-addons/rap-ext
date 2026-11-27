@@ -299,10 +299,14 @@ CLASS z2ui5_cl_rap_value_help IMPLEMENTATION.
 
 
   METHOD load_data.
+    "in the order of the element, the entity's sort, its keys - UP TO n
+    "ROWS without an ORDER BY is n arbitrary rows (since 2026-11)
     mr_data = select_rows( entity_name    = mv_cds_view
                            where          = get_where_clause( )
                            max_rows       = mv_max_rows
-                           with_selection = abap_true ).
+                           with_selection = abap_true
+                           order_by       = z2ui5_cl_rap_util=>get_default_order_by( is_entity = ms_entity
+                                                                                     first     = mv_element ) ).
   ENDMETHOD.
 
 

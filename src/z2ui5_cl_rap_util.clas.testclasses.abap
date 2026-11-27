@@ -2911,10 +2911,15 @@ CLASS ltcl_tree_layout DEFINITION FINAL
     METHODS hierarchy_ddl          FOR TESTING RAISING cx_static_check.
     METHODS tree_order             FOR TESTING RAISING cx_static_check.
     METHODS tree_descendants       FOR TESTING RAISING cx_static_check.
+    METHODS tree_repeated_keys     FOR TESTING RAISING cx_static_check.
     METHODS aggregation_annotation FOR TESTING RAISING cx_static_check.
     METHODS aggregate_select       FOR TESTING RAISING cx_static_check.
     METHODS count_distinct         FOR TESTING RAISING cx_static_check.
     METHODS fcl_layouts            FOR TESTING RAISING cx_static_check.
+    METHODS chart_order            FOR TESTING RAISING cx_static_check.
+    METHODS every_key_named        FOR TESTING RAISING cx_static_check.
+    METHODS value_help_filters     FOR TESTING RAISING cx_static_check.
+    METHODS default_order_by       FOR TESTING RAISING cx_static_check.
     METHODS view_parts             FOR TESTING RAISING cx_static_check.
     METHODS compose                FOR TESTING RAISING cx_static_check.
     METHODS column_events          FOR TESTING RAISING cx_static_check.
@@ -3067,6 +3072,31 @@ CLASS ltcl_tree_layout IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD tree_repeated_keys.
+
+    DATA lt_keys TYPE string_table.
+
+    "a node value that repeats and an empty one: every row stays in the
+    "list - the second B a leaf, the children of B under the first
+    DATA(lt_tree) = z2ui5_cl_rap_util=>build_tree(
+      it_nodes   = VALUE #( ( key = `A`              index = 1 )
+                            ( key = `B` parent = `A` index = 2 )
+                            ( key = `B` parent = `A` index = 3 )
+                            ( key = `D` parent = `B` index = 4 )
+                            ( key = ``               index = 5 ) )
+      expand_all = abap_true ).
+    LOOP AT lt_tree INTO DATA(ls_node).
+      APPEND |{ ls_node-key }{ ls_node-index }| TO lt_keys.
+    ENDLOOP.
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `A1` ) ( `B2` ) ( `D4` ) ( `B3` ) ( `5` ) )
+                                        act = lt_keys ).
+    cl_abap_unit_assert=>assert_true( lt_tree[ 2 ]-has_children ).
+    cl_abap_unit_assert=>assert_false( lt_tree[ 4 ]-has_children ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = lt_tree[ 4 ]-level ).
+
+  ENDMETHOD.
+
+
   METHOD tree_descendants.
     DATA(lt_tree) = sample_tree( ).
     cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `D` ) ( `B` ) ( `C` ) )
@@ -3156,6 +3186,132 @@ CLASS ltcl_tree_layout IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( exp = `EndColumnFullScreen`
                                         act = z2ui5_cl_rap_util=>get_fcl_layout( columns     = 3
                                                                                  full_screen = abap_true ) ).
+  ENDMETHOD.
+
+
+  METHOD every_key_named.
+
+    DATA(lt_keys) = VALUE string_table( ( `AGENCYID` ) ( `TRAVELID` ) ).
+    cl_abap_unit_assert=>assert_true( z2ui5_cl_rap_util=>names_every_key(
+      key_fields = lt_keys
+      params     = VALUE #( ( name = `TravelID` value = `1` ) ( name = `AgencyID` value = `` ) ) ) ).
+    "a part of the key, or a filter, is no record
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>names_every_key(
+      key_fields = lt_keys
+      params     = VALUE #( ( name = `AgencyID` value = `070001` ) ) ) ).
+    cl_abap_unit_assert=>assert_false( z2ui5_cl_rap_util=>names_every_key(
+      key_fields = VALUE #( )
+      params     = VALUE #( ( name = `AgencyID` value = `070001` ) ) ) ).
+
+  ENDMETHOD.
+
+
+  METHOD value_help_filters.
+
+    TYPES:
+      BEGIN OF ty_s_record,
+        country TYPE string,
+        region  TYPE string,
+      END OF ty_s_record.
+
+    DATA(lt_bindings) = VALUE z2ui5_cl_rap_util=>ty_t_additional_binding(
+      ( element = `COUNTRY`  local_element = `COUNTRY` usage = `#FILTER` )
+      ( element = `CATEGORY` local_constant = `A`      usage = `#FILTER` )
+      ( element = `NAME`     local_element = `REGION`  usage = `#RESULT` )
+      ( element = `REGION`   local_element = `REGION` ) ).
+
+    "the record's values (an empty one left out) and the constant
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_name_value( ( name = `COUNTRY` value = `DE` )
+                                                      ( name = `CATEGORY` value = `A` ) )
+      act = z2ui5_cl_rap_util=>get_value_help_filters( it_bindings = lt_bindings
+                                                       source      = VALUE ty_s_record( country = `DE` ) ) ).
+    "no record: the constant only
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_t_name_value( ( name = `CATEGORY` value = `A` ) )
+      act = z2ui5_cl_rap_util=>get_value_help_filters( lt_bindings ) ).
+
+    "localConstant is read from the annotation
+    DATA(ls_entity) = VALUE z2ui5_cl_rap_util=>ty_s_entity_info( fields = VALUE #( ( name = `PRODUCT` ) ) ).
+    z2ui5_cl_rap_util=>apply_annotations(
+      EXPORTING it_entity   = VALUE #( )
+                it_elements = VALUE #(
+                  ( element = `PRODUCT` key = `CONSUMPTION.VALUEHELPDEFINITION$1$.ENTITY.NAME`    value = `'ZI_PRODUCT'` )
+                  ( element = `PRODUCT` key = `CONSUMPTION.VALUEHELPDEFINITION$1$.ENTITY.ELEMENT` value = `'Product'` )
+                  ( element = `PRODUCT` key = `CONSUMPTION.VALUEHELPDEFINITION$1$.ADDITIONALBINDING$1$.ELEMENT`
+                    value = `'Category'` )
+                  ( element = `PRODUCT` key = `CONSUMPTION.VALUEHELPDEFINITION$1$.ADDITIONALBINDING$1$.LOCALCONSTANT`
+                    value = `'A'` )
+                  ( element = `PRODUCT` key = `CONSUMPTION.VALUEHELPDEFINITION$1$.ADDITIONALBINDING$1$.USAGE`
+                    value = `#FILTER` ) )
+      CHANGING  cs_entity   = ls_entity ).
+    DATA(lt_read) = ls_entity-fields[ 1 ]-value_help-additional_binding.
+    cl_abap_unit_assert=>assert_equals( exp = 1          act = lines( lt_read ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `A`        act = lt_read[ 1 ]-local_constant ).
+    cl_abap_unit_assert=>assert_equals( exp = `CATEGORY` act = lt_read[ 1 ]-element ).
+
+  ENDMETHOD.
+
+
+  METHOD default_order_by.
+
+    DATA(ls_entity) = VALUE z2ui5_cl_rap_util=>ty_s_entity_info(
+      keys       = VALUE #( ( `CLIENTID` ) ( `ID` ) )
+      sort_order = VALUE #( ( field = `NAME` descending = abap_true ) ( field = `ID` ) )
+      fields     = VALUE #( ( name = `CLIENTID` type_kind = `RAW` length = 32 )
+                            ( name = `ID`       type_kind = `CHAR` )
+                            ( name = `NAME`     type_kind = `CHAR` )
+                            ( name = `NOTE`     type_kind = `STRING` )
+                            ( name = `FILE`     type_kind = `RAW` length = 0 ) ) ).
+
+    "the element first, the presentation variant, then the keys - once each
+    cl_abap_unit_assert=>assert_equals(
+      exp = `ID, NAME DESCENDING, CLIENTID`
+      act = z2ui5_cl_rap_util=>get_default_order_by( is_entity = ls_entity
+                                                     first     = `id` ) ).
+    "no string, no RAWSTRING, no field the entity lacks
+    cl_abap_unit_assert=>assert_equals(
+      exp = `NAME DESCENDING, ID, CLIENTID`
+      act = z2ui5_cl_rap_util=>get_default_order_by( is_entity = ls_entity
+                                                     first     = `NOTE` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `NAME DESCENDING, ID, CLIENTID`
+      act = z2ui5_cl_rap_util=>get_default_order_by( is_entity = ls_entity
+                                                     first     = `FILE` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD chart_order.
+
+    "bars and shares: the largest values, not the first of the dimension
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_s_sort( field = `MEASURE` descending = abap_true )
+      act = z2ui5_cl_rap_util=>get_chart_order( chart_type = `BAR`
+                                                dimension  = `CUSTOMER`
+                                                measure    = `REVENUE` ) ).
+    "a trend along its dimension
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_s_sort( field = `DIMENSION` )
+      act = z2ui5_cl_rap_util=>get_chart_order( chart_type = `TREND`
+                                                dimension  = `MONTH`
+                                                measure    = `REVENUE` ) ).
+    "the presentation variant's first sort on either - other fields skipped
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_s_sort( field = `MEASURE` )
+      act = z2ui5_cl_rap_util=>get_chart_order(
+              chart_type = `SHARE`
+              dimension  = `CUSTOMER`
+              measure    = `REVENUE`
+              sort_order = VALUE #( ( field = `CITY` descending = abap_true )
+                                    ( field = `Revenue` ) ) ) ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = VALUE z2ui5_cl_rap_util=>ty_s_sort( field = `DIMENSION` descending = abap_true )
+      act = z2ui5_cl_rap_util=>get_chart_order( chart_type = `TREND`
+                                                dimension  = `MONTH`
+                                                measure    = `REVENUE`
+                                                sort_order = VALUE #( ( field = `MONTH` descending = abap_true ) ) ) ).
+
   ENDMETHOD.
 
 

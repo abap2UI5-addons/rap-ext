@@ -198,13 +198,13 @@ Overridable steps per floorplan:
 - **List Report**: `render_page`, `render_filter_bar`, `render_table`, `render_toolbar`, `render_column`, `render_cell`, `on_row_press`, `on_create`, `on_action`, `execute_action`, `render_action_buttons`, `open_created`, `on_navigated`, `load_data`, `get_where_clause`, `get_line_item_fields`, `get_selection_fields`, `get_row_key_fields`, `get_line_item_actions`, `get_line_item_intents`, `get_visible_columns`, `get_missing_filters`, `on_nav_path`, `on_intent`, `on_export`, `render_export_button`, `init_variants`, `get_action_rows`, `apply_filter_presets`, `render_variant_controls`, `render_variant_popup`, `render_column_popup`, `on_variant_event`, `capture_variant`, `apply_variant`, `apply_row_states`, `fill_draft_status`, `update_action_state`, `get_action_enabled`, `has_row_column`, `create_filter`, `update_filter_tokens`, `take_filter_inputs`, `apply_presentation_variants`, `on_filter_event`, `render_condition_popup`, `render_adapt_popup`, `get_adaptable_fields`, `clear_rows`, `is_initial_load`, `apply_text_columns`, `get_text_column`, `has_selection`, `get_condition_operators`, `get_ordered_columns`, `get_variant_key`, `render_toolbar_content`, `render_toolbar_search`, `get_row_columns`, `reload_rows`, `render_grid_table`, `render_grid_column`, `apply_analytics`, `read_aggregates`, `add_row_columns`, `get_selected_rows`, `on_event`
 - **Worklist**: everything of the list report (it is a subclass of it), plus `load_segments`
 - **Tree**: everything of the list report (it is a subclass of it), plus `get_hierarchy`, `get_delete_mode`, `build_tree_rows`, `refresh_tree_state`, `get_node_key`, `get_node_row`, `get_selected_node`, `on_create_child`, `render_delete_popup`, `delete_node`, `read_child_nodes`, `delete_descendants`
-- **Flexible Column Layout** (`z2ui5_cl_rap_fcl`): `dispatch`, `open_column`, `close_column`, `render`, `render_skeleton`, `update_layout`, `get_column_app`
-- **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_content`, `render_section_form`, `render_section_fields`, `render_section_table`, `get_sections`, `save_data`, `delete_data`, `reload_data`, `show_not_found`, `discard_draft`, `load_child_rows`, `get_association_target`, `get_child_filter`, `get_child_context`, `on_child_create`, `get_bdef`, `get_root_keys`, `get_own_keys`, `start_draft`, `save_draft`, `find_created_record`, `get_link`, `on_action`, `execute_action`, `get_record_actions`, `get_identification_fields`, `render_section_actions`, `render_action_buttons`, `on_child_action`, `execute_child_action`, `open_created`, `on_child_row`, `format_value`, `load_permissions`, `get_field_for_edit`, `read_own_draft`, `read_draft_status`, `resume_draft`, `render_draft_info`, `get_disabled_actions`, `apply_start_mode`, `get_custom_sections`, `render_section`, `render_custom_section`, `get_side_effect_fields`, `on_side_effect`, `get_admin_fields`, `render_admin_fields`, `get_change_documents`, `get_path_children`, `render_path_input`, `add_path_token`, `delete_path_token`, `get_path_as_child`, `get_token_key`, `get_token_keys`, `read_child_rows`, `add_row_flags`, `render_child_cell`, `on_child_row_add`, `on_child_row_delete`, `get_child_original`, `write_children`, `on_event`
+- **Flexible Column Layout** (`z2ui5_cl_rap_fcl`): `dispatch`, `open_column`, `close_column`, `render`, `render_skeleton`, `update_layout`, `get_column_app`, `is_column_dirty`
+- **Object Page**: `render_page`, `render_header_title`, `render_actions`, `render_header_content`, `render_sections`, `render_section_content`, `render_section_form`, `render_section_fields`, `render_section_table`, `get_sections`, `save_data`, `delete_data`, `reload_data`, `show_not_found`, `discard_draft`, `load_child_rows`, `get_association_target`, `get_child_filter`, `get_child_context`, `on_child_create`, `get_bdef`, `get_root_keys`, `get_own_keys`, `start_draft`, `save_draft`, `find_created_record`, `get_link`, `on_action`, `execute_action`, `get_record_actions`, `get_identification_fields`, `render_section_actions`, `render_action_buttons`, `on_child_action`, `execute_child_action`, `open_created`, `on_child_row`, `format_value`, `load_permissions`, `get_field_for_edit`, `read_own_draft`, `read_draft_status`, `resume_draft`, `render_draft_info`, `get_disabled_actions`, `apply_start_mode`, `get_custom_sections`, `render_section`, `render_custom_section`, `get_side_effect_fields`, `on_side_effect`, `get_admin_fields`, `render_admin_fields`, `get_change_documents`, `get_path_children`, `render_path_input`, `add_path_token`, `delete_path_token`, `get_path_as_child`, `get_token_key`, `get_token_keys`, `read_child_rows`, `add_row_flags`, `render_child_cell`, `on_child_row_add`, `on_child_row_delete`, `get_child_original`, `write_children`, `cancel_edit`, `confirm_discard`, `get_child_entity`, `on_event`
 - **Overview Page**: `render_page`, `render_table_card`, `render_kpi_card`, `render_chart_card`, `render_card_link`, `load_all_cards`, `load_kpi_value`, `load_chart_rows`, `collect_card_rows`, `display`, `on_card`, `on_card_row`, `on_event`
 - **Value Help**: `render_dialog`, `render_filter_dialog`, `load_data`, `get_where_clause`, `on_confirm`, `on_event`
 - **Action Dialog**: `render_action_dialog`, `get_control_for_field`, `render_value_help`, `handle_value_help_confirm`, `apply_default_values`, `get_mandatory_parameters`, `apply_mandatory_parameters`, `get_missing_fields`, `on_event`
-- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `get_read_info`, `query_rows`, `calculate_virtual_elements`, `adjust_virtual_order_by`, `aggregate_rows`, `get_load_error`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `select_by_keys`, `get_key_values`, `add_table_columns`, `show_action_result`, `call_action_dialog`, `call_object_page`, `call_record_page`, `call_row_page`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `is_static_action`, `get_action_entries`, `get_action_button_type`, `is_hidden_by_annotation`, `navigate_to_intent`, `read_association_target`, `get_permissions`, `get_row_permissions`, `get_keys_of_row`, `read_drafts`, `read_draft_children`, `get_etag_field`, `check_etag`, `show_messages`, `render_message_view`, `render_file_field`, `render_upload_popup`, `apply_upload`, `download_file`, `get_max_file_size`, `get_default_function_name`, `apply_action_defaults`, `read_association_texts`, `get_association_text_key`, `get_text`, ...
-- **Deep links** (`z2ui5_cl_rap_start`): `get_allowed_entities`, `get_extension`, `get_parameters`, `map_parameters`, `open`, `render_message`
+- **Every floorplan** (`z2ui5_cl_rap_floorplan`): `select_rows`, `count_rows`, `get_read_info`, `query_rows`, `calculate_virtual_elements`, `adjust_virtual_order_by`, `aggregate_rows`, `get_load_error`, `build_filter_condition`, `build_search_condition`, `build_key_condition`, `create_host`, `select_by_keys`, `get_key_values`, `add_table_columns`, `show_action_result`, `call_action_dialog`, `call_object_page`, `call_record_page`, `call_row_page`, `render_field_input`, `prepare_value_lists`, `load_suggestions`, `open_value_help`, `apply_value_help`, `get_entity_capabilities`, `write_row`, `write_table_row`, `is_draft_enabled`, `write_draft`, `run_draft_action`, `run_action`, `is_static_action`, `lacks_action_rows`, `get_action_entries`, `get_action_button_type`, `is_hidden_by_annotation`, `navigate_to_intent`, `read_association_target`, `get_permissions`, `get_row_permissions`, `get_keys_of_row`, `read_drafts`, `read_draft_children`, `get_etag_field`, `check_etag`, `show_messages`, `render_message_view`, `render_file_field`, `render_upload_popup`, `apply_upload`, `download_file`, `get_max_file_size`, `get_default_function_name`, `apply_action_defaults`, `read_association_texts`, `get_association_text_key`, `get_text`, ...
+- **Deep links** (`z2ui5_cl_rap_start`): `get_allowed_entities`, `get_extension`, `get_parameters`, `map_parameters`, `names_every_key`, `open`, `render_message`
 
 ## Extension points without a subclass
 
@@ -222,9 +222,21 @@ ENDCLASS.
 CLASS zcl_my_ext IMPLEMENTATION.
 
   METHOD z2ui5_if_rap_ext~adjust_entity.
-    "hide a field, rename another - without touching the CDS view
-    entity-fields[ name = `CREATEDBY` ]-is_hidden = abap_true.
-    entity-fields[ name = `COUNTRY` ]-label = `Land`.
+    "hide a field, rename another - without touching the CDS view. Every
+    "entity passes here (value helps, child tables, dialogs), so look at
+    "the entity first, and change a field only where it exists: a table
+    "expression on a missing row raises CX_SY_ITAB_LINE_NOT_FOUND
+    IF entity-name <> `/DMO/C_TRAVEL_PROCESSOR_M`.
+      RETURN.
+    ENDIF.
+    ASSIGN entity-fields[ name = `CREATEDBY` ] TO FIELD-SYMBOL(<ls_created_by>).
+    IF sy-subrc = 0.
+      <ls_created_by>-is_hidden = abap_true.
+    ENDIF.
+    ASSIGN entity-fields[ name = `DESCRIPTION` ] TO FIELD-SYMBOL(<ls_description>).
+    IF sy-subrc = 0.
+      <ls_description>-label = `Beschreibung`.
+    ENDIF.
   ENDMETHOD.
 
   METHOD z2ui5_if_rap_ext~adjust_where.
@@ -383,12 +395,18 @@ answers what `z2ui5_cl_rap_platform` says - `ON_PREMISE` on `main`,
 `CLOUD` on `cloud`. `get_annotation_reader( )` follows it (AUTO):
 the annotation service on premise, `z2ui5_cl_rap_anno_xco` in ABAP Cloud.
 `z2ui5_cl_rap_util=>set_annotation_reader( z2ui5_cl_rap_util=>cs_anno_reader-xco )`
-(or `-ddic`, `-auto`) chooses for the rest of the session - for example to
+(or `-ddic`, `-auto`) chooses for the rest of the request - for example to
 compare both readers on premise, where an XCO read that finds nothing falls
 back to the service. `read_raw_annotations( )-reader` says who read them.
-Call it before the first floorplan reads (a subclass's constructor, the
-app that opens it): the setting lives in the ABAP session, like the
-annotation cache.
+The setting lives in the ABAP session, like the annotation cache, and
+abap2UI5 is stateless: every roundtrip is a new session, in which AUTO
+applies again. A constructor runs in the first roundtrip only, so calling
+it there makes the first page read with one reader and everything after it
+(child tables, value helps, suggestions, the object page a row opens) with
+the other. Call it at the start of **every** roundtrip of every app that
+reads - for example in a floorplan subclass's redefined
+`z2ui5_if_app~main` before `super->main( client )`, and in the same way in
+the subclasses the floorplan opens (the object page, the value help).
 
 **What works in ABAP Cloud**
 
@@ -521,10 +539,15 @@ On the object page, a **draft business object is edited in a draft that spans
 roundtrips**: Edit creates it (committed), Save writes the changes into it
 and activates it, and Cancel discards it. When the activation is refused the
 draft keeps the changes and the page stays in edit mode. Leaving the page
-while editing asks whether to **keep or discard the draft**. A record that has
-a draft of the user's own is **read back** (`READ ENTITIES` with `%is_draft`)
-and opens to be edited further; a draft left by another app makes Edit offer
-"Resume draft" or "Discard draft"; another user's draft locks the record
+while editing asks whether to **keep or discard the draft**; a value chosen
+in a value help goes into the draft at once, like a typed one (since
+2026-11). Without draft, Back and Cancel ask **"discard your changes?"**
+when the record, a child row or a token waits for Save (since 2026-11). A
+record that has a draft of the user's own is **read back** (`READ ENTITIES`
+with `%is_draft`) and opens to be edited further; a draft of the user's own
+left by another app makes Edit offer "Resume draft" or "Discard draft" (any
+other refusal - a lock, an authorization - is the business object's
+message); another user's draft locks the record
 ("Locked by ..." above the header, no Edit or Delete). Whose draft it is, is
 decided by the draft's `@Semantics.user.lastChangedBy` field (none: the
 user's own). A record found only as a draft - what a factory action of a
@@ -536,7 +559,9 @@ Create, Edit, Delete, a create by association (`%assoc`), the actions
 (their buttons shown disabled; in the list report per row for an inline
 action and by the selected rows for a toolbar action), and the field control
 in edit mode: `field ( readonly )`, `readonly : update`, `mandatory`,
-`mandatory : create`, instance field control. A key is never typed in on
+`mandatory : create`, instance field control - of the draft while one is
+edited (`%is_draft`, since 2026-11). An action on rows is disabled until a
+row is selected and refused before its parameter dialog opens. A key is never typed in on
 change; on create it is read-only when the field control says so (early or
 managed numbering) or when it is a UUID (`RAW16`). An internal operation is
 not offered where `GET PERMISSIONS` reports it as disabled. An update of a
@@ -738,7 +763,8 @@ Renders a Fiori-Elements-style list report for any CDS view, driven entirely by 
 - Sorting in the database - a select of the columns and a direction button, the default from `@UI.presentationVariant`; "More" loads the next rows from the database
 - Actions from `@UI.lineItem` `#FOR_ACTION` (toolbar on the selected rows, or inline per row); links and launchpad navigations from `#WITH_URL`, `#WITH_NAVIGATION_PATH`, `#WITH_INTENT_BASED_NAVIGATION` and `#FOR_INTENT_BASED_NAVIGATION`
 - Mandatory and single-value filters from `@Consumption.filter`
-- Views per user (filters, the filter fields, search, sort order, the columns - hidden, order, width -, the group field; one the default, each public or private and applied automatically or not), a columns dialog (visible, order, width, group by), and the export of every matching row as a CSV file
+- Views per user (filters, the filter fields, search, sort order, the columns - hidden, order, width -, the group field; one the default, each public or private and applied automatically or not), a columns dialog (visible, order, width, group by), and the export of every matching row as a CSV file - up to 10,000 rows
+(`cv_export_max`); a larger result is cut there, and the list says so
 - Filters by type (lists, dates, date ranges, MultiInputs with tokens), "define conditions", "adapt filters", the error state of a missing mandatory filter
 - Grouping (`@UI.presentationVariant.groupBy` or the user's group field): the rows ordered by it in the database, a group header per value
 - The start from `@UI.selectionPresentationVariant` (sort, group, a qualified `@UI.lineItem`, the selection variant's filter values); `initial_load` (`AUTO` - unless the default view does not apply automatically -, `ENABLED`, `DISABLED`: the rows only on Go)
@@ -867,6 +893,12 @@ to the real client except these:
   returned - `check_on_navigated( )`, `get_app_prev( )` the closed page - so
   the list report reads its rows again after a save. In the first column it
   leaves the host.
+- a row pressed while the page in the column (or the one right of it) has
+  unsaved changes (`z2ui5_cl_rap_object_page->is_dirty`) asks "discard your
+  changes?" first (`cv_event_discard`); a page replaced after a save is
+  treated as a returned one, so the list shows the saved values at once
+  (since 2026-11). The skeleton declares `sap.f` as `zfcl`, so a column's
+  own `xmlns:f` (often `sap.ui.layout.form`) keeps its meaning.
 
 The layout (`OneColumn`, `TwoColumnsMidExpanded`,
 `ThreeColumnsMidExpanded`) follows the open columns; the user resizes them

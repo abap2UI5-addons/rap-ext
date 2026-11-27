@@ -48,6 +48,8 @@ CLASS ltcl_object_page DEFINITION FINAL
     METHODS change_info_section        FOR TESTING RAISING cx_static_check.
     METHODS row_by_keys_and_index      FOR TESTING RAISING cx_static_check.
     METHODS field_message_of_record    FOR TESTING RAISING cx_static_check.
+    METHODS dirty_only_with_changes    FOR TESTING RAISING cx_static_check.
+    METHODS header_group_no_section    FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -532,6 +534,54 @@ CLASS ltcl_object_page IMPLEMENTATION.
                                        index      = 3 ).
     ASSIGN lr_row->* TO <ls_row>.
     cl_abap_unit_assert=>assert_equals( exp = 'A' act = <ls_row>-status ).
+
+  ENDMETHOD.
+
+  METHOD dirty_only_with_changes.
+
+    FIELD-SYMBOLS <lv_status> TYPE any.
+
+    CREATE DATA mo_cut->ms_data_backup LIKE mo_cut->ms_data->*.
+    mo_cut->ms_data_backup->* = mo_cut->ms_data->*.
+
+    "display mode loses nothing
+    cl_abap_unit_assert=>assert_false( mo_cut->is_dirty( ) ).
+    mo_cut->mv_editable = abap_true.
+    cl_abap_unit_assert=>assert_false( mo_cut->is_dirty( ) ).
+
+    "a field changed on the page
+    ASSIGN COMPONENT `STATUS` OF STRUCTURE mo_cut->ms_data->* TO <lv_status>.
+    <lv_status> = 'X'.
+    cl_abap_unit_assert=>assert_true( mo_cut->is_dirty( ) ).
+    mo_cut->ms_data_backup->* = mo_cut->ms_data->*.
+    cl_abap_unit_assert=>assert_false( mo_cut->is_dirty( ) ).
+
+    "a child write waiting for Save
+    APPEND VALUE #( component = `SECTION_1` operation = `DELETE` ) TO mo_cut->mt_pending.
+    cl_abap_unit_assert=>assert_true( mo_cut->is_dirty( ) ).
+    CLEAR mo_cut->mt_pending.
+    mo_cut->mv_children_changed = abap_true.
+    cl_abap_unit_assert=>assert_true( mo_cut->is_dirty( ) ).
+
+  ENDMETHOD.
+
+  METHOD header_group_no_section.
+
+    "a field group only a header facet names stays in the header
+    APPEND VALUE #( name = `AGENCY` label = `Agency`
+                    field_groups = VALUE #( ( qualifier = `Hdr` position = 10 ) ) ) TO mo_cut->ms_entity-fields.
+    APPEND VALUE #( id = `H1` type = `#FIELDGROUP_REFERENCE` target_qualifier = `Hdr` purpose = `#HEADER` )
+      TO mo_cut->ms_entity-facets.
+    DATA(lt_sections) = mo_cut->get_sections( ).
+    cl_abap_unit_assert=>assert_false( xsdbool( line_exists( lt_sections[ field_group = `Hdr` ] ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_sections )
+                                        exp = 3 ).
+
+    "without any facet every field group is a section
+    CLEAR mo_cut->ms_entity-facets.
+    lt_sections = mo_cut->get_sections( ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( lt_sections[ field_group = `Hdr` ] ) ) ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( lt_sections[ field_group = `Basic` ] ) ) ).
 
   ENDMETHOD.
 

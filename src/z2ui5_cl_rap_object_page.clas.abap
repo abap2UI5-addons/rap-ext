@@ -78,6 +78,9 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
         child_row_delete  TYPE string VALUE `CHILD_ROW_DELETE`,
         child_cell_change TYPE string VALUE `CHILD_CELL_CHANGE`,
         side_effect       TYPE string VALUE `SIDE_EFFECT`,
+        "added 2026-11: the answer to "discard your changes?" on Cancel
+        "without draft
+        cancel_decision   TYPE string VALUE `CANCEL_DECISION`,
       END OF cs_event.
 
     " the columns of a row of a child table beside the entity's own (added
@@ -138,6 +141,15 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
     METHODS result
       RETURNING
         VALUE(result) TYPE REF TO data.
+
+    "! the page is in edit mode with changes leaving it would lose: the
+    "! record differs from what was loaded or last written into the draft,
+    "! or a child write waits for Save (a row added, deleted or changed, a
+    "! token) - what the flexible column layout asks before it replaces
+    "! the page (added 2026-11)
+    METHODS is_dirty
+      RETURNING
+        VALUE(result) TYPE abap_bool.
 
     DATA ms_data TYPE REF TO data.
     "! the record as last loaded or saved - Cancel and the change check
@@ -238,6 +250,25 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
     DATA ms_caps TYPE ty_s_capabilities.
     DATA mt_child TYPE ty_t_child.
     DATA mt_keys TYPE ty_t_name_value.
+
+    " the metadata of a child entity, as the extension adjusted it - read
+    " once per page, not on every reload of the children (added 2026-11)
+    TYPES:
+      BEGIN OF ty_s_entity_cache,
+        name   TYPE string,
+        entity TYPE z2ui5_cl_rap_util=>ty_s_entity_info,
+      END OF ty_s_entity_cache.
+    TYPES ty_t_entity_cache TYPE STANDARD TABLE OF ty_s_entity_cache WITH EMPTY KEY.
+    DATA mt_entity_cache TYPE ty_t_entity_cache.
+
+    "! the metadata of a child entity (read_entity, adjust_entity) - kept
+    "! in mt_entity_cache, so the children's sections and MultiInputs are
+    "! read again without their metadata (added 2026-11)
+    METHODS get_child_entity
+      IMPORTING
+        entity_name   TYPE string
+      RETURNING
+        VALUE(result) TYPE z2ui5_cl_rap_util=>ty_s_entity_info.
     "! an action waiting for its parameter dialog to return
     DATA mv_pending_action TYPE string.
     "! the record's place in a RAP business object (see the constructor)
@@ -272,6 +303,22 @@ CLASS z2ui5_cl_rap_object_page DEFINITION
     DATA mt_pending TYPE ty_t_pending.
     "! the MultiInput (its component) whose value help was called
     DATA mv_pending_path TYPE string.
+    "! a cell of a child table or a new row waits for Save (is_dirty;
+    "! added 2026-11)
+    DATA mv_children_changed TYPE abap_bool.
+
+    "! leave edit mode without saving: the draft discarded, else the
+    "! record as it was loaded (added 2026-11)
+    METHODS cancel_edit
+      IMPORTING
+        client TYPE REF TO z2ui5_if_client.
+
+    "! ask "discard your changes?" - Discard or Cancel, the answer comes
+    "! back as onclose (added 2026-11)
+    METHODS confirm_discard
+      IMPORTING
+        client  TYPE REF TO z2ui5_if_client
+        onclose TYPE string.
 
     "! subclass hook - called for every event the floorplan itself does
     "! not handle, exactly like the event branch of a hand-written app
@@ -885,6 +932,64 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD is_dirty.
+
+    IF mv_editable = abap_false.
+      RETURN.
+    ENDIF.
+    IF mt_pending IS NOT INITIAL OR mv_children_changed = abap_true.
+      result = abap_true.
+      RETURN.
+    ENDIF.
+    IF ms_data IS BOUND AND ms_data_backup IS BOUND.
+      result = xsdbool( z2ui5_cl_rap_util=>get_changed_fields( row      = ms_data->*
+                                                               original = ms_data_backup->* ) IS NOT INITIAL ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD confirm_discard.
+
+    client->message_box_display( text    = get_text( cs_text-leave_changes )
+                                 type    = `confirm`
+                                 actions = VALUE #( ( get_text( cs_text-discard_changes ) )
+                                                    ( get_text( cs_text-cancel ) ) )
+                                 onclose = onclose ).
+
+  ENDMETHOD.
+
+
+  METHOD cancel_edit.
+
+    IF mv_is_create = abap_true.
+      client->nav_app_leave( ).
+      RETURN.
+    ENDIF.
+    IF mv_draft = abap_true.
+      IF discard_draft( client ) = abap_false.
+        RETURN.
+      ENDIF.
+      mv_draft = abap_false.
+      "the active record as it is - the draft had the changes; a draft
+      "that was never activated is gone with it
+      reload_data( ).
+      IF mv_not_found = abap_true.
+        client->nav_app_leave( ).
+        RETURN.
+      ENDIF.
+      ms_data_backup->* = ms_data->*.
+    ELSE.
+      ms_data->* = ms_data_backup->*.
+    ENDIF.
+    mv_editable = abap_false.
+    CLEAR: mt_messages, mt_pending, mv_children_changed.
+    load_child_rows( ).
+    render_page( client ).
+
+  ENDMETHOD.
+
+
   METHOD was_saved.
     result = mv_saved.
   ENDMETHOD.
@@ -971,7 +1076,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     "the suggestions of an input with a value help, while the user types
     IF client->check_on_event( cv_event_suggest ).
       load_suggestions( client    = client
-                        it_fields = ms_entity-fields ).
+                        it_fields = ms_entity-fields
+                        record    = ms_data->* ).
       RETURN.
     ENDIF.
 
@@ -1032,12 +1138,23 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
           onclose = cs_event-leave_decision ).
         RETURN.
       ENDIF.
+      "without draft the changes are only on the page - leaving loses
+      "them, so the user decides (since 2026-11)
+      IF is_dirty( ) = abap_true.
+        confirm_discard( client  = client
+                         onclose = cs_event-leave_decision ).
+        RETURN.
+      ENDIF.
       client->nav_app_leave( ).
       RETURN.
     ENDIF.
 
     IF client->check_on_event( cs_event-leave_decision ).
       DATA(lv_leave) = client->get_event_arg( ).
+      IF lv_leave = get_text( cs_text-discard_changes ).
+        client->nav_app_leave( ).
+        RETURN.
+      ENDIF.
       IF lv_leave = get_text( cs_text-discard_draft ).
         IF discard_draft( client ) = abap_false.
           RETURN.
@@ -1069,12 +1186,16 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                                      type = `error` ).
         RETURN.
       ENDIF.
-      "a draft business object is edited in a draft of its own
+      "a draft business object is edited in a draft of its own - refused,
+      "the page shows what it learned (another user's lock)
       IF is_draft_enabled( get_bdef( ) ) = abap_true AND start_draft( client ) = abap_false.
+        IF ms_draft-state = z2ui5_cl_rap_util=>cs_editing_status-locked.
+          render_page( client ).
+        ENDIF.
         RETURN.
       ENDIF.
       mv_editable = abap_true.
-      CLEAR mt_pending.
+      CLEAR: mt_pending, mv_children_changed.
       "the children as edit mode shows them - of the draft, with what may
       "be changed per row
       load_child_rows( ).
@@ -1110,30 +1231,21 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
 
     IF client->check_on_event( cs_event-cancel ).
-      IF mv_is_create = abap_true.
-        client->nav_app_leave( ).
+      "changes only on the page (no draft holds them) are lost - the user
+      "decides first (since 2026-11)
+      IF mv_draft = abap_false AND is_dirty( ) = abap_true.
+        confirm_discard( client  = client
+                         onclose = cs_event-cancel_decision ).
         RETURN.
       ENDIF.
-      IF mv_draft = abap_true.
-        IF discard_draft( client ) = abap_false.
-          RETURN.
-        ENDIF.
-        mv_draft = abap_false.
-        "the active record as it is - the draft had the changes; a draft
-        "that was never activated is gone with it
-        reload_data( ).
-        IF mv_not_found = abap_true.
-          client->nav_app_leave( ).
-          RETURN.
-        ENDIF.
-        ms_data_backup->* = ms_data->*.
-      ELSE.
-        ms_data->* = ms_data_backup->*.
+      cancel_edit( client ).
+      RETURN.
+    ENDIF.
+
+    IF client->check_on_event( cs_event-cancel_decision ).
+      IF client->get_event_arg( ) = get_text( cs_text-discard_changes ).
+        cancel_edit( client ).
       ENDIF.
-      mv_editable = abap_false.
-      CLEAR: mt_messages, mt_pending.
-      load_child_rows( ).
-      render_page( client ).
       RETURN.
     ENDIF.
 
@@ -1173,7 +1285,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         "what the business object determined on save
         reload_data( ).
         ms_data_backup->* = ms_data->*.
-        CLEAR mt_pending.
+        CLEAR: mt_pending, mv_children_changed.
         load_child_rows( ).
         render_page( client ).
         IF lt_saved_messages IS INITIAL.
@@ -1316,6 +1428,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         ENDIF.
         load_child_rows( ).
         render_page( client ).
+      ELSE.
+        "held back until Save - leaving now would lose it (is_dirty)
+        mv_children_changed = abap_true.
       ENDIF.
       RETURN.
     ENDIF.
@@ -1354,9 +1469,17 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         ENDIF.
         RETURN.
       ENDIF.
-      apply_value_help( EXPORTING client    = client
-                                  it_fields = ms_entity-fields
-                        CHANGING  target    = ms_data->* ).
+      DATA(lv_vh_applied) = apply_value_help( EXPORTING client    = client
+                                                        it_fields = ms_entity-fields
+                                              CHANGING  target    = ms_data->* ).
+      "a value chosen in the draft goes into it at once, like a typed one -
+      "its determinations run, and a kept draft has it (since 2026-11)
+      IF lv_vh_applied = abap_true AND mv_draft = abap_true AND mv_editable = abap_true
+        AND z2ui5_cl_rap_util=>get_changed_fields( row      = ms_data->*
+                                                   original = ms_data_backup->* ) IS NOT INITIAL.
+        on_side_effect( client ).
+        RETURN.
+      ENDIF.
       "decided by what this page called - check_app_prev_stack( ) only says
       "whether the page has a caller itself
       IF mv_pending_action IS NOT INITIAL.
@@ -1592,6 +1715,20 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD get_child_entity.
+
+    READ TABLE mt_entity_cache INTO DATA(ls_cached) WITH KEY name = entity_name.
+    IF sy-subrc = 0.
+      result = ls_cached-entity.
+      RETURN.
+    ENDIF.
+    result = z2ui5_cl_rap_util=>read_entity( entity_name ).
+    adjust_entity( CHANGING cs_entity = result ).
+    APPEND VALUE #( name = entity_name entity = result ) TO mt_entity_cache.
+
+  ENDMETHOD.
+
+
   METHOD load_child_rows.
 
     DATA lt_comp TYPE cl_abap_structdescr=>component_table.
@@ -1616,8 +1753,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         section_id  = ls_section-id
         component   = |SECTION_{ lines( mt_child ) + 1 }|
         association = to_upper( ls_section-association )
-        entity      = z2ui5_cl_rap_util=>read_entity( lv_target ) ).
-      adjust_entity( CHANGING cs_entity = ls_child-entity ).
+        entity      = get_child_entity( lv_target ) ).
 
       "the child rows of this record - compared with typed host variables
       get_child_filter( EXPORTING is_child  = ls_child
@@ -1683,8 +1819,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
         section_id = cs_section_id-change_docs
         component  = |SECTION_{ lines( mt_child ) + 1 }|
         read_only  = abap_true
-        entity     = z2ui5_cl_rap_util=>read_entity( lv_docs_entity ) ).
-      adjust_entity( CHANGING cs_entity = ls_docs-entity ).
+        entity     = get_child_entity( to_upper( lv_docs_entity ) ) ).
       DATA lt_docs_values TYPE ty_t_name_value.
       DATA lt_docs_names TYPE string_table.
       FIELD-SYMBOLS <lv_docs_value> TYPE any.
@@ -1726,8 +1861,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       DATA(ls_path) = VALUE ty_s_path_child(
         component = |PATH_{ lines( mt_path ) + 1 }|
         field     = ls_path_field
-        entity    = z2ui5_cl_rap_util=>read_entity( lv_path_target ) ).
-      adjust_entity( CHANGING cs_entity = ls_path-entity ).
+        entity    = get_child_entity( lv_path_target ) ).
       IF NOT line_exists( ls_path-entity-fields[ name = ls_path_field-element ] ).
         CONTINUE.
       ENDIF.
@@ -1888,15 +2022,35 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    "a draft exists already - another user's lock, which the business
-    "object names, or one of this user's that can be discarded
-    client->message_box_display(
-      text    = concat_lines_of( table = ls_result-messages sep = cl_abap_char_utilities=>newline )
-      type    = `warning`
-      actions = VALUE #( ( get_text( cs_text-resume_draft ) )
-                         ( get_text( cs_text-discard_draft ) )
-                         ( get_text( cs_text-cancel ) ) )
-      onclose = cs_event-draft_decision ).
+    "refused: asked again why, the draft status may have changed since the
+    "page opened. Only a draft of this user's own can be continued or
+    "discarded; another user's lock, a missing authorization or a refused
+    "precheck is the business object's message, nothing more (since
+    "2026-11)
+    read_draft_status( ).
+    IF ms_draft-state = z2ui5_cl_rap_util=>cs_editing_status-own_draft.
+      client->message_box_display(
+        text    = concat_lines_of( table = ls_result-messages sep = cl_abap_char_utilities=>newline )
+        type    = `warning`
+        actions = VALUE #( ( get_text( cs_text-resume_draft ) )
+                           ( get_text( cs_text-discard_draft ) )
+                           ( get_text( cs_text-cancel ) ) )
+        onclose = cs_event-draft_decision ).
+      RETURN.
+    ENDIF.
+    DATA(lt_refused) = ls_result-messages.
+    IF ms_draft-state = z2ui5_cl_rap_util=>cs_editing_status-locked.
+      INSERT replace( val  = get_text( cs_text-locked_by )
+                      sub  = `&1`
+                      with = ms_draft-user ) INTO lt_refused INDEX 1.
+    ENDIF.
+    IF lt_refused IS INITIAL.
+      APPEND get_text( cs_text-locked ) TO lt_refused.
+    ENDIF.
+    show_messages( client   = client
+                   messages = lt_refused
+                   details  = ls_result-details
+                   fields   = ms_entity-fields ).
 
   ENDMETHOD.
 
@@ -2229,6 +2383,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
   METHOD on_child_action.
 
+    DATA lr_child_rows TYPE REF TO data.
     FIELD-SYMBOLS <ls_children> TYPE any.
     FIELD-SYMBOLS <lt_children> TYPE any.
 
@@ -2246,6 +2401,28 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
 
     DATA(ls_context) = get_child_context( ls_child-association ).
     CLEAR: ls_context-association, ls_context-parent_fields.
+
+    "the selected rows - an action on rows without one is refused before
+    "its parameter dialog opens, not after it was filled in (since 2026-11)
+    IF mr_child_rows IS BOUND.
+      ASSIGN mr_child_rows->* TO <ls_children>.
+      ASSIGN COMPONENT ls_child-component OF STRUCTURE <ls_children> TO <lt_children>.
+      IF sy-subrc = 0.
+        lr_child_rows = REF #( <lt_children> ).
+        lr_child_rows = get_selected_rows( entity_name = ls_child-entity-name
+                                           data        = lr_child_rows ).
+      ENDIF.
+    ENDIF.
+    IF lacks_action_rows( entity_name = ls_child-entity-name
+                          action      = mv_pending_action
+                          context     = ls_context
+                          rows        = lr_child_rows ) = abap_true.
+      CLEAR: mv_pending_action, mv_pending_child.
+      show_messages( client   = client
+                     messages = VALUE #( ( get_text( cs_text-no_selection ) ) ) ).
+      RETURN.
+    ENDIF.
+
     DATA(lr_param) = create_action_parameter( entity_name = ls_child-entity-name
                                               action      = mv_pending_action
                                               context     = ls_context ).
@@ -2254,16 +2431,6 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       "function fills it for the first selected row (since 2026-10, third
       "round)
       ASSIGN lr_param->* TO FIELD-SYMBOL(<ls_param>).
-      DATA lr_child_rows TYPE REF TO data.
-      IF mr_child_rows IS BOUND.
-        ASSIGN mr_child_rows->* TO <ls_children>.
-        ASSIGN COMPONENT ls_child-component OF STRUCTURE <ls_children> TO <lt_children>.
-        IF sy-subrc = 0.
-          lr_child_rows = REF #( <lt_children> ).
-          lr_child_rows = get_selected_rows( entity_name = ls_child-entity-name
-                                             data        = lr_child_rows ).
-        ENDIF.
-      ENDIF.
       apply_action_defaults( EXPORTING entity_name = ls_child-entity-name
                                        action      = mv_pending_action
                                        rows        = lr_child_rows
@@ -2487,18 +2654,23 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    "field groups not covered by facets, in order of appearance
-    LOOP AT ms_entity-fields INTO ls_field WHERE is_hidden = abap_false.
-      LOOP AT ls_field-field_groups INTO DATA(ls_group).
-        IF NOT line_exists( result[ field_group = ls_group-qualifier ] ).
-          APPEND VALUE ty_s_section(
-            id          = ls_group-qualifier
-            title       = COND #( WHEN ls_group-group_label IS NOT INITIAL THEN ls_group-group_label ELSE ls_group-qualifier )
-            field_group = ls_group-qualifier
-            type        = `FIELDGROUP` ) TO result.
-        ENDIF.
+    "without @UI.facet: every field group a section, in order of
+    "appearance. With facets only what they name - a field group of the
+    "header, of a line item column or of a quick view is no section of
+    "its own (since 2026-11)
+    IF ms_entity-facets IS INITIAL.
+      LOOP AT ms_entity-fields INTO ls_field WHERE is_hidden = abap_false.
+        LOOP AT ls_field-field_groups INTO DATA(ls_group).
+          IF NOT line_exists( result[ field_group = ls_group-qualifier ] ).
+            APPEND VALUE ty_s_section(
+              id          = ls_group-qualifier
+              title       = COND #( WHEN ls_group-group_label IS NOT INITIAL THEN ls_group-group_label ELSE ls_group-qualifier )
+              field_group = ls_group-qualifier
+              type        = `FIELDGROUP` ) TO result.
+          ENDIF.
+        ENDLOOP.
       ENDLOOP.
-    ENDLOOP.
+    ENDIF.
 
     "no field groups at all -> single section with all visible fields
     IF NOT line_exists( result[ type = `FIELDGROUP` ] ) AND NOT line_exists( result[ type = `IDENTIFICATION` ] ).
@@ -3720,9 +3892,12 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                   get_permissions( entity_name = mv_entity_name
                                    context     = ms_context ) ).
     ELSE.
+      "a draft is asked about as the draft - its field control follows
+      "what the user changed in it, not the active record
       ms_perm = get_row_permissions( entity_name = mv_entity_name
                                      context     = ms_context
-                                     row         = ms_data->* ).
+                                     row         = ms_data->*
+                                     is_draft    = mv_draft ).
     ENDIF.
 
   ENDMETHOD.
@@ -4290,11 +4465,14 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     LOOP AT it_values INTO DATA(ls_value).
       APPEND ls_value-name TO lt_names.
     ENDLOOP.
+    "in the order of the child's presentation variant, else its keys - the
+    "same order on every read (since 2026-11)
     result = select_rows( entity_name    = is_child-entity-name
                           where          = build_key_condition( lt_names )
                           host           = create_host( entity_name = is_child-entity-name
                                                         values      = it_values )
-                          with_selection = abap_true ).
+                          with_selection = abap_true
+                          order_by       = z2ui5_cl_rap_util=>get_default_order_by( is_child-entity ) ).
 
   ENDMETHOD.
 
@@ -4330,7 +4508,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
     ENDIF.
     DATA(ls_child_perms) = get_permissions( entity_name = cs_child-entity-name
                                             context     = get_child_context( cs_child-association )
-                                            rows        = rows ).
+                                            rows        = rows
+                                            is_draft    = mv_draft ).
     IF ls_child_perms-answered = abap_true.
       LOOP AT ls_child_perms-global-fields INTO DATA(ls_static)
         WHERE read_only = abap_true OR read_only_update = abap_true.
@@ -4466,6 +4645,7 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
       <lv_add_flag> = abap_true.
       ASSIGN COMPONENT cs_row_flag-deletable OF STRUCTURE <ls_added> TO <lv_add_flag>.
       <lv_add_flag> = abap_true.
+      mv_children_changed = abap_true.
       render_page( client ).
       RETURN.
     ENDIF.
