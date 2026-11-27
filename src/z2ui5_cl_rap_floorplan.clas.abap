@@ -813,6 +813,26 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         keys        TYPE ty_t_name_value
         context     TYPE ty_s_rap_context OPTIONAL.
 
+    "! the object page of row (a record of its entity), called (added
+    "! 2026-11)
+    METHODS call_record_page
+      IMPORTING
+        client  TYPE REF TO z2ui5_if_client
+        row     TYPE data
+        context TYPE ty_s_rap_context OPTIONAL.
+
+    "! the object page of the row of data whose keys the event arguments
+    "! arg_offset + 1 ... name (find_row_by_event_keys), typed as
+    "! entity_name again - a row press (added 2026-11)
+    METHODS call_row_page
+      IMPORTING
+        client      TYPE REF TO z2ui5_if_client
+        data        TYPE REF TO data
+        key_fields  TYPE string_table
+        entity_name TYPE string
+        arg_offset  TYPE i DEFAULT 0
+        context     TYPE ty_s_rap_context OPTIONAL.
+
     "! the dialog with a sap.m.MessageView of mt_message_items - grouped by
     "! entity when grouped is set (added 2026-10, third round)
     METHODS render_message_view
@@ -3394,6 +3414,38 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
                                                 context       = context ).
     lo_op->set_extension( mo_ext ).
     client->nav_app_call( lo_op ).
+
+  ENDMETHOD.
+
+
+  METHOD call_record_page.
+
+    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( val     = row
+                                                context = context ).
+    lo_op->set_extension( mo_ext ).
+    client->nav_app_call( lo_op ).
+
+  ENDMETHOD.
+
+
+  METHOD call_row_page.
+
+    DATA(lr_row) = find_row_by_event_keys( data       = data
+                                           key_fields = key_fields
+                                           client     = client
+                                           arg_offset = arg_offset ).
+    IF lr_row IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    ASSIGN lr_row->* TO FIELD-SYMBOL(<ls_row>).
+    "typed as the entity again - the object page reads its annotations
+    "from the type name, which a row with added columns has not
+    DATA(lr_entity_row) = to_entity_row( entity_name = entity_name
+                                         row         = <ls_row> ).
+    ASSIGN lr_entity_row->* TO <ls_row>.
+    call_record_page( client  = client
+                      row     = <ls_row>
+                      context = context ).
 
   ENDMETHOD.
 

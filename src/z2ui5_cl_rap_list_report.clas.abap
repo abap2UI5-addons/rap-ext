@@ -1909,9 +1909,8 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
       RETURN.
     ENDIF.
     ASSIGN lr_target->* TO <ls_row>.
-    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( val = <ls_row> ).
-    lo_op->set_extension( mo_ext ).
-    client->nav_app_call( lo_op ).
+    call_record_page( client = client
+                      row    = <ls_row> ).
 
   ENDMETHOD.
 
@@ -1997,24 +1996,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
   METHOD on_row_press.
 
-    FIELD-SYMBOLS <ls_row> TYPE any.
-
-    DATA(lr_row) = find_row_by_event_keys( data       = mr_data
-                                           key_fields = mt_row_key
-                                           client     = client ).
-    IF lr_row IS NOT BOUND.
-      RETURN.
-    ENDIF.
-    ASSIGN lr_row->* TO <ls_row>.
-
-    "typed as the entity again - the object page reads its annotations
-    "from the type name, which a row with the selection column has not
-    DATA(lr_entity_row) = to_entity_row( entity_name = mv_cds_view
-                                         row         = <ls_row> ).
-    ASSIGN lr_entity_row->* TO <ls_row>.
-    DATA(lo_op) = NEW z2ui5_cl_rap_object_page( val = <ls_row> ).
-    lo_op->set_extension( mo_ext ).
-    client->nav_app_call( lo_op ).
+    call_row_page( client      = client
+                   data        = mr_data
+                   key_fields  = mt_row_key
+                   entity_name = mv_cds_view ).
 
   ENDMETHOD.
 
