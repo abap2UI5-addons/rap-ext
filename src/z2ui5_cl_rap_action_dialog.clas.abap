@@ -380,16 +380,8 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
                     ns = `core`
           )->a( n = `text`
                 t = COND #( WHEN ls_group-group_label IS NOT INITIAL THEN ls_group-group_label ELSE ls_group-qualifier ) ).
-      DATA lt_in_group TYPE z2ui5_cl_rap_util=>ty_t_field_info.
-      CLEAR lt_in_group.
-      LOOP AT ms_entity-fields INTO ls_field WHERE is_hidden = abap_false.
-        READ TABLE ls_field-field_groups INTO DATA(ls_membership) WITH KEY qualifier = ls_group-qualifier.
-        IF sy-subrc = 0.
-          ls_field-field_group_pos = ls_membership-position.
-          APPEND ls_field TO lt_in_group.
-        ENDIF.
-      ENDLOOP.
-      SORT lt_in_group BY field_group_pos.
+      DATA(lt_in_group) = z2ui5_cl_rap_util=>get_field_group_fields( it_fields  = ms_entity-fields
+                                                                     qualifier = ls_group-qualifier ).
       LOOP AT lt_in_group INTO ls_field.
         render_dialog_field( io_form  = lo_form
                              is_field = ls_field

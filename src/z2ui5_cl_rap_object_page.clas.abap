@@ -2854,17 +2854,9 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
               )->a( n = `level`
                     v = `H5` ).
         ENDIF.
-        DATA lt_group TYPE z2ui5_cl_rap_util=>ty_t_field_info.
-        CLEAR lt_group.
-        LOOP AT ms_entity-fields INTO DATA(ls_field) WHERE is_hidden = abap_false.
-          READ TABLE ls_field-field_groups INTO DATA(ls_group) WITH KEY qualifier = ls_facet-target_qualifier.
-          IF sy-subrc = 0.
-            ls_field-field_group_pos = ls_group-position.
-            APPEND ls_field TO lt_group.
-          ENDIF.
-        ENDLOOP.
-        SORT lt_group BY field_group_pos.
-        LOOP AT lt_group INTO ls_field.
+        DATA(lt_group) = z2ui5_cl_rap_util=>get_field_group_fields( it_fields  = ms_entity-fields
+                                                                    qualifier = ls_facet-target_qualifier ).
+        LOOP AT lt_group INTO DATA(ls_field).
           lo_block->ele( `HBox`
               )->tag( `Label`
                   )->a( n = `text`

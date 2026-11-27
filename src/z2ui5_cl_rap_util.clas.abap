@@ -1568,6 +1568,15 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! the visible fields of the @UI.fieldGroup qualifier by their position
+    "! in it - field_group_pos is that position (added 2026-11)
+    CLASS-METHODS get_field_group_fields
+      IMPORTING
+        it_fields     TYPE ty_t_field_info
+        qualifier     TYPE string
+      RETURNING
+        VALUE(result) TYPE ty_t_field_info.
+
     "! the columns of the @UI.lineItem of qualifier, by position: every
     "! field with an entry of it, line_item_pos, label, importance,
     "! criticality and the rest taken from that entry. No qualifier: the
@@ -6445,6 +6454,20 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
     result = concat_lines_of( table = lt_and sep = ` AND ` ).
+
+  ENDMETHOD.
+
+
+  METHOD get_field_group_fields.
+
+    LOOP AT it_fields INTO DATA(ls_field) WHERE is_hidden = abap_false.
+      READ TABLE ls_field-field_groups INTO DATA(ls_group) WITH KEY qualifier = qualifier.
+      IF sy-subrc = 0.
+        ls_field-field_group_pos = ls_group-position.
+        APPEND ls_field TO result.
+      ENDIF.
+    ENDLOOP.
+    SORT result STABLE BY field_group_pos.
 
   ENDMETHOD.
 

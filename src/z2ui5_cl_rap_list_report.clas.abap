@@ -2828,17 +2828,10 @@ CLASS z2ui5_cl_rap_list_report IMPLEMENTATION.
 
     "#AS_FIELDGROUP -> the fields of the field group, one under the other
     IF is_col-line_item_type = `AS_FIELDGROUP` AND is_col-line_item_value_qualifier IS NOT INITIAL.
-      LOOP AT ms_entity-fields INTO DATA(ls_group_field) WHERE is_hidden = abap_false.
-        READ TABLE ls_group_field-field_groups INTO DATA(ls_group)
-          WITH KEY qualifier = is_col-line_item_value_qualifier.
-        IF sy-subrc = 0.
-          ls_group_field-field_group_pos = ls_group-position.
-          APPEND ls_group_field TO lt_group.
-        ENDIF.
-      ENDLOOP.
-      SORT lt_group BY field_group_pos.
+      lt_group = z2ui5_cl_rap_util=>get_field_group_fields( it_fields  = ms_entity-fields
+                                                            qualifier = is_col-line_item_value_qualifier ).
       DATA(lo_group) = lo_cell->ele( `VBox` ).
-      LOOP AT lt_group INTO ls_group_field.
+      LOOP AT lt_group INTO DATA(ls_group_field).
         lo_group->tag( `Text`
             )->a( n = `text`
                   v = COND string( WHEN ls_group_field-text_element IS NOT INITIAL

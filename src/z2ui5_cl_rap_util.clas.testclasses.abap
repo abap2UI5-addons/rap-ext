@@ -653,6 +653,7 @@ CLASS ltcl_filter DEFINITION FINAL
     METHODS string_is_text      FOR TESTING RAISING cx_static_check.
     METHODS exact_value_literal FOR TESTING RAISING cx_static_check.
     METHODS fields_from_text    FOR TESTING RAISING cx_static_check.
+    METHODS field_group_fields  FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -782,6 +783,24 @@ CLASS ltcl_filter IMPLEMENTATION.
       exp = VALUE z2ui5_cl_rap_util=>ty_t_condition( ( operator = `CONTAINS` low = `abc` ) )
       act = z2ui5_cl_rap_util=>filter_to_conditions( is_field = VALUE #( name = `F` type_kind = `STRING` )
                                                      value    = `abc` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD field_group_fields.
+
+    " the visible members of the group by their position in it
+    DATA(lt_fields) = z2ui5_cl_rap_util=>get_field_group_fields(
+      it_fields = VALUE #( ( name = `A` field_groups = VALUE #( ( qualifier = `G` position = 20 ) ) )
+                           ( name = `B` field_groups = VALUE #( ( qualifier = `H` position = 5 )
+                                                                ( qualifier = `G` position = 10 ) ) )
+                           ( name = `C` field_groups = VALUE #( ( qualifier = `G` position = 1 ) ) is_hidden = abap_true )
+                           ( name = `D` ) )
+      qualifier = `G` ).
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = lines( lt_fields ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `B` act = lt_fields[ 1 ]-name ).
+    cl_abap_unit_assert=>assert_equals( exp = 10  act = lt_fields[ 1 ]-field_group_pos ).
+    cl_abap_unit_assert=>assert_equals( exp = `A` act = lt_fields[ 2 ]-name ).
 
   ENDMETHOD.
 
