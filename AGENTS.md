@@ -115,9 +115,12 @@ as CI does.
   deprecated or too-new controls and members, binding mistakes, malformed
   builder trees, and a real headless `XMLView.create`. Its settings (paths,
   UI5 floor, fail level) live in `abap2ui5lint.jsonc`;
-  `abap2ui5lint-baseline.json` records the one accepted finding (the
-  overview page's public `mt_card_data`, kept for the public contract and
-  explained in `abap2ui5lint.jsonc`), and only shrinks.
+  `abap2ui5lint-baseline.json` records the accepted findings (the
+  overview page's public `mt_card_data`, kept for the public contract; the
+  protected `ms_data_backup` and `mr_selected`, created with the entity's
+  named type; two messages before `nav_app_leave( )` that wait for a core
+  release with `keep_messages` - each explained in `abap2ui5lint.jsonc`),
+  and only shrinks.
 - CI runs the three gates on every push and PR in one workflow,
   `.github/workflows/ci.yaml`, which calls the shared CI template of the
   addons (`addon-check.yaml`: abaplint, `lint:cloud`, unit, abap2UI5-linter)
