@@ -475,14 +475,17 @@ CLASS z2ui5_cl_rap_action_dialog IMPLEMENTATION.
 
   METHOD handle_value_help_confirm.
 
-    DATA(lo_vh) = get_value_help_result( client ).
+    DATA lo_vh TYPE REF TO z2ui5_cl_rap_value_help.
+
+    "one read of the value help's result - a second showed its load
+    "error twice
+    apply_value_help( EXPORTING client     = client
+                                it_fields  = ms_entity-fields
+                      IMPORTING value_help = lo_vh
+                      CHANGING  target     = ms_cds->* ).
     IF lo_vh IS BOUND.
       mt_vh_data = lo_vh->result_table( ).
     ENDIF.
-
-    apply_value_help( EXPORTING client    = client
-                                it_fields = ms_entity-fields
-                      CHANGING  target    = ms_cds->* ).
     CLEAR mv_vh_field.
 
     render_action_dialog( client ).

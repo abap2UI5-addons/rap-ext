@@ -531,11 +531,14 @@ CLASS z2ui5_cl_rap_floorplan DEFINITION
         VALUE(result) TYPE REF TO z2ui5_cl_rap_value_help.
 
     "! on the return from open_value_help: write the selected value (and
-    "! the additional bindings with usage RESULT) into target
+    "! the additional bindings with usage RESULT) into target; value_help
+    "! is the confirmed value help (get_value_help_result, added 2026-11)
     METHODS apply_value_help
       IMPORTING
         client        TYPE REF TO z2ui5_if_client
         it_fields     TYPE z2ui5_cl_rap_util=>ty_t_field_info
+      EXPORTING
+        value_help    TYPE REF TO z2ui5_cl_rap_value_help
       CHANGING
         target        TYPE data
       RETURNING
@@ -1476,17 +1479,14 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     DATA(ls_read) = get_read_info( entity_name ).
 
     TRY.
-        DATA(lo_struct) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( entity_name ) ).
-        DATA(lt_comp) = lo_struct->get_components( ).
-        IF with_selection = abap_true.
-          IF NOT line_exists( lt_comp[ name = cv_select_column ] ).
-            APPEND VALUE #( name = cv_select_column
-                            type = CAST #( cl_abap_typedescr=>describe_by_name( `ABAP_BOOL` ) ) ) TO lt_comp.
-          ENDIF.
-          lo_struct = cl_abap_structdescr=>create( lt_comp ).
+        "an unknown entity raises here - its text is the read error
+        DATA(lt_comp) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_name( entity_name ) )->get_components( ).
+        result = create_entity_table( entity_name    = entity_name
+                                      with_selection = with_selection ).
+        IF result IS NOT BOUND.
+          mv_read_error = get_text( cs_text-load_error ).
+          RETURN.
         ENDIF.
-        DATA(lo_table) = cl_abap_tabledescr=>create( lo_struct ).
-        CREATE DATA result TYPE HANDLE lo_table.
         ASSIGN result->* TO <lt_data>.
 
         "a custom entity: its query provider reads it - ABAP SQL cannot
@@ -2305,12 +2305,14 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     FIELD-SYMBOLS <lv_source> TYPE any.
     FIELD-SYMBOLS <ls_row> TYPE any.
 
+    CLEAR value_help.
     DATA(lo_vh) = get_value_help_result( client ).
     DATA(lv_field) = mv_vh_target.
     CLEAR mv_vh_target.
     IF lo_vh IS NOT BOUND.
       RETURN.
     ENDIF.
+    value_help = lo_vh.
 
     ASSIGN COMPONENT lv_field OF STRUCTURE target TO <lv_target>.
     IF sy-subrc = 0.
@@ -2943,6 +2945,8 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
     "nor what GET PERMISSIONS forbids (since 2026-10, third round): global
     "feature control and authorization, an internal operation - and a
     "create by association as the parent's association allows it
+    DATA(ls_perm) = get_permissions( entity_name = entity_name
+                                     context     = context ).
     IF context-association IS NOT INITIAL AND context-parent IS NOT INITIAL.
       DATA(lv_parent) = to_upper( context-parent ).
       DATA(lr_parent) = create_host( entity_name = lv_parent
@@ -2957,15 +2961,9 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
           AND z2ui5_cl_rap_util=>is_permitted( ops  = ls_parent_perm-associations
                                                name = context-association ) = abap_true ).
       ENDIF.
-    ELSE.
-      DATA(ls_perm) = get_permissions( entity_name = entity_name
-                                       context     = context ).
-      IF ls_perm-answered = abap_true.
-        result-can_create = xsdbool( result-can_create = abap_true AND ls_perm-global-can_create = abap_true ).
-      ENDIF.
+    ELSEIF ls_perm-answered = abap_true.
+      result-can_create = xsdbool( result-can_create = abap_true AND ls_perm-global-can_create = abap_true ).
     ENDIF.
-    ls_perm = get_permissions( entity_name = entity_name
-                               context     = context ).
     IF ls_perm-answered = abap_true.
       result-can_update = xsdbool( result-can_update = abap_true AND ls_perm-global-can_update = abap_true ).
       result-can_delete = xsdbool( result-can_delete = abap_true AND ls_perm-global-can_delete = abap_true ).
