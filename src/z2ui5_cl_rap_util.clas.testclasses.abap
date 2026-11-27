@@ -652,6 +652,7 @@ CLASS ltcl_filter DEFINITION FINAL
     METHODS raw_is_no_text      FOR TESTING RAISING cx_static_check.
     METHODS string_is_text      FOR TESTING RAISING cx_static_check.
     METHODS exact_value_literal FOR TESTING RAISING cx_static_check.
+    METHODS fields_from_text    FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -781,6 +782,27 @@ CLASS ltcl_filter IMPLEMENTATION.
       exp = VALUE z2ui5_cl_rap_util=>ty_t_condition( ( operator = `CONTAINS` low = `abc` ) )
       act = z2ui5_cl_rap_util=>filter_to_conditions( is_field = VALUE #( name = `F` type_kind = `STRING` )
                                                      value    = `abc` ) ).
+
+  ENDMETHOD.
+
+
+  METHOD fields_from_text.
+
+    TYPES:
+      BEGIN OF ty_s_host,
+        id    TYPE c LENGTH 4,
+        since TYPE d,
+      END OF ty_s_host.
+    DATA ls_host TYPE ty_s_host.
+
+    " any case, a date as the JSON model writes it, an unknown name ignored
+    z2ui5_cl_rap_util=>set_fields_from_text(
+      EXPORTING values    = VALUE #( ( name = `id`    value = `A1` )
+                                     ( name = `SINCE` value = `2024-01-15` )
+                                     ( name = `OTHER` value = `x` ) )
+      CHANGING  structure = ls_host ).
+    cl_abap_unit_assert=>assert_equals( exp = 'A1'       act = ls_host-id ).
+    cl_abap_unit_assert=>assert_equals( exp = '20240115' act = ls_host-since ).
 
   ENDMETHOD.
 

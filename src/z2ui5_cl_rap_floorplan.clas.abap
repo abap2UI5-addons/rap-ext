@@ -2986,39 +2986,15 @@ CLASS z2ui5_cl_rap_floorplan IMPLEMENTATION.
 
   METHOD create_host.
 
-    FIELD-SYMBOLS <ls_host> TYPE any.
-    FIELD-SYMBOLS <lv_value> TYPE any.
-
     TRY.
         CREATE DATA result TYPE (entity_name).
       CATCH cx_root.
         CLEAR result.
         RETURN.
     ENDTRY.
-    ASSIGN result->* TO <ls_host>.
-
-    LOOP AT values INTO DATA(ls_value).
-      DATA(lv_name) = to_upper( ls_value-name ).
-      UNASSIGN <lv_value>.
-      ASSIGN COMPONENT lv_name OF STRUCTURE <ls_host> TO <lv_value>.
-      IF <lv_value> IS NOT ASSIGNED.
-        CONTINUE.
-      ENDIF.
-      DATA(lv_kind) = cl_abap_typedescr=>describe_by_data( <lv_value> )->type_kind.
-      TRY.
-          "a date or time as the JSON model writes it (2024-01-15), a RAW
-          "as hex digits - a UUID may come with its dashes
-          IF lv_kind = cl_abap_typedescr=>typekind_date
-            OR lv_kind = cl_abap_typedescr=>typekind_time
-            OR lv_kind = cl_abap_typedescr=>typekind_hex.
-            <lv_value> = z2ui5_cl_rap_util=>normalize_value( ls_value-value ).
-          ELSE.
-            <lv_value> = ls_value-value.
-          ENDIF.
-        CATCH cx_root.
-          CLEAR <lv_value>.
-      ENDTRY.
-    ENDLOOP.
+    ASSIGN result->* TO FIELD-SYMBOL(<ls_host>).
+    z2ui5_cl_rap_util=>set_fields_from_text( EXPORTING values    = values
+                                             CHANGING  structure = <ls_host> ).
 
   ENDMETHOD.
 

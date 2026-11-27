@@ -1122,6 +1122,18 @@ CLASS z2ui5_cl_rap_util DEFINITION
       RETURNING
         VALUE(result) TYPE string.
 
+    "! the components of structure that values names (any case) set from
+    "! the text form a row, an event or a URL carries: a date or time as
+    "! the JSON model writes it (2024-01-15), a RAW as hex digits, a UUID
+    "! with its dashes (normalize_value); a value that does not fit leaves
+    "! the component initial (added 2026-11 - the host of a key condition
+    "! and the keys of an EML instance)
+    CLASS-METHODS set_fields_from_text
+      IMPORTING
+        values    TYPE ty_t_name_value
+      CHANGING
+        structure TYPE data.
+
     "! The rows of data (a table) as CSV: a header line with the labels of
     "! it_fields, then one line per row with the values of those fields -
     "! separated by ;, every value in double quotes (doubled inside), dates
@@ -3847,6 +3859,33 @@ CLASS z2ui5_cl_rap_util IMPLEMENTATION.
     ENDCASE.
     result = replace( val = result sub = `'` with = `''` occ = 0 ).
     result = |'{ result }'|.
+
+  ENDMETHOD.
+
+
+  METHOD set_fields_from_text.
+
+    FIELD-SYMBOLS <lv_field> TYPE any.
+    LOOP AT values INTO DATA(ls_value).
+      DATA(lv_name) = to_upper( ls_value-name ).
+      UNASSIGN <lv_field>.
+      ASSIGN COMPONENT lv_name OF STRUCTURE structure TO <lv_field>.
+      IF <lv_field> IS NOT ASSIGNED.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_kind) = cl_abap_typedescr=>describe_by_data( <lv_field> )->type_kind.
+      TRY.
+          IF lv_kind = cl_abap_typedescr=>typekind_date
+            OR lv_kind = cl_abap_typedescr=>typekind_time
+            OR lv_kind = cl_abap_typedescr=>typekind_hex.
+            <lv_field> = normalize_value( ls_value-value ).
+          ELSE.
+            <lv_field> = ls_value-value.
+          ENDIF.
+        CATCH cx_root.
+          CLEAR <lv_field>.
+      ENDTRY.
+    ENDLOOP.
 
   ENDMETHOD.
 

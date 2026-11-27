@@ -1099,30 +1099,8 @@ CLASS z2ui5_cl_rap_eml IMPLEMENTATION.
 
 
   METHOD set_fields.
-
-    FIELD-SYMBOLS <lv_field> TYPE any.
-    LOOP AT keys INTO DATA(ls_key).
-      DATA(lv_name) = to_upper( ls_key-name ).
-      UNASSIGN <lv_field>.
-      ASSIGN COMPONENT lv_name OF STRUCTURE structure TO <lv_field>.
-      IF <lv_field> IS NOT ASSIGNED.
-        CONTINUE.
-      ENDIF.
-      DATA(lv_kind) = cl_abap_typedescr=>describe_by_data( <lv_field> )->type_kind.
-      TRY.
-          "a date as 2024-01-15, a UUID with its dashes - in their internal form
-          IF lv_kind = cl_abap_typedescr=>typekind_date
-            OR lv_kind = cl_abap_typedescr=>typekind_time
-            OR lv_kind = cl_abap_typedescr=>typekind_hex.
-            <lv_field> = z2ui5_cl_rap_util=>normalize_value( ls_key-value ).
-          ELSE.
-            <lv_field> = ls_key-value.
-          ENDIF.
-        CATCH cx_root.
-          CLEAR <lv_field>.
-      ENDTRY.
-    ENDLOOP.
-
+    z2ui5_cl_rap_util=>set_fields_from_text( EXPORTING values    = keys
+                                             CHANGING  structure = structure ).
   ENDMETHOD.
 
 
