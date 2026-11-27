@@ -1407,6 +1407,8 @@ CLASS z2ui5_cl_rap_object_page IMPLEMENTATION.
                      fields   = ms_entity-fields ).
       RETURN.
     ENDIF.
+    "the record is written - the list reads again, whatever the children do
+    mv_saved = abap_true.
 
     "the children changed in edit mode - after the record, each its own
     "write (since 2026-10, third round). The record is saved: a child that
