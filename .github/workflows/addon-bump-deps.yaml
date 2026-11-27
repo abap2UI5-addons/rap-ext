@@ -107,7 +107,9 @@ jobs:
         done < "$RUNNER_TEMP/manifest.txt"
         rm -rf .abap2UI5
         if ! git diff --quiet; then
-          # appended to the summary after update-deps.mjs, which writes it anew
+          # appended to the summary after update-deps.mjs, which writes it anew;
+          # the backticks are Markdown, not a shell expansion
+          # shellcheck disable=SC2016
           git diff --name-only | sed 's/^/- `/; s/$/` synced from abap2UI5/' > "$RUNNER_TEMP/shared.md"
         fi
 
@@ -121,9 +123,11 @@ jobs:
         if [ -n "$DEPS_TOKEN" ]; then flags="--actions"; fi
         node .github/scripts/update-deps.mjs $flags --summary "$RUNNER_TEMP/summary.md"
         if [ -s "$RUNNER_TEMP/shared.md" ]; then
-          printf '**Shared files**\n\n' >> "$RUNNER_TEMP/summary.md"
-          cat "$RUNNER_TEMP/shared.md" >> "$RUNNER_TEMP/summary.md"
-          printf '\n' >> "$RUNNER_TEMP/summary.md"
+          {
+            printf '**Shared files**\n\n'
+            cat "$RUNNER_TEMP/shared.md"
+            printf '\n'
+          } >> "$RUNNER_TEMP/summary.md"
         fi
 
     - name: What else the addon pins
